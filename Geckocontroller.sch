@@ -779,17 +779,6 @@ F 3 "~" H 10800 1050 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Interface_USB:CP2102N-A01-GQFN24 U?
-U 1 1 61EF3DD6
-P 4900 5050
-F 0 "U?" V 4946 4106 50  0000 R CNN
-F 1 "CP2102" V 4855 4106 50  0000 R CNN
-F 2 "Package_DFN_QFN:QFN-24-1EP_4x4mm_P0.5mm_EP2.6x2.6mm" H 5050 4100 50  0001 L CNN
-F 3 "https://www.silabs.com/documents/public/data-sheets/cp2102.pdf" H 4350 6300 50  0001 C CNN
-	1    4900 5050
-	0    -1   -1   0   
-$EndComp
-$Comp
 L Device:C C?
 U 1 1 61FC96F5
 P 3900 6500
@@ -825,12 +814,12 @@ $EndComp
 $Comp
 L Transistor_BJT:S8050 Q?
 U 1 1 62083541
-P 4500 3450
-F 0 "Q?" V 4828 3450 50  0000 C CNN
-F 1 "S8050" V 4737 3450 50  0000 C CNN
-F 2 "Package_TO_SOT_THT:TO-92_Inline" H 4700 3375 50  0001 L CIN
-F 3 "http://www.unisonic.com.tw/datasheet/S8050.pdf" H 4500 3450 50  0001 L CNN
-	1    4500 3450
+P 4300 3450
+F 0 "Q?" V 4628 3450 50  0000 C CNN
+F 1 "S8050" V 4537 3450 50  0000 C CNN
+F 2 "Package_TO_SOT_THT:TO-92_Inline" H 4500 3375 50  0001 L CIN
+F 3 "http://www.unisonic.com.tw/datasheet/S8050.pdf" H 4300 3450 50  0001 L CNN
+	1    4300 3450
 	0    -1   -1   0   
 $EndComp
 $Comp
@@ -847,12 +836,12 @@ $EndComp
 $Comp
 L Device:R R?
 U 1 1 62198FF5
-P 4500 3900
-F 0 "R?" H 4570 3946 50  0000 L CNN
-F 1 "12k" H 4570 3855 50  0000 L CNN
-F 2 "" V 4430 3900 50  0001 C CNN
-F 3 "~" H 4500 3900 50  0001 C CNN
-	1    4500 3900
+P 4300 3900
+F 0 "R?" H 4370 3946 50  0000 L CNN
+F 1 "12k" H 4370 3855 50  0000 L CNN
+F 2 "" V 4230 3900 50  0001 C CNN
+F 3 "~" H 4300 3900 50  0001 C CNN
+	1    4300 3900
 	1    0    0    -1  
 $EndComp
 $Comp
@@ -1345,50 +1334,29 @@ Wire Notes Line
 Wire Notes Line
 	6700 1850 6700 6500
 Wire Wire Line
-	4300 5750 4300 5850
-Wire Wire Line
-	4300 5850 3900 5850
-Wire Wire Line
-	3900 5850 3900 5250
-Wire Wire Line
-	3900 4850 4000 4850
+	4300 5800 3900 5800
 Wire Wire Line
 	3900 5050 4000 5050
 Connection ~ 3900 5050
 Wire Wire Line
-	3900 5050 3900 4850
+	3900 6350 3900 5800
+Connection ~ 3900 5800
 Wire Wire Line
-	3900 5250 4000 5250
-Connection ~ 3900 5250
+	4300 6350 4300 5800
 Wire Wire Line
-	3900 5250 3900 5050
-Wire Wire Line
-	3900 6350 3900 5850
-Connection ~ 3900 5850
-Wire Wire Line
-	4300 6350 4300 5850
-Connection ~ 4300 5850
-Wire Wire Line
-	3900 4250 3900 4850
-Connection ~ 3900 4850
-Wire Wire Line
-	4500 3750 4500 3650
+	4300 3750 4300 3650
 Wire Wire Line
 	5100 3750 5100 3650
 Wire Wire Line
-	4500 4350 4500 4250
+	5100 4250 4900 4250
+Connection ~ 4900 4250
 Wire Wire Line
-	5100 4050 5100 4250
-Connection ~ 5100 4250
-Wire Wire Line
-	5100 4250 5100 4350
-Wire Wire Line
-	4700 3350 5100 4250
+	4500 3350 4900 4250
 Wire Wire Line
 	4900 3350 4500 4250
 Connection ~ 4500 4250
 Wire Wire Line
-	4500 4250 4500 4050
+	4500 4250 4300 4250
 $Comp
 L Connector:USB_C_Receptacle_USB2.0 J?
 U 1 1 6236779C
@@ -1400,8 +1368,6 @@ F 3 "https://www.usb.org/sites/default/files/documents/usb_type-c.zip" H 5250 72
 	1    5100 7250
 	0    -1   -1   0   
 $EndComp
-Wire Wire Line
-	4500 5750 4500 6650
 Wire Wire Line
 	5000 6650 5000 6550
 Wire Wire Line
@@ -1450,30 +1416,6 @@ Wire Wire Line
 	3900 6650 3900 7450
 Wire Wire Line
 	4300 6650 4300 7450
-$Comp
-L Device:R R?
-U 1 1 6245B412
-P 4700 6400
-F 0 "R?" H 4770 6446 50  0000 L CNN
-F 1 "5k1" H 4770 6355 50  0000 L CNN
-F 2 "" V 4630 6400 50  0001 C CNN
-F 3 "~" H 4700 6400 50  0001 C CNN
-	1    4700 6400
-	1    0    0    -1  
-$EndComp
-Wire Wire Line
-	5200 5850 5200 6550
-$Comp
-L Device:R R?
-U 1 1 62519D63
-P 4800 6400
-F 0 "R?" H 4870 6446 50  0000 L CNN
-F 1 "5k1" H 4870 6355 50  0000 L CNN
-F 2 "" V 4730 6400 50  0001 C CNN
-F 3 "~" H 4800 6400 50  0001 C CNN
-	1    4800 6400
-	1    0    0    -1  
-$EndComp
 Wire Wire Line
 	4700 6650 4700 6550
 Wire Wire Line
@@ -1506,24 +1448,20 @@ Wire Wire Line
 	4800 6250 4800 6200
 Wire Wire Line
 	5000 6550 5100 6550
-Connection ~ 5000 6550
-Wire Wire Line
-	5000 6550 5000 5950
 Wire Wire Line
 	5200 6550 5300 6550
-Connection ~ 5200 6550
 Wire Wire Line
 	5200 6550 5200 6650
 Wire Wire Line
 	5300 6550 5300 6650
-Text GLabel 4800 4200 1    50   Input ~ 0
+Text GLabel 4700 4400 1    50   Input ~ 0
 TXD
-Text GLabel 4900 4200 1    50   Input ~ 0
+Text GLabel 4600 4400 1    50   Input ~ 0
 RXD
 Wire Wire Line
-	4800 4350 4800 4200
+	4700 4450 4700 4400
 Wire Wire Line
-	4900 4350 4900 4200
+	4600 4450 4600 4400
 Text GLabel 3000 1350 2    50   Input ~ 0
 TXD
 $Comp
@@ -1637,17 +1575,17 @@ F 3 "~" H 1000 1500 50  0001 C CNN
 $EndComp
 Text GLabel 700  1050 1    50   Input ~ 0
 EN
-Text GLabel 4150 3350 0    50   Input ~ 0
+Text GLabel 5350 3350 2    50   Input ~ 0
 EN
 Wire Wire Line
-	4150 3350 4300 3350
+	4050 3350 4100 3350
 Wire Wire Line
 	700  1050 700  1250
 Connection ~ 700  1250
-Text GLabel 5450 3350 2    50   Input ~ 0
+Text GLabel 4050 3350 0    50   Input ~ 0
 IO0
 Wire Wire Line
-	5300 3350 5450 3350
+	5300 3350 5350 3350
 Text GLabel 3000 1250 2    50   Input ~ 0
 IO0
 Wire Wire Line
@@ -1695,4 +1633,91 @@ Wire Notes Line
 	3750 3000 6100 3000
 Text Notes 5550 3100 0    50   ~ 0
 USB Interface
+$Comp
+L Interface_USB:CP2102N-A01-GQFN24 U?
+U 1 1 61EF3DD6
+P 4900 5050
+F 0 "U?" V 4946 4106 50  0000 R CNN
+F 1 "CP2102" V 4855 4106 50  0000 R CNN
+F 2 "Package_DFN_QFN:QFN-24-1EP_4x4mm_P0.5mm_EP2.6x2.6mm" H 5050 4100 50  0001 L CNN
+F 3 "https://www.silabs.com/documents/public/data-sheets/cp2102.pdf" H 4350 6300 50  0001 C CNN
+	1    4900 5050
+	0    -1   -1   0   
+$EndComp
+$Comp
+L Device:R R?
+U 1 1 62519D63
+P 4800 6400
+F 0 "R?" H 4870 6446 50  0000 L CNN
+F 1 "5k1" H 4870 6355 50  0000 L CNN
+F 2 "" V 4730 6400 50  0001 C CNN
+F 3 "~" H 4800 6400 50  0001 C CNN
+	1    4800 6400
+	1    0    0    -1  
+$EndComp
+$Comp
+L Device:R R?
+U 1 1 6245B412
+P 4700 6400
+F 0 "R?" H 4770 6446 50  0000 L CNN
+F 1 "5k1" H 4770 6355 50  0000 L CNN
+F 2 "" V 4630 6400 50  0001 C CNN
+F 3 "~" H 4700 6400 50  0001 C CNN
+	1    4700 6400
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	5300 6550 5300 5650
+Connection ~ 5300 6550
+Wire Wire Line
+	5100 6550 5100 6250
+Wire Wire Line
+	5100 6250 5400 6250
+Wire Wire Line
+	5400 6250 5400 5650
+Connection ~ 5100 6550
+Wire Wire Line
+	5200 5650 5200 5900
+Wire Wire Line
+	5200 5900 4500 5900
+Wire Wire Line
+	4500 5900 4500 6650
+Connection ~ 3900 5150
+Wire Wire Line
+	3900 5150 3900 5050
+Wire Wire Line
+	3900 5150 3900 5800
+Wire Wire Line
+	3900 5150 4000 5150
+Wire Wire Line
+	3900 4250 3900 5050
+Wire Wire Line
+	4900 5650 4900 5800
+Wire Wire Line
+	4900 5800 4300 5800
+Connection ~ 4300 5800
+Wire Wire Line
+	5800 4950 5800 5050
+$Comp
+L power:GND #PWR?
+U 1 1 6297F5C0
+P 5800 6000
+F 0 "#PWR?" H 5800 5750 50  0001 C CNN
+F 1 "GND" H 5805 5827 50  0000 C CNN
+F 2 "" H 5800 6000 50  0001 C CNN
+F 3 "" H 5800 6000 50  0001 C CNN
+	1    5800 6000
+	-1   0    0    -1  
+$EndComp
+Wire Wire Line
+	5800 6000 5800 5050
+Connection ~ 5800 5050
+Wire Wire Line
+	4500 4450 4500 4250
+Wire Wire Line
+	4900 4250 4900 4450
+Wire Wire Line
+	5100 4250 5100 4050
+Wire Wire Line
+	4300 4250 4300 4050
 $EndSCHEMATC
