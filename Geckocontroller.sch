@@ -1189,12 +1189,12 @@ $EndComp
 $Comp
 L pspice:INDUCTOR L101
 U 1 1 64D89802
-P 6700 900
-F 0 "L101" H 6700 1115 50  0000 C CNN
-F 1 "4.7µH" H 6700 1024 50  0000 C CNN
-F 2 "Inductor_SMD:L_1008_2520Metric_Pad1.43x2.20mm_HandSolder" H 6700 900 50  0001 C CNN
-F 3 "~" H 6700 900 50  0001 C CNN
-	1    6700 900 
+P 6400 900
+F 0 "L101" H 6400 1115 50  0000 C CNN
+F 1 "4.7µH" H 6400 1024 50  0000 C CNN
+F 2 "Inductor_SMD:L_1008_2520Metric_Pad1.43x2.20mm_HandSolder" H 6400 900 50  0001 C CNN
+F 3 "~" H 6400 900 50  0001 C CNN
+	1    6400 900 
 	1    0    0    -1  
 $EndComp
 $Comp
@@ -1311,9 +1311,9 @@ Wire Wire Line
 	6000 900  6050 900 
 Connection ~ 6050 900 
 Wire Wire Line
-	6950 900  7100 900 
+	6650 900  7100 900 
 Wire Wire Line
-	6450 900  6050 900 
+	6150 900  6050 900 
 Wire Wire Line
 	6450 1250 6600 1250
 Wire Wire Line
