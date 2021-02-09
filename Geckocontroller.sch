@@ -73,7 +73,7 @@ L Converter_ACDC:IRM-05-12 PS1
 U 1 1 60671E36
 P 11200 1200
 F 0 "PS1" H 11200 833 50  0000 C CNN
-F 1 "IRM-05-12" H 11200 924 50  0000 C CNN
+F 1 "MeanWell IRM-05-12" H 11200 924 50  0000 C CNN
 F 2 "Converter_ACDC:Converter_ACDC_MeanWell_IRM-05-xx_THT" H 11200 850 50  0001 C CNN
 F 3 "https://www.meanwell.com/Upload/PDF/IRM-05/IRM-05-SPEC.PDF" H 11200 800 50  0001 C CNN
 	1    11200 1200
@@ -142,17 +142,6 @@ Text Notes 850  6900 2    50   ~ 0
 DQ\n\nVDD\n\nGND
 Text Notes 2100 7700 0    50   ~ 0
 Digital Thermometer Input
-$Comp
-L Connector:Conn_01x04_Male J11
-U 1 1 61878125
-P 950 5850
-F 0 "J11" H 1058 6131 50  0001 C CNN
-F 1 "I²C (BME280)" H 1058 6039 50  0000 C CNN
-F 2 "Connector_JST:JST_PH_B4B-PH-K_1x04_P2.00mm_Vertical" H 950 5850 50  0001 C CNN
-F 3 "~" H 950 5850 50  0001 C CNN
-	1    950  5850
-	1    0    0    -1  
-$EndComp
 $Comp
 L power:+3.3V #PWR0109
 U 1 1 618DBADA
@@ -286,8 +275,6 @@ Connection ~ 1500 7550
 Wire Notes Line
 	650  5350 650  4100
 Wire Wire Line
-	1150 5750 1800 5750
-Wire Wire Line
 	3250 3050 2400 3050
 Wire Notes Line
 	650  5400 3150 5400
@@ -295,8 +282,6 @@ Wire Notes Line
 	3150 5400 3150 6300
 Wire Notes Line
 	3150 6300 650  6300
-Wire Wire Line
-	1150 5950 1400 5950
 Wire Wire Line
 	1400 5950 1400 6100
 Wire Wire Line
@@ -657,10 +642,10 @@ F 3 "http://www.aosmd.com/pdfs/datasheet/AO3400A.pdf" H 2100 4400 50  0001 L CNN
 	-1   0    0    1   
 $EndComp
 $Comp
-L Transistor_FET:AO3400A Q222
+L Transistor_FET:AO3400A Q22
 U 1 1 62FE6F94
 P 2300 4700
-F 0 "Q222" H 2505 4654 50  0000 L CNN
+F 0 "Q22" H 2505 4654 50  0000 L CNN
 F 1 "AO3400A" H 2505 4745 50  0000 L CNN
 F 2 "Package_TO_SOT_SMD:SOT-23" H 2500 4625 50  0001 L CIN
 F 3 "http://www.aosmd.com/pdfs/datasheet/AO3400A.pdf" H 2300 4700 50  0001 L CNN
@@ -1411,10 +1396,10 @@ Wire Wire Line
 Text Notes 850  7600 2    50   ~ 0
 DQ\n\nVDD\n\nGND
 $Comp
-L Device:Fuse F1
+L Device:Fuse Fuse1
 U 1 1 664FA43B
 P 12150 1100
-F 0 "F1" V 11953 1100 50  0000 C CNN
+F 0 "Fuse1" V 11953 1100 50  0000 C CNN
 F 1 "T800 mA " V 12044 1100 50  0000 C CNN
 F 2 "Fuse:Fuseholder_Cylinder-5x20mm_Stelvio-Kontek_PTF78_Horizontal_Open" V 12080 1100 50  0001 C CNN
 F 3 "~" H 12150 1100 50  0001 C CNN
@@ -2630,8 +2615,6 @@ Connection ~ 1800 5750
 Wire Wire Line
 	1800 5750 3250 5750
 Wire Wire Line
-	1150 5850 1800 5850
-Wire Wire Line
 	2750 5600 2750 5650
 Wire Wire Line
 	1950 5950 1800 5950
@@ -2664,5 +2647,22 @@ F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 2030 5650 50  0
 F 3 "~" H 2100 5650 50  0001 C CNN
 	1    2100 5650
 	0    1    1    0   
+$EndComp
+Wire Wire Line
+	1150 5750 1800 5750
+Wire Wire Line
+	1150 5850 1800 5850
+Wire Wire Line
+	1150 5950 1400 5950
+$Comp
+L Connector:Conn_01x04_Male J11
+U 1 1 61878125
+P 950 5950
+F 0 "J11" H 1058 6231 50  0001 C CNN
+F 1 "I²C (BME280)" H 1058 6139 50  0000 C CNN
+F 2 "Connector_JST:JST_PH_B4B-PH-K_1x04_P2.00mm_Vertical" H 950 5950 50  0001 C CNN
+F 3 "~" H 950 5950 50  0001 C CNN
+	1    950  5950
+	1    0    0    1   
 $EndComp
 $EndSCHEMATC
