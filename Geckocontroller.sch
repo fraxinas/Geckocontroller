@@ -69,17 +69,6 @@ F 3 "" H 10750 800 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Converter_ACDC:IRM-05-12 PS1
-U 1 1 60671E36
-P 11200 1200
-F 0 "PS1" H 11200 833 50  0000 C CNN
-F 1 "MeanWell IRM-05-12" H 11200 924 50  0000 C CNN
-F 2 "Converter_ACDC:Converter_ACDC_MeanWell_IRM-05-xx_THT" H 11200 850 50  0001 C CNN
-F 3 "https://www.meanwell.com/Upload/PDF/IRM-05/IRM-05-SPEC.PDF" H 11200 800 50  0001 C CNN
-	1    11200 1200
-	-1   0    0    -1  
-$EndComp
-$Comp
 L power:GND #PWR0106
 U 1 1 60B61D3B
 P 3050 5150
@@ -284,8 +273,6 @@ Wire Notes Line
 	3150 6300 650  6300
 Wire Wire Line
 	1400 5950 1400 6100
-Wire Wire Line
-	1150 6050 2750 6050
 Wire Wire Line
 	4200 5950 3800 5950
 Wire Wire Line
@@ -641,17 +628,6 @@ F 3 "http://www.aosmd.com/pdfs/datasheet/AO3400A.pdf" H 2100 4400 50  0001 L CNN
 	1    2100 4400
 	-1   0    0    1   
 $EndComp
-$Comp
-L Transistor_FET:AO3400A Q22
-U 1 1 62FE6F94
-P 2300 4700
-F 0 "Q22" H 2505 4654 50  0000 L CNN
-F 1 "AO3400A" H 2505 4745 50  0000 L CNN
-F 2 "Package_TO_SOT_SMD:SOT-23" H 2500 4625 50  0001 L CIN
-F 3 "http://www.aosmd.com/pdfs/datasheet/AO3400A.pdf" H 2300 4700 50  0001 L CNN
-	1    2300 4700
-	-1   0    0    1   
-$EndComp
 Wire Wire Line
 	10800 1100 10750 1100
 Wire Wire Line
@@ -847,39 +823,6 @@ F 3 "~" H 11900 2450 50  0001 C CNN
 $EndComp
 Wire Wire Line
 	11900 2150 11850 2150
-$Comp
-L 2021-02-07_22-32-12:2604-1102 J92
-U 1 1 6023C73E
-P 12900 5150
-F 0 "J92" H 12818 4825 50  0001 C CNN
-F 1 "HeatBed" H 12980 5096 50  0000 L CNN
-F 2 "footprints:2604-1102" H 12900 5150 50  0001 C CNN
-F 3 "~" H 12900 5150 50  0001 C CNN
-	1    12900 5150
-	1    0    0    -1  
-$EndComp
-$Comp
-L 2021-02-07_22-32-12:2604-1102 J91
-U 1 1 606CDE5C
-P 12900 4250
-F 0 "J91" H 12818 3925 50  0001 C CNN
-F 1 "Pump" H 12980 4196 50  0000 L CNN
-F 2 "footprints:2604-1102" H 12900 4250 50  0001 C CNN
-F 3 "~" H 12900 4250 50  0001 C CNN
-	1    12900 4250
-	1    0    0    -1  
-$EndComp
-$Comp
-L 2021-02-07_22-32-12:2604-1102 J93
-U 1 1 606EE32C
-P 12900 6050
-F 0 "J93" H 12818 5725 50  0001 C CNN
-F 1 "HeatLamp" H 12980 5996 50  0000 L CNN
-F 2 "footprints:2604-1102" H 12900 6050 50  0001 C CNN
-F 3 "~" H 12900 6050 50  0001 C CNN
-	1    12900 6050
-	1    0    0    -1  
-$EndComp
 Wire Wire Line
 	12250 2450 12200 2450
 Wire Wire Line
@@ -1102,8 +1045,6 @@ Text Notes 13350 3650 2    50   ~ 0
 Dimmer Output
 Wire Notes Line
 	13400 3750 13400 6500
-Text Notes 13350 6450 2    50   ~ 0
-Relay Outputs
 Wire Notes Line
 	9800 6500 13400 6500
 Wire Notes Line
@@ -1310,12 +1251,12 @@ $EndComp
 $Comp
 L 2021-02-07_22-32-12:2604-1102 J81
 U 1 1 6023B43D
-P 12950 3250
-F 0 "J81" H 12868 2925 50  0001 C CNN
-F 1 "Dimmer" H 13030 3196 50  0000 L CNN
-F 2 "footprints:2604-1102" H 12950 3250 50  0001 C CNN
-F 3 "~" H 12950 3250 50  0001 C CNN
-	1    12950 3250
+P 12950 3150
+F 0 "J81" H 12868 2825 50  0001 C CNN
+F 1 "Dimmer" H 13030 3096 50  0000 L CNN
+F 2 "footprints:2604-1102" H 12950 3150 50  0001 C CNN
+F 3 "~" H 12950 3150 50  0001 C CNN
+	1    12950 3150
 	1    0    0    -1  
 $EndComp
 Wire Notes Line
@@ -1376,36 +1317,11 @@ Wire Wire Line
 	1350 6550 1350 6450
 Connection ~ 1350 6450
 Wire Wire Line
-	12500 6050 12500 6150
-Wire Wire Line
-	12500 5950 12500 5850
-Wire Wire Line
-	12500 5150 12500 5250
-Wire Wire Line
-	12500 5050 12500 4950
-Wire Wire Line
-	12500 4150 12500 4050
-Wire Wire Line
-	12550 3250 12550 3350
-Wire Wire Line
-	12550 3150 12550 3050
-Wire Wire Line
 	12550 1500 12550 1600
 Wire Wire Line
 	12550 1400 12550 1300
 Text Notes 850  7600 2    50   ~ 0
 DQ\n\nVDD\n\nGND
-$Comp
-L Device:Fuse Fuse1
-U 1 1 664FA43B
-P 12150 1100
-F 0 "Fuse1" V 11953 1100 50  0000 C CNN
-F 1 "T800 mA " V 12044 1100 50  0000 C CNN
-F 2 "Fuse:Fuseholder_Cylinder-5x20mm_Stelvio-Kontek_PTF78_Horizontal_Open" V 12080 1100 50  0001 C CNN
-F 3 "~" H 12150 1100 50  0001 C CNN
-	1    12150 1100
-	0    1    1    0   
-$EndComp
 $Comp
 L Geckocontroller-rescue:AQG12112-relay K91
 U 1 1 6654E064
@@ -1459,29 +1375,12 @@ Wire Wire Line
 Wire Wire Line
 	12350 1300 12350 2000
 Connection ~ 12550 1500
-Wire Wire Line
-	11600 1100 11900 1100
-Wire Wire Line
-	11900 1450 12250 1450
-Wire Wire Line
-	12250 1450 12250 2450
-Wire Wire Line
-	12550 1500 12450 1500
-Wire Wire Line
-	12450 1500 12450 1100
-Wire Wire Line
-	12450 1100 12300 1100
-Wire Wire Line
-	11900 1100 12000 1100
-Connection ~ 11900 1100
-Wire Wire Line
-	11900 1100 11900 1450
 $Comp
 L Device:R R101
 U 1 1 64D8FB59
 P 8700 1500
 F 0 "R101" V 8493 1500 50  0000 C CNN
-F 1 "18k±1%" V 8584 1500 50  0000 C CNN
+F 1 "15k±1%" V 8584 1500 50  0000 C CNN
 F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 8630 1500 50  0001 C CNN
 F 3 "~" H 8700 1500 50  0001 C CNN
 	1    8700 1500
@@ -1492,7 +1391,7 @@ L Device:R R102
 U 1 1 64D906B6
 P 9050 1500
 F 0 "R102" V 8843 1500 50  0000 C CNN
-F 1 "226R±1%" V 8934 1500 50  0000 C CNN
+F 1 "287R±1%" V 8934 1500 50  0000 C CNN
 F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 8980 1500 50  0001 C CNN
 F 3 "~" H 9050 1500 50  0001 C CNN
 	1    9050 1500
@@ -1600,61 +1499,7 @@ F 3 "~" H 11700 2150 50  0001 C CNN
 	0    1    -1   0   
 $EndComp
 Wire Wire Line
-	12250 2450 12250 3350
-Wire Wire Line
-	12350 2000 12350 3250
-Wire Wire Line
-	11550 3150 12550 3150
-Connection ~ 12550 3150
-Wire Wire Line
-	12250 3350 11550 3350
-Connection ~ 12250 3350
-Wire Wire Line
-	12250 3350 12250 4350
-Wire Wire Line
-	12350 3250 12550 3250
-Connection ~ 12350 3250
-Connection ~ 12550 3250
-Wire Wire Line
-	11550 4150 12500 4150
-Connection ~ 12500 4150
-Wire Wire Line
-	11550 4350 12250 4350
-Connection ~ 12250 4350
-Wire Wire Line
-	12250 4350 12250 5250
-Wire Wire Line
-	12500 4250 12500 4350
-Wire Wire Line
-	12350 3250 12350 4250
-Wire Wire Line
-	12350 4250 12500 4250
-Connection ~ 12350 4250
-Wire Wire Line
-	12350 4250 12350 5150
-Connection ~ 12500 4250
-Wire Wire Line
-	11550 5050 12500 5050
-Connection ~ 12500 5050
-Wire Wire Line
-	12350 5150 12500 5150
-Connection ~ 12350 5150
-Connection ~ 12500 5150
-Wire Wire Line
-	11550 5250 12250 5250
-Connection ~ 12250 5250
-Connection ~ 12500 5950
-Wire Wire Line
-	12350 6050 12500 6050
-Wire Wire Line
-	12350 5150 12350 6050
-Connection ~ 12500 6050
-Wire Wire Line
-	12250 6150 11550 6150
-Wire Wire Line
-	12250 5250 12250 6150
-Wire Wire Line
-	11550 5950 12500 5950
+	12350 2000 12350 2950
 Connection ~ 10200 5700
 Wire Wire Line
 	9650 2250 9650 2950
@@ -1803,8 +1648,6 @@ Text Label 12550 1300 0    50   ~ 0
 N
 Text Label 12550 1600 0    50   ~ 0
 L
-Text Label 12200 1450 0    50   ~ 0
-L'
 Text Label 11850 3150 0    50   ~ 0
 L_Dimmer
 Text Label 11900 4150 0    50   ~ 0
@@ -2101,8 +1944,8 @@ L Device:R R62
 U 1 1 68B0CA4C
 P 6650 5800
 F 0 "R62" H 6581 5846 50  0000 R CNN
-F 1 "R" H 6581 5755 50  0000 R CNN
-F 2 "Resistor_SMD:R_0603_1608Metric_Pad0.98x0.95mm_HandSolder" V 6580 5800 50  0001 C CNN
+F 1 "30k1±1%" H 6581 5755 50  0000 R CNN
+F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 6580 5800 50  0001 C CNN
 F 3 "~" H 6650 5800 50  0001 C CNN
 	1    6650 5800
 	1    0    0    -1  
@@ -2117,17 +1960,6 @@ F 2 "Resistor_SMD:R_0603_1608Metric_Pad0.98x0.95mm_HandSolder" V 7480 6950 50  0
 F 3 "~" H 7550 6950 50  0001 C CNN
 	1    7550 6950
 	-1   0    0    1   
-$EndComp
-$Comp
-L Device:R R65
-U 1 1 68B16D0D
-P 8550 5000
-F 0 "R65" H 8620 5046 50  0000 L CNN
-F 1 "10k" H 8620 4955 50  0000 L CNN
-F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 8480 5000 50  0001 C CNN
-F 3 "~" H 8550 5000 50  0001 C CNN
-	1    8550 5000
-	1    0    0    -1  
 $EndComp
 $Comp
 L Jumper:SolderJumper_2_Bridged JP60
@@ -2396,8 +2228,8 @@ L Device:R R61
 U 1 1 68B0BC21
 P 6650 5400
 F 0 "R61" H 6720 5446 50  0000 L CNN
-F 1 "R" H 6720 5355 50  0000 L CNN
-F 2 "Resistor_SMD:R_0603_1608Metric_Pad0.98x0.95mm_HandSolder" V 6580 5400 50  0001 C CNN
+F 1 "47k±1%" H 6720 5355 50  0000 L CNN
+F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 6580 5400 50  0001 C CNN
 F 3 "~" H 6650 5400 50  0001 C CNN
 	1    6650 5400
 	1    0    0    -1  
@@ -2554,28 +2386,6 @@ F 3 "~" H 6350 4800 50  0001 C CNN
 	1    6350 4800
 	1    0    0    -1  
 $EndComp
-$Comp
-L Device:C C65
-U 1 1 68A8A528
-P 9150 5000
-F 0 "C65" H 9265 5046 50  0000 L CNN
-F 1 "10µF" H 9265 4955 50  0000 L CNN
-F 2 "Capacitor_SMD:C_0805_2012Metric_Pad1.18x1.45mm_HandSolder" H 9188 4850 50  0001 C CNN
-F 3 "~" H 9150 5000 50  0001 C CNN
-	1    9150 5000
-	1    0    0    -1  
-$EndComp
-$Comp
-L Device:C C64
-U 1 1 68A87505
-P 8950 5000
-F 0 "C64" H 8835 5046 50  0000 R CNN
-F 1 "100nF" H 8835 4955 50  0000 R CNN
-F 2 "Capacitor_SMD:C_0603_1608Metric_Pad1.08x0.95mm_HandSolder" H 8988 4850 50  0001 C CNN
-F 3 "~" H 8950 5000 50  0001 C CNN
-	1    8950 5000
-	1    0    0    -1  
-$EndComp
 Wire Wire Line
 	8350 6000 8650 6000
 Wire Wire Line
@@ -2600,43 +2410,18 @@ Wire Wire Line
 Connection ~ 1800 6600
 Text Label 7100 5400 1    50   ~ 0
 AVDD
-$Comp
-L Device:R R12
-U 1 1 60296F1C
-P 2100 5950
-F 0 "R12" V 1893 5950 50  0000 C CNN
-F 1 "4k7" V 1984 5950 50  0000 C CNN
-F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 2030 5950 50  0001 C CNN
-F 3 "~" H 2100 5950 50  0001 C CNN
-	1    2100 5950
-	0    1    1    0   
-$EndComp
-Connection ~ 1800 5750
-Wire Wire Line
-	1800 5750 3250 5750
 Wire Wire Line
 	2750 5600 2750 5650
+Connection ~ 2750 5650
 Wire Wire Line
-	1950 5950 1800 5950
+	1150 5950 1400 5950
 Wire Wire Line
-	1800 5950 1800 5850
-Connection ~ 1800 5850
-Wire Wire Line
-	1800 5850 3350 5850
-Wire Wire Line
-	2250 5950 2750 5950
+	1150 6050 2750 6050
 Connection ~ 2750 5950
 Wire Wire Line
 	2750 5950 2750 6050
-Connection ~ 2750 5650
 Wire Wire Line
 	2750 5650 2750 5950
-Wire Wire Line
-	2250 5650 2750 5650
-Wire Wire Line
-	1800 5650 1800 5750
-Wire Wire Line
-	1950 5650 1800 5650
 $Comp
 L Device:R R11
 U 1 1 6028AB59
@@ -2649,11 +2434,38 @@ F 3 "~" H 2100 5650 50  0001 C CNN
 	0    1    1    0   
 $EndComp
 Wire Wire Line
-	1150 5750 1800 5750
+	2250 5650 2750 5650
+$Comp
+L Device:R R12
+U 1 1 60296F1C
+P 2100 5950
+F 0 "R12" V 1893 5950 50  0000 C CNN
+F 1 "4k7" V 1984 5950 50  0000 C CNN
+F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 2030 5950 50  0001 C CNN
+F 3 "~" H 2100 5950 50  0001 C CNN
+	1    2100 5950
+	0    1    1    0   
+$EndComp
+Wire Wire Line
+	2250 5950 2750 5950
 Wire Wire Line
 	1150 5850 1800 5850
+Connection ~ 1800 5850
 Wire Wire Line
-	1150 5950 1400 5950
+	1800 5850 3350 5850
+Wire Wire Line
+	1150 5750 1800 5750
+Connection ~ 1800 5750
+Wire Wire Line
+	1800 5750 3250 5750
+Wire Wire Line
+	1800 5650 1800 5750
+Wire Wire Line
+	1950 5650 1800 5650
+Wire Wire Line
+	1950 5950 1800 5950
+Wire Wire Line
+	1800 5950 1800 5850
 $Comp
 L Connector:Conn_01x04_Male J11
 U 1 1 61878125
@@ -2664,5 +2476,204 @@ F 2 "Connector_JST:JST_PH_B4B-PH-K_1x04_P2.00mm_Vertical" H 950 5950 50  0001 C 
 F 3 "~" H 950 5950 50  0001 C CNN
 	1    950  5950
 	1    0    0    1   
+$EndComp
+$Comp
+L Transistor_FET:AO3400A Q22
+U 1 1 62FE6F94
+P 2300 4700
+F 0 "Q22" H 2505 4654 50  0000 L CNN
+F 1 "AO3400A" H 2505 4745 50  0000 L CNN
+F 2 "Package_TO_SOT_SMD:SOT-23" H 2500 4625 50  0001 L CIN
+F 3 "http://www.aosmd.com/pdfs/datasheet/AO3400A.pdf" H 2300 4700 50  0001 L CNN
+	1    2300 4700
+	-1   0    0    1   
+$EndComp
+$Comp
+L Converter_ACDC:IRM-05-12 PS1
+U 1 1 60671E36
+P 11200 1200
+F 0 "PS1" H 11200 833 50  0000 C CNN
+F 1 "MeanWell IRM-05-12" H 11200 924 50  0000 C CNN
+F 2 "Converter_ACDC:Converter_ACDC_MeanWell_IRM-05-xx_THT" H 11200 850 50  0001 C CNN
+F 3 "https://www.meanwell.com/Upload/PDF/IRM-05/IRM-05-SPEC.PDF" H 11200 800 50  0001 C CNN
+	1    11200 1200
+	-1   0    0    -1  
+$EndComp
+$Comp
+L Graphic:Logo_Open_Hardware_Small #LOGO1
+U 1 1 610F28B1
+P 9800 6850
+F 0 "#LOGO1" H 9800 7125 50  0001 C CNN
+F 1 "Logo_Open_Hardware_Small" H 9800 6625 50  0001 C CNN
+F 2 "Symbol:OSHW-Logo_5.7x6mm_Copper" H 9800 7144 50  0001 C CNN
+F 3 "~" H 9800 6850 50  0001 C CNN
+	1    9800 6850
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	11550 4350 12250 4350
+Wire Wire Line
+	11550 5250 12250 5250
+Wire Wire Line
+	11550 6150 12250 6150
+Text Notes 13350 6450 2    50   ~ 0
+Relay Outputs
+$Comp
+L 2021-02-07_22-32-12:2604-1102 J93
+U 1 1 606EE32C
+P 12900 5950
+F 0 "J93" H 12818 5625 50  0001 C CNN
+F 1 "HeatLamp" H 12980 5896 50  0000 L CNN
+F 2 "footprints:2604-1102" H 12900 5950 50  0001 C CNN
+F 3 "~" H 12900 5950 50  0001 C CNN
+	1    12900 5950
+	1    0    0    -1  
+$EndComp
+$Comp
+L 2021-02-07_22-32-12:2604-1102 J91
+U 1 1 606CDE5C
+P 12900 4150
+F 0 "J91" H 12818 3825 50  0001 C CNN
+F 1 "Pump" H 12980 4096 50  0000 L CNN
+F 2 "footprints:2604-1102" H 12900 4150 50  0001 C CNN
+F 3 "~" H 12900 4150 50  0001 C CNN
+	1    12900 4150
+	1    0    0    -1  
+$EndComp
+$Comp
+L 2021-02-07_22-32-12:2604-1102 J92
+U 1 1 6023C73E
+P 12900 5050
+F 0 "J92" H 12818 4725 50  0001 C CNN
+F 1 "HeatBed" H 12980 4996 50  0000 L CNN
+F 2 "footprints:2604-1102" H 12900 5050 50  0001 C CNN
+F 3 "~" H 12900 5050 50  0001 C CNN
+	1    12900 5050
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	11550 4150 12500 4150
+Wire Wire Line
+	11550 5050 12500 5050
+Wire Wire Line
+	11550 5950 12500 5950
+Wire Wire Line
+	12350 5750 12500 5750
+Wire Wire Line
+	12350 3950 12500 3950
+Connection ~ 12350 3950
+Wire Wire Line
+	12350 3950 12350 4850
+Wire Wire Line
+	12500 3950 12500 4050
+Connection ~ 12500 3950
+Wire Wire Line
+	12500 4850 12350 4850
+Connection ~ 12350 4850
+Wire Wire Line
+	12350 4850 12350 5750
+Wire Wire Line
+	12500 4850 12500 4950
+Connection ~ 12500 4850
+Wire Wire Line
+	12500 5750 12500 5850
+Connection ~ 12500 5750
+Wire Wire Line
+	12500 5950 12500 6050
+Connection ~ 12500 5950
+Wire Wire Line
+	12500 5150 12500 5050
+Connection ~ 12500 5050
+Connection ~ 12250 4350
+Wire Wire Line
+	12250 4350 12250 5250
+Connection ~ 12250 5250
+Wire Wire Line
+	12250 5250 12250 6150
+Wire Wire Line
+	11550 3150 12550 3150
+Wire Wire Line
+	12250 2450 12250 3350
+Wire Wire Line
+	12550 2950 12350 2950
+Connection ~ 12350 2950
+Wire Wire Line
+	12550 2950 12550 3050
+Connection ~ 12550 2950
+Wire Wire Line
+	12350 2950 12350 3950
+Wire Wire Line
+	12550 3150 12550 3250
+Connection ~ 12550 3150
+Connection ~ 12250 3350
+Wire Wire Line
+	12250 3350 11550 3350
+Wire Wire Line
+	12250 3350 12250 4350
+Connection ~ 12500 4150
+Wire Wire Line
+	12550 1500 12450 1500
+Wire Wire Line
+	12450 1500 12450 1100
+Text Label 12200 1450 0    50   ~ 0
+L'
+Wire Wire Line
+	12450 1100 12300 1100
+Wire Wire Line
+	12250 1450 12250 2450
+Wire Wire Line
+	11900 1450 12250 1450
+Wire Wire Line
+	11900 1100 12000 1100
+Wire Wire Line
+	11600 1100 11900 1100
+Connection ~ 11900 1100
+Wire Wire Line
+	11900 1100 11900 1450
+$Comp
+L Device:Fuse Fuse1
+U 1 1 664FA43B
+P 12150 1100
+F 0 "Fuse1" V 11953 1100 50  0000 C CNN
+F 1 "T800 mA " V 12044 1100 50  0000 C CNN
+F 2 "Fuse:Fuseholder_Cylinder-5x20mm_Stelvio-Kontek_PTF78_Horizontal_Open" V 12080 1100 50  0001 C CNN
+F 3 "~" H 12150 1100 50  0001 C CNN
+	1    12150 1100
+	0    1    1    0   
+$EndComp
+Wire Wire Line
+	12500 4250 12500 4150
+$Comp
+L Device:C C65
+U 1 1 68A8A528
+P 9150 5000
+F 0 "C65" H 9265 5046 50  0000 L CNN
+F 1 "10µF" H 9265 4955 50  0000 L CNN
+F 2 "Capacitor_SMD:C_0805_2012Metric_Pad1.18x1.45mm_HandSolder" H 9188 4850 50  0001 C CNN
+F 3 "~" H 9150 5000 50  0001 C CNN
+	1    9150 5000
+	1    0    0    -1  
+$EndComp
+$Comp
+L Device:C C64
+U 1 1 68A87505
+P 8950 5000
+F 0 "C64" H 9065 5046 50  0000 L CNN
+F 1 "100nF" H 9065 4955 50  0000 L CNN
+F 2 "Capacitor_SMD:C_0603_1608Metric_Pad1.08x0.95mm_HandSolder" H 8988 4850 50  0001 C CNN
+F 3 "~" H 8950 5000 50  0001 C CNN
+	1    8950 5000
+	1    0    0    -1  
+$EndComp
+$Comp
+L Device:R R65
+U 1 1 68B16D0D
+P 8550 5000
+F 0 "R65" H 8620 5046 50  0000 L CNN
+F 1 "10k" H 8620 4955 50  0000 L CNN
+F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 8480 5000 50  0001 C CNN
+F 3 "~" H 8550 5000 50  0001 C CNN
+	1    8550 5000
+	1    0    0    -1  
 $EndComp
 $EndSCHEMATC
