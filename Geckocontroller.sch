@@ -298,7 +298,7 @@ L Connector:USB_C_Receptacle_USB2.0 J51
 U 1 1 6236779C
 P 5000 7300
 F 0 "J51" V 5153 8029 50  0000 L CNN
-F 1 "USB_C_Receptacle_USB2.0" V 5062 8029 50  0000 L CNN
+F 1 "USB-C" V 5062 8029 50  0000 L CNN
 F 2 "Connector_USB:USB_C_Receptacle_XKB_U262-16XN-4BVC11" H 5150 7300 50  0001 C CNN
 F 3 "https://www.usb.org/sites/default/files/documents/usb_type-c.zip" H 5150 7300 50  0001 C CNN
 	1    5000 7300
