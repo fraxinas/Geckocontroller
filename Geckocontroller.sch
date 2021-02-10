@@ -1561,26 +1561,18 @@ Wire Wire Line
 Wire Wire Line
 	4650 6300 4600 6300
 Connection ~ 4650 6300
-Text GLabel 2800 3450 2    50   Input ~ 0
+Text GLabel 2600 1950 2    50   Input ~ 0
 HX_CLK
-Text GLabel 2800 3550 2    50   Input ~ 0
+Text GLabel 2800 3450 2    50   Input ~ 0
 HX_DATA
 Wire Wire Line
 	2800 3550 2400 3550
 Wire Wire Line
 	2800 3450 2400 3450
-Text GLabel 8200 3150 2    50   Input ~ 0
-FAN_SIG
-Text GLabel 8200 3250 2    50   Input ~ 0
-FAN_PWM
 Wire Wire Line
 	2600 1950 2400 1950
 Wire Wire Line
 	2600 2050 2400 2050
-Text GLabel 8200 3350 2    50   Input ~ 0
-HX_CLK
-Text GLabel 8200 3450 2    50   Input ~ 0
-HX_DATA
 Wire Wire Line
 	8150 2850 8150 3050
 $Comp
@@ -1916,10 +1908,10 @@ Wire Notes Line
 Connection ~ 12250 2450
 Connection ~ 12350 2000
 $Comp
-L Connector:Conn_01x05_Male J61
+L Connector:Conn_01x05_Male J60
 U 1 1 68A11395
 P 7450 7700
-F 0 "J61" V 7604 7944 50  0000 L CNN
+F 0 "J60" V 7604 7944 50  0000 L CNN
 F 1 "Load Cell Connector" V 7513 7944 50  0000 L CNN
 F 2 "Connector_JST:JST_PH_B5B-PH-K_1x05_P2.00mm_Vertical" H 7450 7700 50  0001 C CNN
 F 3 "~" H 7450 7700 50  0001 C CNN
@@ -1962,10 +1954,10 @@ F 3 "~" H 7550 6950 50  0001 C CNN
 	-1   0    0    1   
 $EndComp
 $Comp
-L Jumper:SolderJumper_2_Bridged JP60
+L Jumper:SolderJumper_2_Bridged JP62
 U 1 1 68B188E0
 P 8850 5400
-F 0 "JP60" V 8804 5468 50  0000 L CNN
+F 0 "JP62" V 8804 5468 50  0000 L CNN
 F 1 "Jumper" V 8895 5468 50  0000 L CNN
 F 2 "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm" H 8850 5400 50  0001 C CNN
 F 3 "~" H 8850 5400 50  0001 C CNN
@@ -2155,17 +2147,6 @@ Text Label 7550 7500 1    50   ~ 0
 A+
 Text Label 7650 7500 1    50   ~ 0
 Shield
-$Comp
-L power:+3.3V #PWR0141
-U 1 1 69557AF4
-P 6800 4400
-F 0 "#PWR0141" H 6800 4250 50  0001 C CNN
-F 1 "+3.3V" H 6815 4573 50  0000 C CNN
-F 2 "" H 6800 4400 50  0001 C CNN
-F 3 "" H 6800 4400 50  0001 C CNN
-	1    6800 4400
-	1    0    0    -1  
-$EndComp
 Wire Wire Line
 	7000 5200 6800 5200
 Wire Wire Line
@@ -2174,11 +2155,9 @@ Wire Wire Line
 	7000 5400 7000 5200
 Wire Wire Line
 	7150 5200 7250 5200
+Connection ~ 6800 4550
 Wire Wire Line
-	6800 4400 6800 4500
-Connection ~ 6800 4500
-Wire Wire Line
-	6800 4500 7250 4500
+	6800 4550 7250 4550
 Connection ~ 8550 4750
 Wire Wire Line
 	7450 7500 7450 7100
@@ -2236,7 +2215,7 @@ F 3 "~" H 6650 5400 50  0001 C CNN
 $EndComp
 Text Notes 8200 4300 2    50   ~ 0
 HX711 Load Cell Input
-Text GLabel 2600 1950 2    50   Input ~ 0
+Text GLabel 2800 3550 2    50   Input ~ 0
 FAN_SIG
 Text GLabel 2600 2050 2    50   Input ~ 0
 FAN_PWM
@@ -2337,7 +2316,7 @@ Wire Wire Line
 Wire Wire Line
 	9150 5600 8850 5600
 Wire Wire Line
-	9150 4400 9150 4750
+	9150 4400 9150 4550
 Wire Wire Line
 	9150 4750 9150 4850
 Wire Wire Line
@@ -2345,12 +2324,9 @@ Wire Wire Line
 Wire Wire Line
 	9150 5150 9150 5200
 Connection ~ 9150 5200
-Connection ~ 9150 4750
 Connection ~ 9150 5600
 Wire Wire Line
-	7250 4500 7250 5000
-Wire Wire Line
-	6800 4500 6350 4500
+	6800 4550 6350 4550
 $Comp
 L power:GND #PWR0144
 U 1 1 6B55BE1F
@@ -2365,7 +2341,7 @@ $EndComp
 Wire Wire Line
 	6800 5000 6800 5200
 Wire Wire Line
-	6800 4600 6800 4500
+	6800 4600 6800 4550
 Wire Wire Line
 	6650 5200 6650 5250
 Connection ~ 6650 5200
@@ -2374,7 +2350,7 @@ Wire Wire Line
 Wire Wire Line
 	6350 5000 6350 4950
 Wire Wire Line
-	6350 4500 6350 4650
+	6350 4550 6350 4650
 $Comp
 L Device:C C63
 U 1 1 699958B9
@@ -2676,4 +2652,36 @@ F 3 "~" H 8550 5000 50  0001 C CNN
 	1    8550 5000
 	1    0    0    -1  
 $EndComp
+Text GLabel 8200 3250 2    50   Input ~ 0
+FAN_PWM
+Text GLabel 8200 3450 2    50   Input ~ 0
+FAN_SIG
+Text GLabel 8200 3150 2    50   Input ~ 0
+HX_CLK
+Text GLabel 8200 3350 2    50   Input ~ 0
+HX_DATA
+$Comp
+L Device:Jumper JP61
+U 1 1 604B6639
+P 8750 4550
+F 0 "JP61" H 8750 4814 50  0000 C CNN
+F 1 "Enable HX711" H 8750 4723 50  0000 C CNN
+F 2 "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical" H 8750 4550 50  0001 C CNN
+F 3 "~" H 8750 4550 50  0001 C CNN
+	1    8750 4550
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	8450 4550 8400 4550
+Wire Wire Line
+	8400 4550 8400 4750
+Connection ~ 8400 4750
+Wire Wire Line
+	8400 4550 7250 4550
+Connection ~ 8400 4550
+Connection ~ 7250 4550
+Wire Wire Line
+	7250 4550 7250 5000
+Wire Wire Line
+	9050 4550 9150 4550
 $EndSCHEMATC
