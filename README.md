@@ -5,6 +5,10 @@
 ## OwO what's this?
 **`geckocontroller` is an ESP32-based all-in-one solution for terrarium automation.**
 
+| ![](hardware/Geckocontroller-PCB-front.png) | ![](hardware/Geckocontroller-PCB-back.png) |
+| :------------------------------------------ | :----------------------------------------- |
+| []()                                        | []()                                       |
+
 ## Hardware Features
 ### Relay Output
 * 3 solid state relays with zero-cross switching
