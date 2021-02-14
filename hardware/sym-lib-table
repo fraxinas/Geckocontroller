@@ -1,0 +1,6 @@
+(sym_lib_table
+  (lib (name relay)(type Legacy)(uri ${KIPRJMOD}/lib_includes/Fraxinas-kicad/relay.lib)(options "")(descr ""))
+  (lib (name stmbl)(type Legacy)(uri ${KIPRJMOD}/lib_includes/Fraxinas-kicad/stmbl.lib)(options "")(descr ""))
+  (lib (name HX711)(type Legacy)(uri ${KIPRJMOD}/lib_includes/Fraxinas-kicad/HX711.lib)(options "")(descr ""))
+  (lib (name WAGO-2604)(type Legacy)(uri ${KIPRJMOD}/lib_includes/Fraxinas-kicad/WAGO-2604.lib)(options "")(descr ""))
+)
