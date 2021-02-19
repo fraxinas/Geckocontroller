@@ -1,0 +1,101 @@
+esphome:
+  name: geckocontrol
+  platform: ESP32
+  board: nodemcu-32s
+
+wifi:
+  ssid: "gast"
+  password: "***"
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Geckocontrol Fallback Hotspot"
+    password: "D0LWLMVF0FAy"
+
+captive_portal:
+
+# Enable logging
+logger:
+  level: VERBOSE
+
+# Enable Home Assistant API
+api:
+
+ota:
+
+switch:
+  - platform: gpio
+    name: "Pump"
+    pin: 4
+
+  - platform: gpio
+    name: "HeatBed"
+    pin: 2
+
+  - platform: gpio
+    name: "HeatLamp"
+    pin: 15
+
+output:
+  - platform: ac_dimmer
+    id: dimmer1
+    gate_pin: 16
+    zero_cross_pin:
+      number: 17
+      mode: INPUT
+      inverted: no
+  - platform: ledc
+    pin: 14
+    id: fan_pwm
+    frequency: 25000 Hz
+  - platform: ledc
+    pin: 32
+    id: component_red
+  - platform: ledc
+    pin: 33
+    id: component_green
+  - platform: ledc
+    pin: 27
+    id: component_blue
+
+light:
+  - platform: monochromatic
+    output: dimmer1
+    name: "Dimmer Daylight"
+
+  - platform: rgb
+    name: "Scenic Light"
+    red: component_red
+    green: component_green
+    blue: component_blue
+
+i2c:
+  sda: 25
+  scl: 26
+  scan: True
+  id: bus_a
+
+dallas:
+  - pin: 22
+
+sensor:
+  - platform: dallas
+    address: 0x1C00000000000001
+    name: "Temperature HeatBed"
+    unit_of_measurement: "°C"
+    
+  - platform: dallas
+    address: 0x1C00000000000002
+    name: "Temperature Substrate"
+    unit_of_measurement: "°C"
+    
+  - platform: bme280
+    temperature:
+      name: "Air Temperature"
+      oversampling: 16x
+    pressure:
+      name: "Air Pressure"
+    humidity:
+      name: "Air Humidity"
+    address: 0x77
+    update_interval: 60s
