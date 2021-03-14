@@ -14,7 +14,7 @@ Comment3 ""
 Comment4 ""
 $EndDescr
 $Comp
-L power:GND #PWR0101
+L Geckocontroller-rescue:GND-power #PWR0101
 U 1 1 602F8D6E
 P 10650 1600
 F 0 "#PWR0101" H 10650 1350 50  0001 C CNN
@@ -25,18 +25,7 @@ F 3 "" H 10650 1600 50  0001 C CNN
 	-1   0    0    -1  
 $EndComp
 $Comp
-L power:GND #PWR0103
-U 1 1 604719AB
-P 1750 3850
-F 0 "#PWR0103" H 1750 3600 50  0001 C CNN
-F 1 "GND" H 1755 3677 50  0000 C CNN
-F 2 "" H 1750 3850 50  0001 C CNN
-F 3 "" H 1750 3850 50  0001 C CNN
-	1    1750 3850
-	1    0    0    -1  
-$EndComp
-$Comp
-L power:+3.3V #PWR0104
+L Geckocontroller-rescue:+3.3V-power #PWR0104
 U 1 1 6058DFD9
 P 1750 750
 F 0 "#PWR0104" H 1750 600 50  0001 C CNN
@@ -47,7 +36,7 @@ F 3 "" H 1750 750 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L power:+12V #PWR0105
+L Geckocontroller-rescue:+12V-power #PWR0105
 U 1 1 607FAD6E
 P 10950 800
 F 0 "#PWR0105" H 10950 650 50  0001 C CNN
@@ -58,7 +47,7 @@ F 3 "" H 10950 800 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L power:GND #PWR0106
+L Geckocontroller-rescue:GND-power #PWR0106
 U 1 1 60B61D3B
 P 3000 5150
 F 0 "#PWR0106" H 3000 4900 50  0001 C CNN
@@ -73,7 +62,7 @@ RGB LED Driver
 Text Notes 13550 700  2    50   ~ 0
 Power Supply
 $Comp
-L Device:CP C2
+L Geckocontroller-rescue:CP-Device C2
 U 1 1 60460845
 P 650 1550
 F 0 "C2" H 768 1596 50  0000 L CNN
@@ -84,7 +73,7 @@ F 3 "~" H 650 1550 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L power:GND #PWR0107
+L Geckocontroller-rescue:GND-power #PWR0107
 U 1 1 610336C7
 P 1450 7550
 F 0 "#PWR0107" H 1450 7300 50  0001 C CNN
@@ -95,7 +84,7 @@ F 3 "" H 1450 7550 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Device:R R31
+L Geckocontroller-rescue:R-Device R31
 U 1 1 60EBEE15
 P 2050 6600
 F 0 "R31" V 1843 6600 50  0000 C CNN
@@ -106,7 +95,7 @@ F 3 "~" H 2050 6600 50  0001 C CNN
 	0    1    1    0   
 $EndComp
 $Comp
-L power:+3.3V #PWR0108
+L Geckocontroller-rescue:+3.3V-power #PWR0108
 U 1 1 6131E5C2
 P 2700 6750
 F 0 "#PWR0108" H 2700 6600 50  0001 C CNN
@@ -121,7 +110,7 @@ DQ\n\nVDD\n\nGND
 Text Notes 2050 7700 0    50   ~ 0
 Digital Thermometer Input
 $Comp
-L power:+3.3V #PWR0109
+L Geckocontroller-rescue:+3.3V-power #PWR0109
 U 1 1 618DBADA
 P 2700 5600
 F 0 "#PWR0109" H 2700 5450 50  0001 C CNN
@@ -132,7 +121,7 @@ F 3 "" H 2700 5600 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L power:GND #PWR0110
+L Geckocontroller-rescue:GND-power #PWR0110
 U 1 1 619104AB
 P 1350 6100
 F 0 "#PWR0110" H 1350 5850 50  0001 C CNN
@@ -147,7 +136,7 @@ I²C / BME280 Thermo/Hygo/Baro Input
 Text Notes 850  6075 2    59   ~ 0
 SCK\nSDI\nGND\nVCC
 $Comp
-L Device:C C51
+L Geckocontroller-rescue:C-Device C51
 U 1 1 61FC96F5
 P 3650 6550
 F 0 "C51" H 3765 6596 50  0000 L CNN
@@ -158,7 +147,7 @@ F 3 "~" H 3650 6550 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Transistor_BJT:S8050 Q52
+L Geckocontroller-rescue:S8050-Transistor_BJT Q52
 U 1 1 62084874
 P 5300 3000
 F 0 "Q52" V 5628 3000 50  0000 C CNN
@@ -169,7 +158,7 @@ F 3 "http://www.unisonic.com.tw/datasheet/S8050.pdf" H 5300 3000 50  0001 L CNN
 	0    1    -1   0   
 $EndComp
 $Comp
-L Device:R R52
+L Geckocontroller-rescue:R-Device R52
 U 1 1 6219F547
 P 5300 3550
 F 0 "R52" H 5370 3596 50  0000 L CNN
@@ -203,8 +192,6 @@ Wire Wire Line
 Wire Wire Line
 	1750 750  1750 850 
 Wire Wire Line
-	1750 1050 1750 850 
-Wire Wire Line
 	2250 4400 2450 4400
 Wire Wire Line
 	2450 4700 2550 4700
@@ -217,8 +204,6 @@ Wire Notes Line
 Connection ~ 1450 7550
 Wire Notes Line
 	600  5350 600  4100
-Wire Wire Line
-	3200 3050 2350 3050
 Wire Notes Line
 	600  5400 3100 5400
 Wire Notes Line
@@ -232,24 +217,7 @@ Wire Wire Line
 Wire Wire Line
 	5100 2900 4850 4150
 $Comp
-L Connector:USB_C_Receptacle_USB2.0 J51
-U 1 1 6236779C
-P 5000 7300
-F 0 "J51" V 5153 8029 50  0000 L CNN
-F 1 "USB-C" V 5062 8029 50  0000 L CNN
-F 2 "Connector_USB:USB_C_Receptacle_XKB_U262-16XN-4BVC11" H 5150 7300 50  0001 C CNN
-F 3 "https://www.usb.org/sites/default/files/documents/usb_type-c.zip" H 5150 7300 50  0001 C CNN
-	1    5000 7300
-	0    -1   -1   0   
-$EndComp
-Wire Wire Line
-	4900 6700 4900 6650
-Wire Wire Line
-	5000 6700 5000 6650
-Wire Wire Line
-	5900 7300 5900 7600
-$Comp
-L power:GND #PWR0112
+L Geckocontroller-rescue:GND-power #PWR0112
 U 1 1 6240A3D8
 P 6300 7500
 F 0 "#PWR0112" H 6300 7250 50  0001 C CNN
@@ -260,7 +228,7 @@ F 3 "" H 6300 7500 50  0001 C CNN
 	-1   0    0    -1  
 $EndComp
 $Comp
-L power:GND #PWR0113
+L Geckocontroller-rescue:GND-power #PWR0113
 U 1 1 6240AE6E
 P 3650 7500
 F 0 "#PWR0113" H 3650 7250 50  0001 C CNN
@@ -272,51 +240,20 @@ F 3 "" H 3650 7500 50  0001 C CNN
 $EndComp
 Wire Wire Line
 	3650 6700 3650 7500
-Wire Wire Line
-	4600 6700 4600 6600
-Wire Wire Line
-	4700 6700 4700 6600
-Wire Wire Line
-	4600 6300 4600 6100
-Wire Wire Line
-	4700 6300 4700 6100
-Wire Wire Line
-	4900 6650 5000 6650
-Wire Wire Line
-	5100 6650 5200 6650
-Wire Wire Line
-	5100 6650 5100 6700
-Wire Wire Line
-	5200 6650 5200 6700
-Text GLabel 4200 4700 1    50   Input ~ 0
-TXD
 Text GLabel 4100 4700 1    50   Input ~ 0
-RXD
+TXD0
+Text GLabel 4200 4700 1    50   Input ~ 0
+RXD0'
 Wire Wire Line
 	4200 4850 4200 4700
 Wire Wire Line
 	4100 4850 4100 4700
-Text GLabel 3200 1350 2    50   Input ~ 0
-TXD
-$Comp
-L RF_Module:ESP32-WROOM-32 U1
-U 1 1 601F033C
-P 1750 2450
-F 0 "U1" H 1750 4031 50  0000 C CNN
-F 1 "ESP32-WROOM-32" H 1750 3940 50  0000 C CNN
-F 2 "RF_Module:ESP32-WROOM-32" H 1750 950 50  0001 C CNN
-F 3 "https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf" H 1450 2500 50  0001 C CNN
-	1    1750 2450
-	1    0    0    -1  
-$EndComp
 Text GLabel 3200 1550 2    50   Input ~ 0
-RXD
+RXD0'
 Wire Wire Line
-	3200 1550 2350 1550
-Wire Wire Line
-	1150 1250 1000 1250
+	3200 1550 2800 1550
 $Comp
-L power:GND #PWR0117
+L Geckocontroller-rescue:GND-power #PWR0117
 U 1 1 6269554E
 P 650 3850
 F 0 "#PWR0117" H 650 3600 50  0001 C CNN
@@ -327,7 +264,7 @@ F 3 "" H 650 3850 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Device:C C1
+L Geckocontroller-rescue:C-Device C1
 U 1 1 626BEF05
 P 1000 1750
 F 0 "C1" H 1115 1796 50  0000 L CNN
@@ -349,23 +286,10 @@ Wire Notes Line
 	3500 7750 3500 2450
 Text Notes 6300 2600 2    50   ~ 0
 USB Interface
-$Comp
-L Device:R R55
-U 1 1 6245B412
-P 4600 6450
-F 0 "R55" H 4670 6496 50  0000 L CNN
-F 1 "5k1" H 4670 6405 50  0000 L CNN
-F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 4530 6450 50  0001 C CNN
-F 3 "~" H 4600 6450 50  0001 C CNN
-	1    4600 6450
-	1    0    0    -1  
-$EndComp
-Connection ~ 5200 6650
-Connection ~ 5000 6650
 Wire Wire Line
 	5300 4150 5300 3700
 $Comp
-L Device:R R23
+L Geckocontroller-rescue:R-Device R23
 U 1 1 62D634D3
 P 2850 5000
 F 0 "R23" V 2643 5000 50  0000 C CNN
@@ -405,7 +329,7 @@ Wire Wire Line
 	1300 7450 2400 7450
 Connection ~ 2400 6750
 $Comp
-L Transistor_FET:AO3400A Q21
+L Geckocontroller-rescue:AO3400A-Transistor_FET Q21
 U 1 1 62FD73FE
 P 2050 4400
 F 0 "Q21" H 2255 4354 50  0000 L CNN
@@ -424,7 +348,7 @@ Wire Wire Line
 Wire Wire Line
 	10650 1300 10650 1600
 $Comp
-L power:+12V #PWR0119
+L Geckocontroller-rescue:+12V-power #PWR0119
 U 1 1 60B94268
 P 1350 4350
 F 0 "#PWR0119" H 1350 4200 50  0001 C CNN
@@ -453,7 +377,7 @@ Wire Wire Line
 Text Notes 850  4825 2    59   ~ 0
 +12V\n-G\n-R\n-B
 $Comp
-L Connector:Conn_01x04_Male J21
+L Geckocontroller-rescue:Conn_01x04_Male-Connector J21
 U 1 1 60AB12DD
 P 900 4600
 F 0 "J21" H 1008 4881 50  0001 C CNN
@@ -464,7 +388,7 @@ F 3 "~" H 900 4600 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Device:CP C21
+L Geckocontroller-rescue:CP-Device C21
 U 1 1 63051971
 P 1350 5000
 F 0 "C21" H 1468 5046 50  0000 L CNN
@@ -477,25 +401,11 @@ $EndComp
 Text GLabel 2550 1750 2    50   Input ~ 0
 SPI_CS0
 Wire Wire Line
-	2550 1750 2350 1750
-Wire Wire Line
 	2350 4800 3000 4800
 Wire Wire Line
 	3000 4500 2150 4500
 Wire Wire Line
-	2450 3350 2350 3350
-Wire Wire Line
-	2550 3250 2350 3250
-Wire Wire Line
-	2650 3150 2350 3150
-Wire Wire Line
-	2450 4400 2450 3350
-Wire Wire Line
 	2550 4700 2550 3250
-Wire Wire Line
-	3400 2750 2350 2750
-Wire Wire Line
-	2350 2950 3300 2950
 Wire Wire Line
 	3400 2750 3400 6450
 Wire Wire Line
@@ -504,20 +414,14 @@ Wire Wire Line
 	3300 2950 3300 5850
 Text GLabel 2500 2650 2    50   Input ~ 0
 SPI_RES
-Wire Wire Line
-	2500 2650 2350 2650
 Wire Notes Line
 	600  6300 600  5400
 Wire Notes Line
 	600  6350 600  7750
-Wire Wire Line
-	2500 2850 2350 2850
 Text GLabel 2500 2850 2    50   Input ~ 0
 SPI_MOSI
-Wire Wire Line
-	2500 2450 2350 2450
 $Comp
-L Connector_Generic:Conn_02x06_Odd_Even J70
+L Geckocontroller-rescue:Conn_02x06_Odd_Even-Connector_Generic J70
 U 1 1 6378DC8E
 P 7800 3150
 F 0 "J70" H 7850 3467 50  0001 C CNN
@@ -527,8 +431,6 @@ F 3 "~" H 7800 3150 50  0001 C CNN
 	1    7800 3150
 	1    0    0    -1  
 $EndComp
-Wire Wire Line
-	2500 2550 2350 2550
 Text GLabel 2500 2550 2    50   Input ~ 0
 SPI_MISO
 Text GLabel 2500 2450 2    50   Input ~ 0
@@ -542,7 +444,7 @@ SPI_MOSI
 Text GLabel 7250 3150 0    50   Input ~ 0
 SPI_RES
 $Comp
-L power:+3.3V #PWR0120
+L Geckocontroller-rescue:+3.3V-power #PWR0120
 U 1 1 639660AD
 P 8500 2750
 F 0 "#PWR0120" H 8500 2600 50  0001 C CNN
@@ -553,7 +455,7 @@ F 3 "" H 8500 2750 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L power:GND #PWR0121
+L Geckocontroller-rescue:GND-power #PWR0121
 U 1 1 63967190
 P 7300 3750
 F 0 "#PWR0121" H 7300 3500 50  0001 C CNN
@@ -573,7 +475,7 @@ Wire Wire Line
 	1350 4500 1350 4850
 Connection ~ 1350 4500
 $Comp
-L power:GND #PWR0122
+L Geckocontroller-rescue:GND-power #PWR0122
 U 1 1 63C6D372
 P 1350 5150
 F 0 "#PWR0122" H 1350 4900 50  0001 C CNN
@@ -596,7 +498,7 @@ Wire Wire Line
 Wire Wire Line
 	11800 2450 11700 2450
 $Comp
-L Device:D_Bridge_+-AA D80
+L Geckocontroller-rescue:D_Bridge_+-AA-Device D80
 U 1 1 601EDA3B
 P 12100 2450
 F 0 "D80" V 12146 2106 50  0000 R CNN
@@ -613,7 +515,7 @@ Wire Wire Line
 Wire Wire Line
 	12100 2750 11600 2750
 $Comp
-L power:+12V #PWR0123
+L Geckocontroller-rescue:+12V-power #PWR0123
 U 1 1 64281EE5
 P 10950 3050
 F 0 "#PWR0123" H 10950 2900 50  0001 C CNN
@@ -630,7 +532,7 @@ Wire Wire Line
 Wire Wire Line
 	10750 2950 10400 2950
 $Comp
-L Transistor_FET:AO3400A Q81
+L Geckocontroller-rescue:AO3400A-Transistor_FET Q81
 U 1 1 64281ECE
 P 10750 3250
 F 0 "Q81" V 10999 3250 50  0000 C CNN
@@ -645,7 +547,7 @@ Wire Wire Line
 Wire Wire Line
 	10400 3450 10400 3350
 $Comp
-L power:GND #PWR0124
+L Geckocontroller-rescue:GND-power #PWR0124
 U 1 1 642816DC
 P 10400 3450
 F 0 "#PWR0124" H 10400 3200 50  0001 C CNN
@@ -656,7 +558,7 @@ F 3 "" H 10400 3450 50  0001 C CNN
 	-1   0    0    -1  
 $EndComp
 $Comp
-L power:+12V #PWR0125
+L Geckocontroller-rescue:+12V-power #PWR0125
 U 1 1 642629F3
 P 10950 5850
 F 0 "#PWR0125" H 10950 5700 50  0001 C CNN
@@ -671,7 +573,7 @@ Wire Wire Line
 Wire Wire Line
 	10750 5850 10750 5700
 $Comp
-L Device:R R93
+L Geckocontroller-rescue:R-Device R93
 U 1 1 642629E7
 P 10400 5900
 F 0 "R93" H 10330 5946 50  0000 R CNN
@@ -684,7 +586,7 @@ $EndComp
 Wire Wire Line
 	10750 5700 10400 5700
 $Comp
-L Transistor_FET:AO3400A Q93
+L Geckocontroller-rescue:AO3400A-Transistor_FET Q93
 U 1 1 642629DC
 P 10750 6050
 F 0 "Q93" V 10999 6050 50  0000 C CNN
@@ -697,7 +599,7 @@ $EndComp
 Wire Wire Line
 	10400 6150 10550 6150
 $Comp
-L power:+12V #PWR0127
+L Geckocontroller-rescue:+12V-power #PWR0127
 U 1 1 64242FCE
 P 10950 4950
 F 0 "#PWR0127" H 10950 4800 50  0001 C CNN
@@ -714,7 +616,7 @@ Wire Wire Line
 Wire Wire Line
 	10750 4800 10400 4800
 $Comp
-L power:+12V #PWR0129
+L Geckocontroller-rescue:+12V-power #PWR0129
 U 1 1 63C99105
 P 10950 4050
 F 0 "#PWR0129" H 10950 3900 50  0001 C CNN
@@ -727,7 +629,7 @@ $EndComp
 Wire Wire Line
 	10950 4050 10950 4150
 $Comp
-L Device:R R91
+L Geckocontroller-rescue:R-Device R91
 U 1 1 63D913FB
 P 10400 4100
 F 0 "R91" H 10330 4146 50  0000 R CNN
@@ -738,7 +640,7 @@ F 3 "~" H 10400 4100 50  0001 C CNN
 	-1   0    0    -1  
 $EndComp
 $Comp
-L Transistor_FET:AO3400A Q91
+L Geckocontroller-rescue:AO3400A-Transistor_FET Q91
 U 1 1 63C990F2
 P 10750 4250
 F 0 "Q91" V 10999 4250 50  0000 C CNN
@@ -751,7 +653,7 @@ $EndComp
 Wire Wire Line
 	10400 4350 10550 4350
 $Comp
-L power:GND #PWR0130
+L Geckocontroller-rescue:GND-power #PWR0130
 U 1 1 63E385CE
 P 10400 4500
 F 0 "#PWR0130" H 10400 4250 50  0001 C CNN
@@ -762,7 +664,7 @@ F 3 "" H 10400 4500 50  0001 C CNN
 	-1   0    0    -1  
 $EndComp
 $Comp
-L relay:AQG12212 K81
+L Geckocontroller-rescue:AQG12212-relay K81
 U 1 1 63C06440
 P 11350 3250
 F 0 "K81" H 11350 3615 50  0000 C CNN
@@ -783,7 +685,7 @@ Wire Wire Line
 Wire Wire Line
 	11600 2550 11600 2750
 $Comp
-L power:+3.3V #PWR0131
+L Geckocontroller-rescue:+3.3V-power #PWR0131
 U 1 1 609B3599
 P 10950 2100
 F 0 "#PWR0131" H 10950 1950 50  0001 C CNN
@@ -794,7 +696,7 @@ F 3 "" H 10950 2100 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Device:R R82
+L Geckocontroller-rescue:R-Device R82
 U 1 1 602281A5
 P 10300 2550
 F 0 "R82" H 10230 2504 50  0000 R CNN
@@ -805,7 +707,7 @@ F 3 "~" H 10300 2550 50  0001 C CNN
 	1    0    0    1   
 $EndComp
 $Comp
-L Isolator:6N138 U81
+L Geckocontroller-rescue:6N138-Isolator U81
 U 1 1 601EC117
 P 11300 2450
 F 0 "U81" H 11300 2917 50  0000 C CNN
@@ -816,7 +718,7 @@ F 3 "http://www.onsemi.com/pub/Collateral/HCPL2731-D.pdf" H 11590 2150 50  0001 
 	-1   0    0    -1  
 $EndComp
 $Comp
-L power:GND #PWR0132
+L Geckocontroller-rescue:GND-power #PWR0132
 U 1 1 60226BE8
 P 10300 2700
 F 0 "#PWR0132" H 10300 2450 50  0001 C CNN
@@ -852,7 +754,7 @@ F 3 "" H 7800 1050 60  0000 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L pspice:INDUCTOR L101
+L Geckocontroller-rescue:INDUCTOR-pspice L101
 U 1 1 64D89802
 P 9000 900
 F 0 "L101" H 9000 1115 50  0000 C CNN
@@ -863,7 +765,7 @@ F 3 "~" H 9000 900 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Device:C C102
+L Geckocontroller-rescue:C-Device C102
 U 1 1 64D8C494
 P 8450 900
 F 0 "C102" V 8198 900 50  0000 C CNN
@@ -874,7 +776,7 @@ F 3 "~" H 8450 900 50  0001 C CNN
 	0    1    1    0   
 $EndComp
 $Comp
-L Device:C C103
+L Geckocontroller-rescue:C-Device C103
 U 1 1 64D8D914
 P 7100 1050
 F 0 "C103" H 7215 1096 50  0000 L CNN
@@ -885,7 +787,7 @@ F 3 "~" H 7100 1050 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L power:GND #PWR0133
+L Geckocontroller-rescue:GND-power #PWR0133
 U 1 1 64D8E545
 P 7100 1600
 F 0 "#PWR0133" H 7100 1350 50  0001 C CNN
@@ -902,7 +804,7 @@ Wire Wire Line
 Wire Wire Line
 	8200 900  8300 900 
 $Comp
-L Diode:B240 D101
+L Geckocontroller-rescue:B240-Diode D101
 U 1 1 64D8AA83
 P 8750 1250
 F 0 "D101" H 8750 1467 50  0000 C CNN
@@ -920,7 +822,7 @@ Connection ~ 8200 1500
 Wire Wire Line
 	9700 900  9700 1250
 $Comp
-L power:GND #PWR0134
+L Geckocontroller-rescue:GND-power #PWR0134
 U 1 1 65082BF2
 P 9200 1450
 F 0 "#PWR0134" H 9200 1200 50  0001 C CNN
@@ -934,7 +836,7 @@ Wire Wire Line
 	8900 1250 9050 1250
 Connection ~ 9700 900 
 $Comp
-L power:+3.3V #PWR0135
+L Geckocontroller-rescue:+3.3V-power #PWR0135
 U 1 1 650CEEEC
 P 9700 800
 F 0 "#PWR0135" H 9700 650 50  0001 C CNN
@@ -956,7 +858,7 @@ Wire Wire Line
 	9350 1700 8200 1700
 Connection ~ 9050 1250
 $Comp
-L power:+12V #PWR0136
+L Geckocontroller-rescue:+12V-power #PWR0136
 U 1 1 652C6D78
 P 7100 800
 F 0 "#PWR0136" H 7100 650 50  0001 C CNN
@@ -1080,7 +982,7 @@ Wire Wire Line
 Text Notes 800  7600 2    50   ~ 0
 DQ\n\nVDD\n\nGND
 $Comp
-L relay:AQG12112 K91
+L Geckocontroller-rescue:AQG12112-relay K91
 U 1 1 6654E064
 P 11350 4250
 F 0 "K91" H 11350 4615 50  0000 C CNN
@@ -1091,7 +993,7 @@ F 3 "" H 11350 4250 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L relay:AQG12112 K92
+L Geckocontroller-rescue:AQG12112-relay K92
 U 1 1 665517CD
 P 11350 5150
 F 0 "K92" H 11350 5515 50  0000 C CNN
@@ -1102,7 +1004,7 @@ F 3 "" H 11350 5150 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L relay:AQG12112 K93
+L Geckocontroller-rescue:AQG12112-relay K93
 U 1 1 66552E6C
 P 11350 6050
 F 0 "K93" H 11350 6415 50  0000 C CNN
@@ -1132,7 +1034,7 @@ Wire Wire Line
 Wire Wire Line
 	12550 1300 12550 2000
 $Comp
-L Device:R R101
+L Geckocontroller-rescue:R-Device R101
 U 1 1 64D8FB59
 P 8500 1500
 F 0 "R101" V 8293 1500 50  0000 C CNN
@@ -1143,7 +1045,7 @@ F 3 "~" H 8500 1500 50  0001 C CNN
 	0    1    1    0   
 $EndComp
 $Comp
-L Device:R R102
+L Geckocontroller-rescue:R-Device R102
 U 1 1 64D906B6
 P 8850 1500
 F 0 "R102" V 8643 1500 50  0000 C CNN
@@ -1154,7 +1056,7 @@ F 3 "~" H 8850 1500 50  0001 C CNN
 	0    1    1    0   
 $EndComp
 $Comp
-L Device:R R103
+L Geckocontroller-rescue:R-Device R103
 U 1 1 64FFA1A4
 P 9500 1700
 F 0 "R103" V 9293 1700 50  0000 C CNN
@@ -1165,7 +1067,7 @@ F 3 "~" H 9500 1700 50  0001 C CNN
 	0    1    1    0   
 $EndComp
 $Comp
-L Device:C C101
+L Geckocontroller-rescue:C-Device C101
 U 1 1 64D91287
 P 9400 1250
 F 0 "C101" V 9148 1250 50  0000 C CNN
@@ -1181,7 +1083,7 @@ Wire Wire Line
 Wire Wire Line
 	3000 4200 3000 4400
 $Comp
-L Device:R R21
+L Geckocontroller-rescue:R-Device R21
 U 1 1 62D5F57C
 P 2850 4400
 F 0 "R21" V 2643 4400 50  0000 C CNN
@@ -1197,7 +1099,7 @@ Wire Wire Line
 Wire Wire Line
 	3000 4800 3000 4700
 $Comp
-L Device:R R22
+L Geckocontroller-rescue:R-Device R22
 U 1 1 62D62FB1
 P 2850 4700
 F 0 "R22" V 2643 4700 50  0000 C CNN
@@ -1211,7 +1113,7 @@ Connection ~ 2650 5000
 Wire Wire Line
 	2650 5000 2650 3150
 $Comp
-L Transistor_FET:AO3400A Q23
+L Geckocontroller-rescue:AO3400A-Transistor_FET Q23
 U 1 1 62FE8D62
 P 2450 5000
 F 0 "Q23" H 2655 4954 50  0000 L CNN
@@ -1222,18 +1124,7 @@ F 3 "http://www.aosmd.com/pdfs/datasheet/AO3400A.pdf" H 2450 5000 50  0001 L CNN
 	-1   0    0    1   
 $EndComp
 $Comp
-L Device:R R56
-U 1 1 62519D63
-P 4700 6450
-F 0 "R56" H 4770 6496 50  0000 L CNN
-F 1 "5k1" H 4770 6405 50  0000 L CNN
-F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 4630 6450 50  0001 C CNN
-F 3 "~" H 4700 6450 50  0001 C CNN
-	1    4700 6450
-	1    0    0    -1  
-$EndComp
-$Comp
-L Device:R R81
+L Geckocontroller-rescue:R-Device R81
 U 1 1 64281ED9
 P 10400 3150
 F 0 "R81" H 10330 3196 50  0000 R CNN
@@ -1244,7 +1135,7 @@ F 3 "~" H 10400 3150 50  0001 C CNN
 	-1   0    0    -1  
 $EndComp
 $Comp
-L Device:R R83
+L Geckocontroller-rescue:R-Device R83
 U 1 1 60221A24
 P 11900 2150
 F 0 "R83" V 12100 2150 50  0000 C CNN
@@ -1273,23 +1164,17 @@ Wire Wire Line
 Text Notes 8100 3450 0    63   ~ 0
 3.3V\nGPIO13\nGPIO14\nGPIO34\nGPIO35\n12V
 Wire Wire Line
-	2350 1650 3650 1650
-Wire Wire Line
 	9550 1950 3650 1950
 Wire Wire Line
 	9750 2150 9750 5700
 Wire Wire Line
 	3550 2050 9650 2050
 Wire Wire Line
-	3550 1450 2350 1450
-Wire Wire Line
 	3550 1450 3550 2050
 Wire Wire Line
 	3650 1650 3650 1950
-Wire Wire Line
-	2500 1850 2350 1850
 $Comp
-L power:GND #PWR0137
+L Geckocontroller-rescue:GND-power #PWR0137
 U 1 1 6744FD91
 P 3350 1850
 F 0 "#PWR0137" H 3350 1600 50  0001 C CNN
@@ -1306,17 +1191,9 @@ HX_CLK
 Text GLabel 2750 3450 2    50   Input ~ 0
 HX_DATA
 Wire Wire Line
-	2750 3550 2350 3550
-Wire Wire Line
-	2750 3450 2350 3450
-Wire Wire Line
-	2550 1950 2350 1950
-Wire Wire Line
-	2550 2050 2350 2050
-Wire Wire Line
 	8500 2750 8500 2950
 $Comp
-L power:+12V #PWR0116
+L Geckocontroller-rescue:+12V-power #PWR0116
 U 1 1 6795B20D
 P 9000 2750
 F 0 "#PWR0116" H 9000 2600 50  0001 C CNN
@@ -1354,8 +1231,6 @@ Text Label 3200 1650 2    50   ~ 0
 Relay1_out
 Text Label 3200 2250 2    50   ~ 0
 Dimmer_out
-Text Label 2500 1350 2    50   ~ 0
-TXD'
 Text Label 2650 4050 1    50   ~ 0
 Blue_out
 Text Label 2450 4050 1    50   ~ 0
@@ -1382,29 +1257,25 @@ Text Label 12100 5950 0    50   ~ 0
 L_Relay3
 Text Label 5300 4500 2    50   ~ 0
 DTR
-Wire Wire Line
-	2350 1350 2500 1350
-Wire Wire Line
-	2800 1350 3200 1350
 $Comp
-L Device:R R5
+L Geckocontroller-rescue:R-Device R5
 U 1 1 625EE269
-P 2650 1350
-F 0 "R5" V 2443 1350 50  0000 C CNN
-F 1 "470R" V 2534 1350 50  0000 C CNN
-F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 2580 1350 50  0001 C CNN
-F 3 "~" H 2650 1350 50  0001 C CNN
-	1    2650 1350
+P 2650 1550
+F 0 "R5" V 2443 1550 50  0000 C CNN
+F 1 "470R" V 2534 1550 50  0000 C CNN
+F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 2580 1550 50  0001 C CNN
+F 3 "~" H 2650 1550 50  0001 C CNN
+	1    2650 1550
 	0    1    1    0   
 $EndComp
 Text Label 4950 6000 2    50   ~ 0
 D-
 Text Label 4950 5900 2    50   ~ 0
 D+
-Text Label 4400 6100 2    50   ~ 0
+Text Label 4300 6100 2    50   ~ 0
 VBUS
 $Comp
-L Device:R R3
+L Geckocontroller-rescue:R-Device R3
 U 1 1 62783C89
 P 2650 1850
 F 0 "R3" V 2857 1850 50  0000 C CNN
@@ -1417,7 +1288,7 @@ $EndComp
 Wire Wire Line
 	2950 1850 2800 1850
 $Comp
-L Device:LED D1
+L Geckocontroller-rescue:LED-Device D1
 U 1 1 6277F21E
 P 3100 1850
 F 0 "D1" H 3093 1595 50  0000 C CNN
@@ -1428,7 +1299,7 @@ F 3 "~" H 3100 1850 50  0001 C CNN
 	-1   0    0    1   
 $EndComp
 $Comp
-L Device:R R94
+L Geckocontroller-rescue:R-Device R94
 U 1 1 68005E9F
 P 10150 4100
 F 0 "R94" H 10220 4146 50  0000 L CNN
@@ -1462,7 +1333,7 @@ Wire Wire Line
 Wire Wire Line
 	10400 4800 10150 4800
 $Comp
-L Device:LED D92
+L Geckocontroller-rescue:LED-Device D92
 U 1 1 683330F8
 P 10150 5300
 F 0 "D92" H 10143 5045 50  0000 C CNN
@@ -1475,7 +1346,7 @@ $EndComp
 Wire Wire Line
 	10150 4850 10150 4800
 $Comp
-L Device:LED D93
+L Geckocontroller-rescue:LED-Device D93
 U 1 1 6834B25B
 P 10150 6200
 F 0 "D93" H 10143 5945 50  0000 C CNN
@@ -1492,7 +1363,7 @@ Wire Wire Line
 Wire Wire Line
 	10400 4850 10400 4800
 $Comp
-L Device:R R92
+L Geckocontroller-rescue:R-Device R92
 U 1 1 64242FC2
 P 10400 5000
 F 0 "R92" H 10330 5046 50  0000 R CNN
@@ -1503,7 +1374,7 @@ F 3 "~" H 10400 5000 50  0001 C CNN
 	-1   0    0    -1  
 $EndComp
 $Comp
-L Device:R R84
+L Geckocontroller-rescue:R-Device R84
 U 1 1 684E2A3E
 P 10150 3150
 F 0 "R84" H 10220 3196 50  0000 L CNN
@@ -1514,7 +1385,7 @@ F 3 "~" H 10150 3150 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Device:LED D81
+L Geckocontroller-rescue:LED-Device D81
 U 1 1 684E2A44
 P 10150 3450
 F 0 "D81" H 10143 3195 50  0000 C CNN
@@ -1537,7 +1408,7 @@ Wire Wire Line
 Wire Wire Line
 	10300 4350 10400 4350
 $Comp
-L Transistor_FET:AO3400A Q92
+L Geckocontroller-rescue:AO3400A-Transistor_FET Q92
 U 1 1 64242FB7
 P 10750 5150
 F 0 "Q92" V 10999 5150 50  0000 C CNN
@@ -1548,7 +1419,7 @@ F 3 "http://www.aosmd.com/pdfs/datasheet/AO3400A.pdf" H 10750 5150 50  0001 L CN
 	0    1    1    0   
 $EndComp
 $Comp
-L power:GND #PWR0126
+L Geckocontroller-rescue:GND-power #PWR0126
 U 1 1 685A276D
 P 10400 5400
 F 0 "#PWR0126" H 10400 5150 50  0001 C CNN
@@ -1568,7 +1439,7 @@ Wire Wire Line
 Wire Wire Line
 	10300 5250 10400 5250
 $Comp
-L power:GND #PWR0128
+L Geckocontroller-rescue:GND-power #PWR0128
 U 1 1 685BBA8D
 P 10400 6300
 F 0 "#PWR0128" H 10400 6050 50  0001 C CNN
@@ -1588,7 +1459,7 @@ Wire Wire Line
 Wire Wire Line
 	10300 6150 10400 6150
 $Comp
-L Device:R R95
+L Geckocontroller-rescue:R-Device R95
 U 1 1 683330F2
 P 10150 5000
 F 0 "R95" H 10220 5046 50  0000 L CNN
@@ -1599,7 +1470,7 @@ F 3 "~" H 10150 5000 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Device:R R96
+L Geckocontroller-rescue:R-Device R96
 U 1 1 6834B255
 P 10150 5900
 F 0 "R96" H 10220 5946 50  0000 L CNN
@@ -1612,7 +1483,7 @@ $EndComp
 Wire Wire Line
 	10300 4550 10300 4350
 $Comp
-L Device:LED D91
+L Geckocontroller-rescue:LED-Device D91
 U 1 1 68006CDC
 P 10150 4400
 F 0 "D91" H 10143 4145 50  0000 C CNN
@@ -1638,7 +1509,7 @@ Wire Notes Line
 Connection ~ 12450 2450
 Connection ~ 12550 2000
 $Comp
-L Connector:Conn_01x05_Male J60
+L Geckocontroller-rescue:Conn_01x05_Male-Connector J60
 U 1 1 68A11395
 P 7550 7700
 F 0 "J60" V 7704 7944 50  0000 L CNN
@@ -1662,7 +1533,7 @@ F 5 "IC-12445" H 7950 5700 50  0001 L BNN "PROD_ID"
 	1    0    0    -1  
 $EndComp
 $Comp
-L Device:R R64
+L Geckocontroller-rescue:R-Device R64
 U 1 1 68B0E8DB
 P 7650 6950
 F 0 "R64" H 7580 6904 50  0000 R CNN
@@ -1673,7 +1544,7 @@ F 3 "~" H 7650 6950 50  0001 C CNN
 	-1   0    0    1   
 $EndComp
 $Comp
-L Jumper:SolderJumper_2_Bridged JP62
+L Geckocontroller-rescue:SolderJumper_2_Open-Jumper JP62
 U 1 1 68B188E0
 P 8900 5400
 F 0 "JP62" V 8854 5468 50  0000 L CNN
@@ -1688,7 +1559,7 @@ HX_CLK
 Text GLabel 8700 5800 2    50   Input ~ 0
 HX_DATA
 $Comp
-L power:GND #PWR0138
+L Geckocontroller-rescue:GND-power #PWR0138
 U 1 1 68C31D23
 P 9200 7500
 F 0 "#PWR0138" H 9200 7250 50  0001 C CNN
@@ -1708,7 +1579,7 @@ Wire Wire Line
 Wire Wire Line
 	8500 4750 8500 5000
 $Comp
-L power:+3.3V #PWR0139
+L Geckocontroller-rescue:+3.3V-power #PWR0139
 U 1 1 68E32EDA
 P 9200 4400
 F 0 "#PWR0139" H 9200 4250 50  0001 C CNN
@@ -1728,7 +1599,7 @@ Connection ~ 8900 5600
 Wire Wire Line
 	9200 5600 9200 7500
 $Comp
-L Device:C C62
+L Geckocontroller-rescue:C-Device C62
 U 1 1 68B1209C
 P 7150 6000
 F 0 "C62" V 6898 6000 50  0000 C CNN
@@ -1774,7 +1645,7 @@ Connection ~ 7000 6550
 Wire Wire Line
 	7000 6550 7000 6200
 $Comp
-L Device:C C61
+L Geckocontroller-rescue:C-Device C61
 U 1 1 68B13132
 P 7150 6550
 F 0 "C61" V 7402 6550 50  0000 C CNN
@@ -1815,7 +1686,7 @@ Wire Wire Line
 Wire Wire Line
 	7550 6750 7000 6750
 $Comp
-L Device:R R63
+L Geckocontroller-rescue:R-Device R63
 U 1 1 68B0D9D1
 P 7550 6950
 F 0 "R63" H 7480 6904 50  0000 R CNN
@@ -1906,7 +1777,7 @@ Wire Wire Line
 Wire Wire Line
 	2700 5650 2700 5950
 $Comp
-L Device:R R11
+L Geckocontroller-rescue:R-Device R11
 U 1 1 6028AB59
 P 2050 5650
 F 0 "R11" V 1843 5650 50  0000 C CNN
@@ -1919,7 +1790,7 @@ $EndComp
 Wire Wire Line
 	2200 5650 2700 5650
 $Comp
-L Device:R R12
+L Geckocontroller-rescue:R-Device R12
 U 1 1 60296F1C
 P 2050 5950
 F 0 "R12" V 1843 5950 50  0000 C CNN
@@ -1950,7 +1821,7 @@ Wire Wire Line
 Wire Wire Line
 	1750 5950 1750 5850
 $Comp
-L Connector:Conn_01x04_Male J11
+L Geckocontroller-rescue:Conn_01x04_Male-Connector J11
 U 1 1 61878125
 P 900 5950
 F 0 "J11" H 1008 6231 50  0001 C CNN
@@ -1961,7 +1832,7 @@ F 3 "~" H 900 5950 50  0001 C CNN
 	1    0    0    1   
 $EndComp
 $Comp
-L Transistor_FET:AO3400A Q22
+L Geckocontroller-rescue:AO3400A-Transistor_FET Q22
 U 1 1 62FE6F94
 P 2250 4700
 F 0 "Q22" H 2455 4654 50  0000 L CNN
@@ -1972,7 +1843,7 @@ F 3 "http://www.aosmd.com/pdfs/datasheet/AO3400A.pdf" H 2250 4700 50  0001 L CNN
 	-1   0    0    1   
 $EndComp
 $Comp
-L Converter_ACDC:IRM-05-12 PS1
+L Geckocontroller-rescue:IRM-05-12-Converter_ACDC PS1
 U 1 1 60671E36
 P 11400 1200
 F 0 "PS1" H 11400 833 50  0000 C CNN
@@ -1983,7 +1854,7 @@ F 3 "https://www.meanwell.com/Upload/PDF/IRM-05/IRM-05-SPEC.PDF" H 11400 800 50 
 	-1   0    0    -1  
 $EndComp
 $Comp
-L Graphic:Logo_Open_Hardware_Small #LOGO1
+L Geckocontroller-rescue:Logo_Open_Hardware_Small-Graphic #LOGO1
 U 1 1 610F28B1
 P 10000 6850
 F 0 "#LOGO1" H 10000 7125 50  0001 C CNN
@@ -2079,7 +1950,7 @@ Connection ~ 12100 1100
 Wire Wire Line
 	12100 1100 12100 1450
 $Comp
-L Device:Fuse Fuse1
+L Geckocontroller-rescue:Fuse-Device Fuse1
 U 1 1 664FA43B
 P 12350 1100
 F 0 "Fuse1" V 12153 1100 50  0000 C CNN
@@ -2092,7 +1963,7 @@ $EndComp
 Wire Wire Line
 	12700 4250 12700 4150
 $Comp
-L Device:C C65
+L Geckocontroller-rescue:C-Device C65
 U 1 1 68A8A528
 P 9200 5000
 F 0 "C65" H 9315 5046 50  0000 L CNN
@@ -2103,7 +1974,7 @@ F 3 "~" H 9200 5000 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Device:C C64
+L Geckocontroller-rescue:C-Device C64
 U 1 1 68A87505
 P 9000 5000
 F 0 "C64" H 9115 5046 50  0000 L CNN
@@ -2114,7 +1985,7 @@ F 3 "~" H 9000 5000 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Device:R R65
+L Geckocontroller-rescue:R-Device R65
 U 1 1 68B16D0D
 P 8650 5000
 F 0 "R65" H 8720 5046 50  0000 L CNN
@@ -2133,7 +2004,7 @@ HX_CLK
 Text GLabel 8550 3250 2    50   Input ~ 0
 HX_DATA
 $Comp
-L Device:Jumper JP61
+L Geckocontroller-rescue:Jumper-Device JP61
 U 1 1 604B6639
 P 8800 4550
 F 0 "JP61" H 8800 4814 50  0000 C CNN
@@ -2155,21 +2026,11 @@ Wire Wire Line
 NoConn ~ 8450 5600
 NoConn ~ 8450 6200
 NoConn ~ 8450 6400
-NoConn ~ 5500 6700
-NoConn ~ 5600 6700
 NoConn ~ 11000 2550
 NoConn ~ 11000 2650
 NoConn ~ 7400 1050
 NoConn ~ 4500 4850
 NoConn ~ 4300 4850
-NoConn ~ 1150 1550
-NoConn ~ 1150 1450
-NoConn ~ 1150 2450
-NoConn ~ 1150 2550
-NoConn ~ 1150 2650
-NoConn ~ 1150 2750
-NoConn ~ 1150 2850
-NoConn ~ 1150 2950
 Wire Notes Line
 	6400 2450 6400 7750
 Wire Wire Line
@@ -2189,35 +2050,19 @@ NoConn ~ 6000 4850
 NoConn ~ 6100 4850
 NoConn ~ 3900 4850
 Wire Wire Line
-	5000 6000 5000 6650
-Wire Wire Line
-	5000 6000 4500 6000
+	5050 6000 4500 6000
 Wire Wire Line
 	4500 6000 4500 5850
 Wire Wire Line
-	5200 5900 4400 5900
+	5250 5900 4400 5900
 Wire Wire Line
 	4400 5900 4400 5850
-Connection ~ 6300 7300
-Wire Wire Line
-	5900 7300 6300 7300
-$Comp
-L Interface_USB:CP2102N-A01-GQFN28 U2
-U 1 1 61EF3DD6
-P 5000 5350
-F 0 "U2" V 5046 4406 50  0000 R CNN
-F 1 "CP2102" V 4955 4406 50  0000 R CNN
-F 2 "Package_DFN_QFN:QFN-28-1EP_5x5mm_P0.5mm_EP3.35x3.35mm" H 5150 4400 50  0001 L CNN
-F 3 "https://www.silabs.com/documents/public/data-sheets/cp2102.pdf" H 4450 6600 50  0001 C CNN
-	1    5000 5350
-	0    -1   -1   0   
-$EndComp
 Connection ~ 5300 4150
 NoConn ~ 4100 5850
 Wire Wire Line
 	6050 2900 6050 3050
 $Comp
-L Switch:SW_Push SW2
+L Geckocontroller-rescue:SW_Push-Switch SW2
 U 1 1 6177BE5A
 P 6050 3700
 F 0 "SW2" V 6096 3652 50  0000 R CNN
@@ -2227,17 +2072,6 @@ F 3 "~" H 6050 3900 50  0001 C CNN
 	1    6050 3700
 	0    -1   -1   0   
 $EndComp
-$Comp
-L Device:R R54
-U 1 1 6177BE60
-P 6050 3200
-F 0 "R54" H 5980 3154 50  0000 R CNN
-F 1 "470R" H 5980 3245 50  0000 R CNN
-F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 5980 3200 50  0001 C CNN
-F 3 "~" H 6050 3200 50  0001 C CNN
-	1    6050 3200
-	-1   0    0    1   
-$EndComp
 Wire Wire Line
 	6050 3500 6050 3350
 Text Label 5750 3500 0    50   ~ 0
@@ -2245,7 +2079,7 @@ Reset_switch
 Text GLabel 6050 2800 1    50   Input ~ 0
 EN
 $Comp
-L Switch:SW_Push SW1
+L Geckocontroller-rescue:SW_Push-Switch SW1
 U 1 1 619632F3
 P 3850 3700
 F 0 "SW1" V 3896 3652 50  0000 R CNN
@@ -2258,7 +2092,7 @@ $EndComp
 Text Label 3850 3500 0    50   ~ 0
 Boot_switch
 $Comp
-L Transistor_BJT:S8050 Q51
+L Geckocontroller-rescue:S8050-Transistor_BJT Q51
 U 1 1 62083541
 P 4650 3000
 F 0 "Q51" V 4978 3000 50  0000 C CNN
@@ -2273,7 +2107,7 @@ Wire Wire Line
 Wire Wire Line
 	4650 4150 4650 3700
 $Comp
-L Device:R R51
+L Geckocontroller-rescue:R-Device R51
 U 1 1 62198FF5
 P 4650 3550
 F 0 "R51" H 4720 3596 50  0000 L CNN
@@ -2297,10 +2131,10 @@ Wire Wire Line
 Wire Wire Line
 	3850 3500 3850 3350
 $Comp
-L Device:R R53
+L Geckocontroller-rescue:R-Device R54
 U 1 1 619632F9
 P 3850 3200
-F 0 "R53" H 3780 3154 50  0000 R CNN
+F 0 "R54" H 3780 3154 50  0000 R CNN
 F 1 "470R" H 3780 3245 50  0000 R CNN
 F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 3780 3200 50  0001 C CNN
 F 3 "~" H 3850 3200 50  0001 C CNN
@@ -2314,7 +2148,7 @@ Wire Wire Line
 Wire Wire Line
 	3850 2800 3850 2900
 $Comp
-L Device:C C54
+L Geckocontroller-rescue:C-Device C54
 U 1 1 61FEE266
 P 5750 3950
 F 0 "C54" H 5865 3996 50  0000 L CNN
@@ -2327,22 +2161,6 @@ $EndComp
 Wire Wire Line
 	3650 6250 3650 6400
 Wire Wire Line
-	4700 6100 6300 6100
-Wire Wire Line
-	6300 7300 6300 7500
-Connection ~ 6300 6100
-Wire Wire Line
-	6300 6100 6300 7300
-Wire Wire Line
-	4600 6100 4700 6100
-Connection ~ 4400 6700
-Wire Wire Line
-	4400 6700 4400 6900
-Wire Wire Line
-	6300 5350 6300 6100
-Wire Wire Line
-	5200 6650 5200 5900
-Wire Wire Line
 	4000 4350 4650 4350
 Wire Wire Line
 	4650 4350 4650 4150
@@ -2353,7 +2171,7 @@ Wire Wire Line
 Wire Wire Line
 	5300 4150 5300 4550
 $Comp
-L Device:C C53
+L Geckocontroller-rescue:C-Device C53
 U 1 1 62271EF1
 P 4150 3950
 F 0 "C53" H 4265 3996 50  0000 L CNN
@@ -2372,7 +2190,7 @@ Wire Wire Line
 Wire Wire Line
 	6050 3500 5750 3500
 $Comp
-L power:GND #PWR0115
+L Geckocontroller-rescue:GND-power #PWR0115
 U 1 1 61D0DF3D
 P 3850 4350
 F 0 "#PWR0115" H 3850 4100 50  0001 C CNN
@@ -2383,7 +2201,7 @@ F 3 "" H 3850 4350 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Device:R R62
+L Geckocontroller-rescue:R-Device R62
 U 1 1 68B0CA4C
 P 6900 5800
 F 0 "R62" H 6831 5846 50  0000 R CNN
@@ -2405,7 +2223,7 @@ Wire Wire Line
 Wire Wire Line
 	6900 6000 7000 6000
 $Comp
-L power:GND #PWR0140
+L Geckocontroller-rescue:GND-power #PWR0140
 U 1 1 694250ED
 P 6900 7500
 F 0 "#PWR0140" H 6900 7250 50  0001 C CNN
@@ -2428,7 +2246,7 @@ Connection ~ 6900 7200
 Wire Wire Line
 	6900 7200 6900 7500
 $Comp
-L Device:C C67
+L Geckocontroller-rescue:C-Device C67
 U 1 1 69709C93
 P 6750 6800
 F 0 "C67" V 6498 6800 50  0000 C CNN
@@ -2442,7 +2260,7 @@ Connection ~ 6900 6800
 Wire Wire Line
 	6900 6800 6900 7200
 $Comp
-L Device:C C66
+L Geckocontroller-rescue:C-Device C66
 U 1 1 6970A247
 P 6750 6400
 F 0 "C66" V 6498 6400 50  0000 C CNN
@@ -2466,7 +2284,7 @@ Wire Wire Line
 Wire Wire Line
 	6600 5300 6600 5200
 $Comp
-L Device:L L61
+L Geckocontroller-rescue:L-Device L61
 U 1 1 68B157F5
 P 6600 5450
 F 0 "L61" H 6556 5404 50  0000 R CNN
@@ -2479,7 +2297,7 @@ $EndComp
 Wire Notes Line
 	6450 4150 9400 4150
 $Comp
-L Device:R R61
+L Geckocontroller-rescue:R-Device R61
 U 1 1 68B0BC21
 P 6900 5400
 F 0 "R61" H 6970 5446 50  0000 L CNN
@@ -2494,7 +2312,7 @@ Wire Notes Line
 Wire Wire Line
 	6900 4550 6600 4550
 $Comp
-L power:GND #PWR0144
+L Geckocontroller-rescue:GND-power #PWR0144
 U 1 1 6B55BE1F
 P 6600 5000
 F 0 "#PWR0144" H 6600 4750 50  0001 C CNN
@@ -2511,7 +2329,7 @@ Wire Wire Line
 Wire Wire Line
 	6600 4550 6600 4650
 $Comp
-L Device:C C63
+L Geckocontroller-rescue:C-Device C63
 U 1 1 699958B9
 P 6600 4800
 F 0 "C63" H 6715 4846 50  0000 L CNN
@@ -2524,7 +2342,7 @@ $EndComp
 Wire Notes Line
 	6450 4150 6450 7750
 $Comp
-L Transistor_BJT:S8550 Q61
+L Geckocontroller-rescue:S8550-Transistor_BJT Q61
 U 1 1 68AAA63C
 P 7000 4800
 F 0 "Q61" H 7191 4754 50  0000 L CNN
@@ -2553,7 +2371,7 @@ Connection ~ 6050 4150
 Wire Wire Line
 	6050 4150 6050 4350
 $Comp
-L power:GND #PWR0118
+L Geckocontroller-rescue:GND-power #PWR0118
 U 1 1 63531975
 P 6050 4350
 F 0 "#PWR0118" H 6050 4100 50  0001 C CNN
@@ -2577,15 +2395,9 @@ Wire Wire Line
 Connection ~ 3850 2900
 Wire Wire Line
 	3850 2900 4450 2900
-Wire Wire Line
-	2350 2150 9750 2150
-Wire Wire Line
-	2350 2250 9850 2250
-Wire Wire Line
-	2350 2350 10300 2350
 Connection ~ 10300 2350
 $Comp
-L Device:R R1
+L Geckocontroller-rescue:R-Device R1
 U 1 1 6048AF6F
 P 1000 1050
 F 0 "R1" V 793 1050 50  0000 C CNN
@@ -2622,18 +2434,16 @@ Wire Wire Line
 	2900 1250 3200 1250
 Connection ~ 2900 1250
 Wire Wire Line
-	2350 1250 2900 1250
-Wire Wire Line
 	1750 850  2900 850 
 Wire Wire Line
 	2900 1200 2900 1250
 Wire Wire Line
 	2900 900  2900 850 
 $Comp
-L Device:R R2
+L Geckocontroller-rescue:R-Device R53
 U 1 1 61878A67
 P 2900 1050
-F 0 "R2" H 2830 1096 50  0000 R CNN
+F 0 "R53" H 2830 1096 50  0000 R CNN
 F 1 "12k" H 2830 1005 50  0000 R CNN
 F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 2830 1050 50  0001 C CNN
 F 3 "~" H 2900 1050 50  0001 C CNN
@@ -2651,7 +2461,7 @@ Wire Notes Line
 Wire Notes Line
 	3800 1850 6400 1850
 $Comp
-L Connector:Conn_01x04_Male J40
+L Geckocontroller-rescue:Conn_01x04_Male-Connector J40
 U 1 1 6A30F670
 P 4550 1250
 F 0 "J40" H 4522 1132 50  0001 R CNN
@@ -2662,7 +2472,7 @@ F 3 "~" H 4550 1250 50  0001 C CNN
 	1    0    0    1   
 $EndComp
 $Comp
-L power:GND #PWR0143
+L Geckocontroller-rescue:GND-power #PWR0143
 U 1 1 6A3A78BA
 P 4900 1600
 F 0 "#PWR0143" H 4900 1350 50  0001 C CNN
@@ -2673,7 +2483,7 @@ F 3 "" H 4900 1600 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L power:+12V #PWR0142
+L Geckocontroller-rescue:+12V-power #PWR0142
 U 1 1 6A3A8B8C
 P 5950 800
 F 0 "#PWR0142" H 5950 650 50  0001 C CNN
@@ -2755,14 +2565,9 @@ $EndComp
 Connection ~ 1300 6450
 Connection ~ 1300 7150
 Wire Wire Line
-	4400 6250 4400 6700
-Connection ~ 4300 6250
-Wire Wire Line
-	4300 6250 4400 6250
-Wire Wire Line
 	4300 5850 4300 6250
 $Comp
-L Device:C C55
+L Geckocontroller-rescue:C-Device C55
 U 1 1 6052D877
 P 3650 4700
 F 0 "C55" H 3765 4746 50  0000 L CNN
@@ -2785,12 +2590,10 @@ Wire Wire Line
 Wire Wire Line
 	3650 5450 3650 6250
 Connection ~ 3650 6250
-Connection ~ 4700 6100
-Connection ~ 5900 7300
 Wire Wire Line
 	4050 6700 4050 7500
 $Comp
-L power:GND #PWR0114
+L Geckocontroller-rescue:GND-power #PWR0114
 U 1 1 6240B8A4
 P 4050 7500
 F 0 "#PWR0114" H 4050 7250 50  0001 C CNN
@@ -2803,7 +2606,7 @@ $EndComp
 Wire Wire Line
 	4050 6400 4050 6250
 $Comp
-L Device:C C52
+L Geckocontroller-rescue:C-Device C52
 U 1 1 61FCA716
 P 4050 6550
 F 0 "C52" H 4165 6596 50  0000 L CNN
@@ -2820,4 +2623,207 @@ Wire Wire Line
 	4050 6250 4300 6250
 Wire Wire Line
 	3850 4350 3850 4150
+Text Label 3650 4900 0    50   ~ 0
+VDD
+$Comp
+L Geckocontroller-rescue:R-Device R2
+U 1 1 6177BE60
+P 6050 3200
+F 0 "R2" H 5980 3154 50  0000 R CNN
+F 1 "470R" H 5980 3245 50  0000 R CNN
+F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 5980 3200 50  0001 C CNN
+F 3 "~" H 6050 3200 50  0001 C CNN
+	1    6050 3200
+	-1   0    0    1   
+$EndComp
+Connection ~ 4300 6250
+Wire Wire Line
+	6300 5350 6300 6100
+Connection ~ 6300 6100
+Wire Wire Line
+	6300 6100 6300 7300
+Wire Wire Line
+	6300 7300 6300 7500
+Connection ~ 6300 7300
+Connection ~ 4450 6700
+Wire Wire Line
+	4450 6700 4450 6900
+Wire Wire Line
+	4450 6250 4450 6700
+Connection ~ 5950 7300
+Connection ~ 4750 6100
+Wire Wire Line
+	4300 6250 4450 6250
+Wire Wire Line
+	5250 6650 5250 5900
+Wire Wire Line
+	4650 6100 4750 6100
+Wire Wire Line
+	4750 6100 6300 6100
+Wire Wire Line
+	5950 7300 6300 7300
+Wire Wire Line
+	5050 6000 5050 6650
+NoConn ~ 5650 6700
+NoConn ~ 5550 6700
+$Comp
+L Geckocontroller-rescue:R-Device R56
+U 1 1 62519D63
+P 4750 6450
+F 0 "R56" H 4820 6496 50  0000 L CNN
+F 1 "5k1" H 4820 6405 50  0000 L CNN
+F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 4680 6450 50  0001 C CNN
+F 3 "~" H 4750 6450 50  0001 C CNN
+	1    4750 6450
+	1    0    0    -1  
+$EndComp
+Connection ~ 5050 6650
+Connection ~ 5250 6650
+$Comp
+L Geckocontroller-rescue:R-Device R55
+U 1 1 6245B412
+P 4650 6450
+F 0 "R55" H 4720 6496 50  0000 L CNN
+F 1 "5k1" H 4720 6405 50  0000 L CNN
+F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 4580 6450 50  0001 C CNN
+F 3 "~" H 4650 6450 50  0001 C CNN
+	1    4650 6450
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	5250 6650 5250 6700
+Wire Wire Line
+	5150 6650 5150 6700
+Wire Wire Line
+	5150 6650 5250 6650
+Wire Wire Line
+	4950 6650 5050 6650
+Wire Wire Line
+	4750 6300 4750 6100
+Wire Wire Line
+	4650 6300 4650 6100
+Wire Wire Line
+	4750 6700 4750 6600
+Wire Wire Line
+	4650 6700 4650 6600
+Wire Wire Line
+	5950 7300 5950 7600
+Wire Wire Line
+	5050 6700 5050 6650
+Wire Wire Line
+	4950 6700 4950 6650
+$Comp
+L Geckocontroller-rescue:USB_C_Receptacle_USB2.0-Connector J51
+U 1 1 6236779C
+P 5050 7300
+F 0 "J51" V 5203 8029 50  0000 L CNN
+F 1 "USB-C" V 5112 8029 50  0000 L CNN
+F 2 "Connector_USB:USB_C_Receptacle_XKB_U262-16XN-4BVC11" H 5200 7300 50  0001 C CNN
+F 3 "https://www.usb.org/sites/default/files/documents/usb_type-c.zip" H 5200 7300 50  0001 C CNN
+	1    5050 7300
+	0    -1   -1   0   
+$EndComp
+$Comp
+L Geckocontroller-rescue:CP2102N-A01-GQFN28-Interface_USB U2
+U 1 1 61EF3DD6
+P 5000 5350
+F 0 "U2" V 5046 4406 50  0000 R CNN
+F 1 "CP2102" V 4955 4406 50  0000 R CNN
+F 2 "Fraxinas:CP2102-QFN-28-modified" H 5150 4400 50  0001 L CNN
+F 3 "https://www.silabs.com/documents/public/data-sheets/cp2102.pdf" H 4450 6600 50  0001 C CNN
+	1    5000 5350
+	0    -1   -1   0   
+$EndComp
+Wire Wire Line
+	2450 4400 2450 3350
+Wire Wire Line
+	2450 3350 2350 3350
+Wire Wire Line
+	2550 3250 2350 3250
+Wire Wire Line
+	2750 3550 2350 3550
+Wire Wire Line
+	2750 3450 2350 3450
+NoConn ~ 1150 1550
+NoConn ~ 1150 1450
+Wire Wire Line
+	2500 2850 2350 2850
+Wire Wire Line
+	3400 2750 2350 2750
+Wire Wire Line
+	2500 1550 2350 1550
+Wire Wire Line
+	2500 2650 2350 2650
+Wire Wire Line
+	2500 2550 2350 2550
+Wire Wire Line
+	2500 2450 2350 2450
+Wire Wire Line
+	1150 1250 1000 1250
+Wire Wire Line
+	2550 1750 2350 1750
+Wire Wire Line
+	2350 2350 10300 2350
+Wire Wire Line
+	2350 2250 9850 2250
+Wire Wire Line
+	2350 1650 3650 1650
+Wire Wire Line
+	2350 1250 2900 1250
+Wire Wire Line
+	3550 1450 2350 1450
+Wire Wire Line
+	2350 2150 9750 2150
+NoConn ~ 1150 2550
+NoConn ~ 1150 2450
+NoConn ~ 1150 2850
+Wire Wire Line
+	1750 1050 1750 850 
+NoConn ~ 1150 2950
+NoConn ~ 1150 2750
+NoConn ~ 1150 2650
+Wire Wire Line
+	2550 1950 2350 1950
+Wire Wire Line
+	2500 1850 2350 1850
+Wire Wire Line
+	2550 2050 2350 2050
+Wire Wire Line
+	2650 3150 2350 3150
+Wire Wire Line
+	3200 3050 2350 3050
+Wire Wire Line
+	2350 2950 3300 2950
+$Comp
+L Geckocontroller-rescue:GND-power #PWR0103
+U 1 1 604719AB
+P 1750 3850
+F 0 "#PWR0103" H 1750 3600 50  0001 C CNN
+F 1 "GND" H 1755 3677 50  0000 C CNN
+F 2 "" H 1750 3850 50  0001 C CNN
+F 3 "" H 1750 3850 50  0001 C CNN
+	1    1750 3850
+	1    0    0    -1  
+$EndComp
+$Comp
+L Geckocontroller-rescue:ESP32-WROOM-32-RF_Module U1
+U 1 1 601F033C
+P 1750 2450
+F 0 "U1" H 1750 4031 50  0000 C CNN
+F 1 "ESP32-WROOM-32" H 1750 3940 50  0000 C CNN
+F 2 "RF_Module:ESP32-WROOM-32" H 1750 950 50  0001 C CNN
+F 3 "https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf" H 1450 2500 50  0001 C CNN
+	1    1750 2450
+	1    0    0    -1  
+$EndComp
+Text GLabel 3200 1350 2    50   Input ~ 0
+TXD0
+Wire Wire Line
+	2350 1350 3200 1350
+Text Label 2350 1550 0    50   ~ 0
+RXD0
+Text Label 4100 4800 1    50   ~ 0
+RXD
+Text Label 4200 4800 1    50   ~ 0
+TXD
 $EndSCHEMATC
