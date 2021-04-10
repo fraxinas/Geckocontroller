@@ -2441,9 +2441,9 @@ F 3 "~" H 2900 1050 50  0001 C CNN
 $EndComp
 Wire Wire Line
 	850  1250 1000 1250
-Text GLabel 5150 1050 2    50   Input ~ 0
+Text GLabel 4650 1150 2    50   Input ~ 0
 FAN_PWM
-Text GLabel 5150 1150 2    50   Input ~ 0
+Text GLabel 5550 1250 2    50   Input ~ 0
 FAN_SIG
 Wire Notes Line
 	3800 550  3800 1850
@@ -2452,48 +2452,48 @@ Wire Notes Line
 $Comp
 L Geckocontroller-rescue:Conn_01x04_Male-Connector J40
 U 1 1 6A30F670
-P 4550 1250
-F 0 "J40" H 4522 1132 50  0001 R CNN
-F 1 "FAN" H 4522 1178 50  0000 R CNN
-F 2 "Connector_Molex:Molex_KK-254_AE-6410-04A_1x04_P2.54mm_Vertical" H 4550 1250 50  0001 C CNN
-F 3 "~" H 4550 1250 50  0001 C CNN
-	1    4550 1250
+P 4250 1350
+F 0 "J40" H 4222 1232 50  0001 R CNN
+F 1 "FAN" H 4222 1278 50  0000 R CNN
+F 2 "Connector_Molex:Molex_KK-254_AE-6410-04A_1x04_P2.54mm_Vertical" H 4250 1350 50  0001 C CNN
+F 3 "~" H 4250 1350 50  0001 C CNN
+	1    4250 1350
 	1    0    0    1   
 $EndComp
 $Comp
 L Geckocontroller-rescue:GND-power #PWR0143
 U 1 1 6A3A78BA
-P 4900 1600
-F 0 "#PWR0143" H 4900 1350 50  0001 C CNN
-F 1 "GND" H 4905 1427 50  0000 C CNN
-F 2 "" H 4900 1600 50  0001 C CNN
-F 3 "" H 4900 1600 50  0001 C CNN
-	1    4900 1600
+P 4600 1600
+F 0 "#PWR0143" H 4600 1350 50  0001 C CNN
+F 1 "GND" H 4605 1427 50  0000 C CNN
+F 2 "" H 4600 1600 50  0001 C CNN
+F 3 "" H 4600 1600 50  0001 C CNN
+	1    4600 1600
 	1    0    0    -1  
 $EndComp
 $Comp
 L Geckocontroller-rescue:+12V-power #PWR0142
 U 1 1 6A3A8B8C
-P 5950 800
-F 0 "#PWR0142" H 5950 650 50  0001 C CNN
-F 1 "+12V" H 5965 973 50  0000 C CNN
-F 2 "" H 5950 800 50  0001 C CNN
-F 3 "" H 5950 800 50  0001 C CNN
-	1    5950 800 
+P 6050 800
+F 0 "#PWR0142" H 6050 650 50  0001 C CNN
+F 1 "+12V" H 6065 973 50  0000 C CNN
+F 2 "" H 6050 800 50  0001 C CNN
+F 3 "" H 6050 800 50  0001 C CNN
+	1    6050 800 
 	1    0    0    -1  
 $EndComp
 Wire Wire Line
-	4750 1050 5150 1050
+	4450 1150 4650 1150
 Wire Wire Line
-	4750 1150 5150 1150
+	4450 1250 5350 1250
 Wire Wire Line
-	4750 1250 5950 1250
+	4450 1350 6050 1350
 Wire Wire Line
-	5950 1250 5950 800 
+	6050 1350 6050 800 
 Wire Wire Line
-	4750 1350 4900 1350
+	4450 1450 4600 1450
 Wire Wire Line
-	4900 1350 4900 1600
+	4600 1450 4600 1600
 Text Notes 6300 1800 2    50   ~ 0
 FAN Output
 Wire Notes Line
@@ -2826,4 +2826,33 @@ F 3 "http://www.unisonic.com.tw/datasheet/S8550.pdf" H 7000 4800 50  0001 L CNN
 	1    7000 4800
 	-1   0    0    1   
 $EndComp
+$Comp
+L Device:R R40
+U 1 1 609D53F2
+P 5350 1000
+F 0 "R40" V 5143 1000 50  0000 C CNN
+F 1 "12k" V 5234 1000 50  0000 C CNN
+F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 5280 1000 50  0001 C CNN
+F 3 "~" H 5350 1000 50  0001 C CNN
+	1    5350 1000
+	1    0    0    1   
+$EndComp
+$Comp
+L Geckocontroller-rescue:+3.3V-power #PWR0102
+U 1 1 60B33CDC
+P 5350 800
+F 0 "#PWR0102" H 5350 650 50  0001 C CNN
+F 1 "+3.3V" H 5365 973 50  0000 C CNN
+F 2 "" H 5350 800 50  0001 C CNN
+F 3 "" H 5350 800 50  0001 C CNN
+	1    5350 800 
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	5350 800  5350 850 
+Wire Wire Line
+	5350 1150 5350 1250
+Connection ~ 5350 1250
+Wire Wire Line
+	5350 1250 5550 1250
 $EndSCHEMATC
