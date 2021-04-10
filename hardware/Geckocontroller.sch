@@ -147,7 +147,7 @@ F 3 "~" H 3650 6550 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Geckocontroller-rescue:S8050-Transistor_BJT Q52
+L fraxinas:S8050-SOT23 Q52
 U 1 1 62084874
 P 5300 3000
 F 0 "Q52" V 5628 3000 50  0000 C CNN
@@ -2092,7 +2092,7 @@ $EndComp
 Text Label 3850 3500 0    50   ~ 0
 Boot_switch
 $Comp
-L Geckocontroller-rescue:S8050-Transistor_BJT Q51
+L fraxinas:S8050-SOT23 Q51
 U 1 1 62083541
 P 4650 3000
 F 0 "Q51" V 4978 3000 50  0000 C CNN
@@ -2341,17 +2341,6 @@ F 3 "~" H 6600 4800 50  0001 C CNN
 $EndComp
 Wire Notes Line
 	6450 4150 6450 7750
-$Comp
-L Geckocontroller-rescue:S8550-Transistor_BJT Q61
-U 1 1 68AAA63C
-P 7000 4800
-F 0 "Q61" H 7191 4754 50  0000 L CNN
-F 1 "S8550" H 7191 4845 50  0000 L CNN
-F 2 "Package_TO_SOT_SMD:SOT-23" H 7200 4725 50  0001 L CIN
-F 3 "http://www.unisonic.com.tw/datasheet/S8550.pdf" H 7000 4800 50  0001 L CNN
-	1    7000 4800
-	-1   0    0    1   
-$EndComp
 Wire Wire Line
 	6900 4600 6900 4550
 Wire Wire Line
@@ -2826,4 +2815,15 @@ Text Label 4100 4800 1    50   ~ 0
 RXD
 Text Label 4200 4800 1    50   ~ 0
 TXD
+$Comp
+L fraxinas:S8550_SOT23 Q61
+U 1 1 68AAA63C
+P 7000 4800
+F 0 "Q61" H 7191 4754 50  0000 L CNN
+F 1 "S8550" H 7191 4845 50  0000 L CNN
+F 2 "Package_TO_SOT_SMD:SOT-23" H 7200 4725 50  0001 L CIN
+F 3 "http://www.unisonic.com.tw/datasheet/S8550.pdf" H 7000 4800 50  0001 L CNN
+	1    7000 4800
+	-1   0    0    1   
+$EndComp
 $EndSCHEMATC

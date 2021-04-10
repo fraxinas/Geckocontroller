@@ -4,4 +4,5 @@
   (lib (name HX711)(type Legacy)(uri ${KIPRJMOD}/lib_includes/Fraxinas-kicad/HX711.lib)(options "")(descr ""))
   (lib (name WAGO-2604)(type Legacy)(uri ${KIPRJMOD}/lib_includes/Fraxinas-kicad/WAGO-2604.lib)(options "")(descr ""))
   (lib (name Geckocontroller-rescue)(type Legacy)(uri ${KIPRJMOD}/Geckocontroller-rescue.lib)(options "")(descr ""))
+  (lib (name fraxinas)(type Legacy)(uri ${KIPRJMOD}/lib_includes/Fraxinas-kicad/fraxinas.lib)(options "")(descr ""))
 )

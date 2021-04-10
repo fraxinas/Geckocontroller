@@ -1,0 +1,9 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP S8550_SOT23
+D 0.7A Ic, 20V Vce, Low Voltage High Current PNP Transistor, TO-92
+K S8550 PNP Low Voltage High Current Transistor
+F http://www.unisonic.com.tw/datasheet/S8550.pdf
+$ENDCMP
+#
+#End Doc Library
