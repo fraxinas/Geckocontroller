@@ -16,7 +16,7 @@ captive_portal:
 
 # Enable logging
 logger:
-  level: VERBOSE
+  level: DEBUG
 
 # Enable Home Assistant API
 api:
@@ -40,14 +40,11 @@ output:
   - platform: ac_dimmer
     id: dimmer1
     gate_pin: 16
+    min_power: 15%
     zero_cross_pin:
       number: 17
       mode: INPUT
       inverted: no
-  - platform: ledc
-    pin: 14
-    id: fan_pwm
-    frequency: 25000 Hz
   - platform: ledc
     pin: 32
     id: component_red
@@ -57,17 +54,29 @@ output:
   - platform: ledc
     pin: 27
     id: component_blue
+  - platform: ledc
+    pin: GPIO14
+    id: fan_pwm
+    frequency: 25000 hz
+    channel: 4
 
 light:
   - platform: monochromatic
     output: dimmer1
     name: "Dimmer Daylight"
+    gamma_correct: 1.0
+    default_transition_length: 0s
 
   - platform: rgb
     name: "Scenic Light"
     red: component_red
     green: component_green
     blue: component_blue
+
+  - platform: monochromatic
+    output: fan_pwm
+    name: "Ventilator"
+    gamma_correct: 1.0
 
 i2c:
   sda: 25
@@ -79,16 +88,28 @@ dallas:
   - pin: 22
 
 sensor:
+  - platform: hx711
+    name: "Scale"
+    dout_pin: 34
+    clk_pin: 13
+    gain: 128
+    update_interval: 60s
+    unit_of_measurement: g
+    filters:
+      - calibrate_linear:
+          - -29500 -> 0
+          - -118200 -> 42.5
+
   - platform: dallas
-    address: 0x1C00000000000001
+    address: 0x0305473B405A0028
     name: "Temperature HeatBed"
     unit_of_measurement: "°C"
-    
+
   - platform: dallas
-    address: 0x1C00000000000002
+    address: 0x5505473B82670028
     name: "Temperature Substrate"
     unit_of_measurement: "°C"
-    
+
   - platform: bme280
     temperature:
       name: "Air Temperature"
@@ -97,5 +118,13 @@ sensor:
       name: "Air Pressure"
     humidity:
       name: "Air Humidity"
-    address: 0x77
+    address: 0x76
     update_interval: 60s
+
+  - platform: pulse_counter
+    name: "Fan Tacho"
+    pin: 35
+    unit_of_measurement: rpm
+    update_interval: 60s
+    filters:
+      multiply: 0.5
