@@ -1,5 +1,7 @@
 *.kicad_pcb-bak
+*.kicad_mod~
 *.sch-bak
+*-cache.lib
 *-rescue.dcm
 *-rescue.lib
 *-save.pro
