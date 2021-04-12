@@ -1783,28 +1783,9 @@ Wire Wire Line
 Wire Wire Line
 	12600 3350 12600 4350
 Connection ~ 12800 4150
-Text Label 12400 1450 0    50   ~ 0
-L'
 Wire Wire Line
-	12100 1450 12600 1450
-Wire Wire Line
-	12100 1100 12200 1100
-Wire Wire Line
-	11750 1100 12100 1100
-Connection ~ 12100 1100
-Wire Wire Line
-	12100 1100 12100 1450
-$Comp
-L Geckocontroller-rescue:Fuse-Device Fuse1
-U 1 1 664FA43B
-P 12350 1100
-F 0 "Fuse1" V 12153 1100 50  0000 C CNN
-F 1 "T800 mA " V 12244 1100 50  0000 C CNN
-F 2 "Fuse:Fuseholder_Cylinder-5x20mm_Stelvio-Kontek_PTF78_Horizontal_Open" V 12280 1100 50  0001 C CNN
-F 3 "~" H 12350 1100 50  0001 C CNN
-	1    12350 1100
-	0    1    1    0   
-$EndComp
+	12600 1100 11750 1100
+Connection ~ 12600 1100
 Wire Wire Line
 	12800 4250 12800 4150
 $Comp
@@ -2300,8 +2281,6 @@ Wire Notes Line
 Wire Notes Line
 	10000 500  10000 1850
 Wire Wire Line
-	12500 1100 12800 1100
-Wire Wire Line
 	12800 1200 12800 1100
 Connection ~ 12800 1100
 Wire Wire Line
@@ -2539,8 +2518,6 @@ F 3 "http://www.unisonic.com.tw/datasheet/S8550.pdf" H 7000 4800 50  0001 L CNN
 $EndComp
 Wire Wire Line
 	12500 2000 12700 2000
-Wire Wire Line
-	12600 1450 12600 2900
 $Comp
 L Geckocontroller-rescue:D_Bridge_+-AA-Device D80
 U 1 1 601EDA3B
@@ -3030,4 +3007,10 @@ Wire Wire Line
 Wire Wire Line
 	5300 1050 5300 1100
 Connection ~ 5300 1100
+Wire Wire Line
+	12600 1100 12800 1100
+Wire Wire Line
+	12600 1100 12600 2900
+Text Label 6250 1400 0    50   ~ 0
+VFAN
 $EndSCHEMATC
