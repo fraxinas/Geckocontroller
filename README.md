@@ -48,4 +48,14 @@
 * for future extensions like a display or console
 
 ## Software
-TBD. Will be using ESPHome.io
+Using ESPHome.io
+* simple YAML configuration for different sensor / output modules
+* automation TBD
+
+## Project Diary
+| Date       | Version | Milestone                                       |
+| :--------- | :------ | :---------------------------------------------- |
+| 2021-02-21 | v1.0    | Commission of 1st prototype PCB with aisler.net | 
+| 2021-03-12 | v1.1    | First time programming of bodged prototype PCB  |
+| 2021-04-10 |         | Fixed hardware issues with [LeoDJ](https://github.com/LeoDJ) & [Patagona](https://github.com/patagonaa) |
+| 2021-04-15 | v1.2    | Commission of 2nd revision PCB with aisler.net  |
