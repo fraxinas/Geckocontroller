@@ -4,11 +4,11 @@ EELAYER END
 $Descr User 14173 8268
 encoding utf-8
 Sheet 1 1
-Title ""
-Date ""
-Rev ""
-Comp ""
-Comment1 ""
+Title "Gecko Control"
+Date "2021-04-16"
+Rev "1.2"
+Comp "Purple Gecko Design & Technik"
+Comment1 "github.com/fraxinas/Geckocontroller"
 Comment2 ""
 Comment3 ""
 Comment4 ""
@@ -348,7 +348,7 @@ F 3 "~" H 900 4600 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Device:C C11
+L Device:CP C11
 U 1 1 63051971
 P 1350 5000
 F 0 "C11" H 1468 5046 50  0000 L CNN
@@ -1699,12 +1699,12 @@ $EndComp
 $Comp
 L stmbl:OPEN_HARDWARE_1 LOGO1
 U 1 1 610F28B1
-P 10000 6850
-F 0 "LOGO1" H 10000 7125 50  0001 C CNN
-F 1 "Logo_Open_Hardware_Small" H 10000 6625 50  0001 C CNN
-F 2 "Fraxinas:OSHW-Logo2_14.6x12mm_Mask" H 10000 7144 50  0001 C CNN
-F 3 "~" H 10000 6850 50  0001 C CNN
-	1    10000 6850
+P 13200 6900
+F 0 "LOGO1" H 13200 7175 50  0001 C CNN
+F 1 "Logo_Open_Hardware_Small" H 13200 6675 50  0001 C CNN
+F 2 "Fraxinas:OSHW-Logo2_14.6x12mm_Mask" H 13200 7194 50  0001 C CNN
+F 3 "~" H 13200 6900 50  0001 C CNN
+	1    13200 6900
 	1    0    0    -1  
 $EndComp
 Wire Wire Line
@@ -3040,10 +3040,10 @@ F 3 "~" H 850 3200 50  0001 C CNN
 	0    -1   -1   0   
 $EndComp
 $Comp
-L Device:R R3
+L Device:R R2
 U 1 1 64D36222
 P 850 2800
-F 0 "R3" V 1057 2800 50  0000 C CNN
+F 0 "R2" V 1057 2800 50  0000 C CNN
 F 1 "470R" V 966 2800 50  0000 C CNN
 F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 780 2800 50  0001 C CNN
 F 3 "~" H 850 2800 50  0001 C CNN
