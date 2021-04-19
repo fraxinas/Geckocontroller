@@ -27,14 +27,17 @@ switch:
   - platform: gpio
     name: "Pump"
     pin: 4
+    id: pump
 
   - platform: gpio
     name: "HeatBed"
     pin: 2
+    id: head_bed
 
   - platform: gpio
     name: "HeatLamp"
     pin: 15
+    id: heat_lamp
 
 output:
   - platform: ac_dimmer
@@ -114,6 +117,7 @@ sensor:
     temperature:
       name: "Air Temperature"
       oversampling: 16x
+      id: temperature_air
     pressure:
       name: "Air Pressure"
     humidity:
@@ -128,3 +132,24 @@ sensor:
     update_interval: 60s
     filters:
       multiply: 0.5
+
+sun:
+  latitude: -22.6
+  longitude: 167.5
+
+time:
+  - platform: homeassistant
+
+climate:
+  - platform: thermostat
+    name: "Thermostat Air Temp"
+    sensor: temperature_air
+    default_target_temperature_low: 20 °C
+    default_target_temperature_high: 28 °C
+    cool_action:
+      - switch.turn_on: pump
+    heat_action:
+      - switch.turn_on: heat_lamp
+    idle_action:
+      - switch.turn_off: heat_lamp
+      - switch.turn_off: pump
