@@ -28,12 +28,6 @@ switch:
     name: "Pump"
     pin: 4
     id: pump
-
-  - platform: gpio
-    name: "HeatBed"
-    pin: 2
-    id: head_bed
-
   - platform: gpio
     name: "HeatLamp"
     pin: 15
@@ -48,6 +42,10 @@ output:
       number: 17
       mode: INPUT
       inverted: no
+  - platform: slow_pwm
+    pin: 2
+    id: heat_bed
+    period: 2min
   - platform: ledc
     pin: 32
     id: component_red
@@ -62,7 +60,7 @@ output:
     id: fan_pwm
     frequency: 25000 hz
     channel: 4
-
+    
 light:
   - platform: monochromatic
     output: dimmer1
@@ -107,11 +105,13 @@ sensor:
     address: 0x0305473B405A0028
     name: "Temperature HeatBed"
     unit_of_measurement: "°C"
+    id: temperature_heatbed
 
   - platform: dallas
     address: 0x5505473B82670028
     name: "Temperature Substrate"
     unit_of_measurement: "°C"
+    id: temperature_substrate
 
   - platform: bme280
     temperature:
@@ -153,3 +153,13 @@ climate:
     idle_action:
       - switch.turn_off: heat_lamp
       - switch.turn_off: pump
+
+  - platform: pid
+    name: "PID Heatbed"
+    sensor: temperature_heatbed
+    default_target_temperature: 30°C
+    heat_output: heat_bed
+    control_parameters:
+      kp: 2.5
+      ki: 0.5
+      kd: 1.0
