@@ -70,10 +70,28 @@ light:
 
   - platform: rgb
     name: "Scenic Light"
+    id: scenic_light
     red: component_red
     green: component_green
     blue: component_blue
-
+    effects:
+      - lambda:
+          name: sunrise
+          update_interval: 10s
+          lambda: |-
+            static uint8_t sunrise_lut[4][3] = {{5, 5, 50}, {5, 5, 150}, {150, 5, 150}, {200, 200, 200}};
+            static int i = 0;
+            auto call = id(scenic_light).make_call();
+            call.set_transition_length(10000);
+            uint8_t r, g, b;
+            r = sunrise_lut[i][0] / 255.;
+            g = sunrise_lut[i][1] / 255.;
+            b = sunrise_lut[i][2] / 255.;
+            call.set_rgb(r,g,b);
+            call.perform();
+            i++;
+            if (i == 3)
+              i= 0;
   - platform: monochromatic
     output: fan_pwm
     name: "Ventilator"
