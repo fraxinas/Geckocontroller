@@ -25,13 +25,22 @@ ota:
 
 switch:
   - platform: gpio
-    name: "Pump"
-    pin: 4
-    id: pump
-  - platform: gpio
     name: "HeatLamp"
     pin: 15
     id: heat_lamp
+  - platform: template
+    id: fan_switch
+    name: "Ventilator on/off"
+    on_turn_on:
+      then:
+        - output.set_level:
+            id: fan_pwm
+            level: 75%
+    on_turn_off:
+      then:
+        - output.set_level:
+            id: fan_pwm
+            level: 0%
 
 output:
   - platform: ac_dimmer
@@ -46,6 +55,12 @@ output:
     pin: 2
     id: heat_bed
     period: 2min
+  - platform: slow_pwm
+    pin: 4
+    id: rain_pump
+    period: 60min
+    max_power: 0.05
+    # max. 3 min of contiuous rain per hour
   - platform: ledc
     pin: 32
     id: component_red
@@ -140,6 +155,7 @@ sensor:
       name: "Air Pressure"
     humidity:
       name: "Air Humidity"
+      id: humidity
     address: 0x76
     update_interval: 60s
 
@@ -165,14 +181,15 @@ climate:
     default_target_temperature_low: 20 °C
     default_target_temperature_high: 28 °C
     cool_action:
-      - switch.turn_on: pump
+      - switch.turn_on: fan_switch
     heat_action:
       - switch.turn_on: heat_lamp
     idle_action:
       - switch.turn_off: heat_lamp
-      - switch.turn_off: pump
+      - switch.turn_off: fan_switch
 
   - platform: pid
+    id: pid_headbed
     name: "PID Heatbed"
     sensor: temperature_heatbed
     default_target_temperature: 30°C
@@ -181,3 +198,14 @@ climate:
       kp: 2.5
       ki: 0.5
       kd: 1.0
+
+  - platform: pid
+    id: pid_humidity
+    name: "Humidity"
+    sensor: humidity
+    default_target_temperature: 75
+    heat_output: rain_pump
+    control_parameters:
+      kp: 0.5
+      ki: 0.1
+      kd: 0.05
