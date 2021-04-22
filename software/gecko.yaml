@@ -107,6 +107,24 @@ light:
             i++;
             if (i == 3)
               i= 0;
+      - lambda:
+          name: lightning
+          update_interval: 100ms
+          lambda: |-
+            static uint flashing = false;
+            int r = random(0,100);
+            if (r == 100) {
+              auto call = id(scenic_light).make_call();
+              call.set_transition_length(50);
+              call.set_rgb(1.,1.,1.);
+              flashing = true;
+            } else if (flashing) {
+              auto call = id(scenic_light).make_call();
+              call.set_transition_length(400);
+              call.set_rgb(0.,0.,0.);
+              flashing = false;
+            }
+
   - platform: monochromatic
     output: fan_pwm
     name: "Ventilator"
