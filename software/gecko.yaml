@@ -122,7 +122,26 @@ light:
     blue: component_blue
     effects:
       - lambda:
-          name: sunrise
+          name: Lightning
+          update_interval: 100ms
+          lambda: |-
+            static uint flashing = true;
+            int r = random(0,100);
+            if (r > 95) {
+              auto call = id(scenic_light).make_call();
+              call.set_transition_length(50);
+              call.set_rgb(1.0,1.0,1.0);
+              call.perform();
+              flashing = true;
+            } else if (flashing) {
+              auto call = id(scenic_light).make_call();
+              call.set_transition_length(400);
+              call.set_rgb(0.0,0.0,0.0);
+              call.perform();
+              flashing = false;
+            }
+      - lambda:
+          name: Sunrise
           update_interval: 10s
           lambda: |-
             static uint8_t sunrise_lut[4][3] = {{5, 5, 50}, {5, 5, 150}, {150, 5, 150}, {200, 200, 200}};
@@ -138,23 +157,10 @@ light:
             i++;
             if (i == 3)
               i= 0;
-      - lambda:
-          name: lightning
-          update_interval: 100ms
-          lambda: |-
-            static uint flashing = false;
-            int r = random(0,100);
-            if (r == 100) {
-              auto call = id(scenic_light).make_call();
-              call.set_transition_length(50);
-              call.set_rgb(1.,1.,1.);
-              flashing = true;
-            } else if (flashing) {
-              auto call = id(scenic_light).make_call();
-              call.set_transition_length(400);
-              call.set_rgb(0.,0.,0.);
-              flashing = false;
-            }
+      - random:
+          name: Random Effect With Custom Values
+          transition_length: 5s
+          update_interval: 7s
 
   - platform: monochromatic
     output: fan_pwm
@@ -258,3 +264,32 @@ climate:
       kp: 0.5
       ki: 0.1
       kd: 0.05
+
+globals:
+   - id: scenic_light_effect
+     type: int
+     restore_value: no
+     initial_value: '0'
+
+binary_sensor:
+  - platform: template
+    name: "effects"
+    on_click:
+    - lambda: |-
+              auto call = id(scenic_light).turn_on();
+
+              if (id(scenic_light_effect) == 0)
+                  call.set_effect("random");
+
+              if (id(scenic_light_effect) == 1)
+                  call.set_effect("lambda");
+
+              if (id(scenic_light_effect) == 2)
+                  call.set_effect("lambda");
+
+              if (id(scenic_light_effect) < 3)
+                  id(scenic_light_effect) = 0;
+              else
+                  id(scenic_light_effect) += 1;
+
+              call.perform();
