@@ -25,7 +25,7 @@ ota:
 
 switch:
   - platform: gpio
-    name: "HeatLamp"
+    name: "Heat Lamp"
     pin: 15
     id: heat_lamp
   - platform: template
@@ -42,6 +42,37 @@ switch:
             id: fan_pwm
             level: 0%
 
+  - platform: template
+    id: pump_switch_momentary
+    name: "Let it rain"
+    turn_on_action:
+      - output.set_level:
+          id: rain_pump
+          level: 100%
+      - delay: 5s
+      - output.set_level:
+          id: rain_pump
+          level: 0%
+      - switch.turn_off: pump_switch_momentary
+
+# doesn't work - can't be switched off manually
+  - platform: template
+    id: heat_bed_manual
+    name: "Manually heat bed"
+    turn_on_action:
+      - output.set_level:
+          id: heat_bed_pwm
+          level: 100%
+    turn_off_action:
+      - switch.turn_off: heat_bed_internal
+      - output.set_level:
+          id: heat_bed_pwm
+          level: 0%
+  - platform: gpio
+    name: "Heat Bed"
+    id: heat_bed_internal
+    pin: 2
+
 output:
   - platform: ac_dimmer
     id: dimmer1
@@ -53,7 +84,7 @@ output:
       inverted: no
   - platform: slow_pwm
     pin: 2
-    id: heat_bed
+    id: heat_bed_pwm
     period: 2min
   - platform: slow_pwm
     pin: 4
@@ -75,7 +106,7 @@ output:
     id: fan_pwm
     frequency: 25000 hz
     channel: 4
-    
+
 light:
   - platform: monochromatic
     output: dimmer1
@@ -211,7 +242,7 @@ climate:
     name: "PID Heatbed"
     sensor: temperature_heatbed
     default_target_temperature: 30°C
-    heat_output: heat_bed
+    heat_output: heat_bed_pwm
     control_parameters:
       kp: 2.5
       ki: 0.5
