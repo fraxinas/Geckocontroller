@@ -2,6 +2,7 @@ esphome:
   name: geckocontrol
   platform: ESP32
   board: nodemcu-32s
+  includes: gecko_custom.h
 
 wifi:
   ssid: !secret wifi_ssid
@@ -146,21 +147,60 @@ light:
             }
       - lambda:
           name: Sunrise
+          update_interval: 1s
+          lambda: |-
+            static uint8_t i = 0;
+            static uint16_t skip = 0;
+            static uint16_t delay = id(sun_effect_delay);
+            if (++skip < delay)
+              return;
+            if (i < SUN_LUT_LEN)
+            {
+              auto call = id(scenic_light).make_call();
+              call.set_transition_length(1000*delay);
+              float a, r, g, b;
+              a = sun_lut[i][0] / 255.;
+              r = sun_lut[i][1] / 255.;
+              g = sun_lut[i][2] / 255.;
+              b = sun_lut[i][3] / 255.;
+              call.set_brightness(a);
+              call.set_rgb(r,g,b);
+              call.perform();
+              i++;
+              skip = 0;
+            }
+            else {
+              i = 0;
+              light_lambdalighteffect->stop();
+            }
+      - lambda:
+          name: Sunset
           update_interval: 10s
           lambda: |-
-            static uint8_t sunrise_lut[4][3] = {{5, 5, 50}, {5, 5, 150}, {150, 5, 150}, {200, 200, 200}};
-            static int i = 0;
-            auto call = id(scenic_light).make_call();
-            call.set_transition_length(10000);
-            uint8_t r, g, b;
-            r = sunrise_lut[i][0] / 255.;
-            g = sunrise_lut[i][1] / 255.;
-            b = sunrise_lut[i][2] / 255.;
-            call.set_rgb(r,g,b);
-            call.perform();
-            i++;
-            if (i == 3)
-              i= 0;
+            static int8_t i = SUN_LUT_LEN-1;
+            static uint16_t skip = 0;
+            static uint16_t delay = id(sun_effect_delay);
+            if (++skip < delay)
+              return;
+            if (i > 0)
+            {
+              auto call = id(scenic_light).make_call();
+              call.set_transition_length(1000*delay);
+              float a, r, g, b;
+              a = sun_lut[i][0] / 255.;
+              r = sun_lut[i][1] / 255.;
+              g = sun_lut[i][2] / 255.;
+              b = sun_lut[i][3] / 255.;
+              call.set_brightness(a);
+              call.set_rgb(r,g,b);
+              call.perform();
+              i--;
+              skip = 0;
+            }
+            else {
+              i = SUN_LUT_LEN-1;
+              light_lambdalighteffect_2->stop();
+            }
       - random:
           name: Random Effect With Custom Values
           transition_length: 5s
@@ -271,9 +311,13 @@ climate:
 
 globals:
    - id: scenic_light_effect
-     type: int
+     type: uint8_t
      restore_value: no
      initial_value: '0'
+   - id: sun_effect_delay
+     type: uint16_t
+     restore_value: no
+     initial_value: '5'
 
 binary_sensor:
   - platform: template
@@ -297,3 +341,4 @@ binary_sensor:
                   id(scenic_light_effect) += 1;
 
               call.perform();
+
