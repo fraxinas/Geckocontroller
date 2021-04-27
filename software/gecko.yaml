@@ -154,9 +154,9 @@ light:
             static uint16_t delay = id(sun_effect_delay);
             if (++skip < delay)
               return;
+            auto call = id(scenic_light).make_call();
             if (i < SUN_LUT_LEN)
             {
-              auto call = id(scenic_light).make_call();
               call.set_transition_length(1000*delay);
               float a, r, g, b;
               a = sun_lut[i][0] / 255.;
@@ -165,26 +165,25 @@ light:
               b = sun_lut[i][3] / 255.;
               call.set_brightness(a);
               call.set_rgb(r,g,b);
-              call.perform();
               i++;
-              skip = 0;
-            }
-            else {
+            } else {
               i = 0;
-              light_lambdalighteffect->stop();
+              call.set_effect(0);
             }
+            call.perform();
+            skip = 0;
       - lambda:
           name: Sunset
-          update_interval: 10s
+          update_interval: 1s
           lambda: |-
             static int8_t i = SUN_LUT_LEN-1;
             static uint16_t skip = 0;
             static uint16_t delay = id(sun_effect_delay);
             if (++skip < delay)
               return;
+            auto call = id(scenic_light).make_call();
             if (i > 0)
             {
-              auto call = id(scenic_light).make_call();
               call.set_transition_length(1000*delay);
               float a, r, g, b;
               a = sun_lut[i][0] / 255.;
@@ -193,14 +192,13 @@ light:
               b = sun_lut[i][3] / 255.;
               call.set_brightness(a);
               call.set_rgb(r,g,b);
-              call.perform();
               i--;
-              skip = 0;
-            }
-            else {
+            } else {
               i = SUN_LUT_LEN-1;
-              light_lambdalighteffect_2->stop();
+              call.set_effect(0);
             }
+            call.perform();
+            skip = 0;
       - random:
           name: Random Effect With Custom Values
           transition_length: 5s
