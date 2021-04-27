@@ -123,20 +123,24 @@ light:
     effects:
       - lambda:
           name: Lightning
-          update_interval: 100ms
+          update_interval: 50ms
           lambda: |-
-            static uint flashing = true;
-            int r = random(0,100);
+            static bool flashing = true;
+            static uint8_t r = 0;
+            auto call = id(scenic_light).make_call();
+            if (r == 0) {
+              call.set_rgb(1.,1.,1.);
+              call.perform();
+            }
+            r = random(1,100);
             if (r > 95) {
-              auto call = id(scenic_light).make_call();
-              call.set_transition_length(50);
-              call.set_rgb(1.0,1.0,1.0);
+              call.set_transition_length(5);
+              call.set_brightness(1.0);
               call.perform();
               flashing = true;
             } else if (flashing) {
-              auto call = id(scenic_light).make_call();
-              call.set_transition_length(400);
-              call.set_rgb(0.0,0.0,0.0);
+              call.set_transition_length(300);
+              call.set_brightness(0.01);
               call.perform();
               flashing = false;
             }
