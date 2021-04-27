@@ -24,6 +24,11 @@ api:
 
 ota:
 
+custom_component:
+- lambda: |-
+    auto gecko_custom = new GeckoCustomComponent();
+    return {gecko_custom};
+
 switch:
   - platform: gpio
     name: "Heat Lamp"
@@ -145,64 +150,6 @@ light:
               call.perform();
               flashing = false;
             }
-      - lambda:
-          name: Sunrise
-          update_interval: 1s
-          lambda: |-
-            static uint8_t i = 0;
-            static uint16_t skip = 0;
-            static uint16_t delay = id(sun_effect_delay);
-            if (++skip < delay)
-              return;
-            auto call = id(scenic_light).make_call();
-            if (i < SUN_LUT_LEN)
-            {
-              call.set_transition_length(1000*delay);
-              float a, r, g, b;
-              a = sun_lut[i][0] / 255.;
-              r = sun_lut[i][1] / 255.;
-              g = sun_lut[i][2] / 255.;
-              b = sun_lut[i][3] / 255.;
-              call.set_brightness(a);
-              call.set_rgb(r,g,b);
-              i++;
-            } else {
-              i = 0;
-              call.set_effect(0);
-            }
-            call.perform();
-            skip = 0;
-      - lambda:
-          name: Sunset
-          update_interval: 1s
-          lambda: |-
-            static int8_t i = SUN_LUT_LEN-1;
-            static uint16_t skip = 0;
-            static uint16_t delay = id(sun_effect_delay);
-            if (++skip < delay)
-              return;
-            auto call = id(scenic_light).make_call();
-            if (i > 0)
-            {
-              call.set_transition_length(1000*delay);
-              float a, r, g, b;
-              a = sun_lut[i][0] / 255.;
-              r = sun_lut[i][1] / 255.;
-              g = sun_lut[i][2] / 255.;
-              b = sun_lut[i][3] / 255.;
-              call.set_brightness(a);
-              call.set_rgb(r,g,b);
-              i--;
-            } else {
-              i = SUN_LUT_LEN-1;
-              call.set_effect(0);
-            }
-            call.perform();
-            skip = 0;
-      - random:
-          name: Random Effect With Custom Values
-          transition_length: 5s
-          update_interval: 7s
 
   - platform: monochromatic
     output: fan_pwm
@@ -312,10 +259,6 @@ globals:
      type: uint8_t
      restore_value: no
      initial_value: '0'
-   - id: sun_effect_delay
-     type: uint16_t
-     restore_value: no
-     initial_value: '5'
 
 binary_sensor:
   - platform: template
@@ -323,20 +266,11 @@ binary_sensor:
     on_click:
     - lambda: |-
               auto call = id(scenic_light).turn_on();
-
-              if (id(scenic_light_effect) == 0)
-                  call.set_effect("random");
-
-              if (id(scenic_light_effect) == 1)
-                  call.set_effect("lambda");
-
-              if (id(scenic_light_effect) == 2)
-                  call.set_effect("lambda");
-
-              if (id(scenic_light_effect) < 3)
-                  id(scenic_light_effect) = 0;
-              else
-                  id(scenic_light_effect) += 1;
-
+              unsigned char* fx_idx = &id(scenic_light_effect);
+              if (*fx_idx < 3) {
+                call.set_effect(*fx_idx);
+                *fx_idx += 1;
+              } else {
+                *fx_idx = 0;
+              }
               call.perform();
-
