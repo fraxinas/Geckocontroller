@@ -115,6 +115,7 @@ output:
 
 light:
   - platform: monochromatic
+    id: day_light
     output: dimmer1
     name: "Dimmer Daylight"
     gamma_correct: 1.0
@@ -211,9 +212,43 @@ sensor:
     filters:
       multiply: 0.5
 
+  - platform: sun
+    name: Sun Elevation
+    type: elevation
+
 sun:
   latitude: -22.6
   longitude: 167.5
+
+# Sunset and Sunrise flipped because we are on the other side of the globe
+  on_sunset:
+    - elevation: 0°
+      then:
+        - lambda: |-
+              auto call = id(scenic_light).turn_on();
+              call.set_effect("Sunrise");
+              call.perform();
+              auto call2 = id(day_light).make_call();
+              call2.set_transition_length(240*60*1000);
+              call2.set_brightness(1.0);
+              call2.perform();
+        - logger.log: Good morning, Gecko.
+
+  on_sunrise:
+    - elevation: -60°
+      then:
+        - lambda: |-
+              auto call = id(day_light).make_call();
+              call.set_transition_length(240*60*1000);
+              call.set_brightness(0.0);
+              call.perform();
+    - elevation: 0°
+      then:
+        - logger.log: Good night, Gecko.
+        - lambda: |-
+              auto call = id(scenic_light).turn_on();
+              call.set_effect("Sunset");
+              call.perform();
 
 time:
   - platform: homeassistant
