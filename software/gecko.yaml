@@ -216,6 +216,16 @@ sensor:
     name: Sun Elevation
     type: elevation
 
+  - platform: homeassistant   # Forecast minimal temperature
+    id: weather_tempmin
+    entity_id: sensor.today_min
+  - platform: homeassistant   # Forecast maximal temperature
+    id: weather_tempmax
+    entity_id: sensor.today_max
+  - platform: homeassistant   # Forecast precipitation
+    id: weather_precipitation
+    entity_id: sensor.today_rain
+
 sun:
   latitude: -22.6
   longitude: 167.5
