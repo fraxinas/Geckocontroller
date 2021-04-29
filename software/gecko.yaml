@@ -219,9 +219,26 @@ sensor:
   - platform: homeassistant   # Forecast minimal temperature
     id: weather_tempmin
     entity_id: sensor.today_min
+    on_value:
+      then:
+        - climate.control:
+              id: thermostat_air
+              target_temperature_low: !lambda |-
+                return x;
+
   - platform: homeassistant   # Forecast maximal temperature
     id: weather_tempmax
     entity_id: sensor.today_max
+    on_value:
+      then:
+        - climate.control:
+              id: thermostat_air
+              target_temperature_high: !lambda |-
+                return x;
+        - climate.control:
+              id: pid_headbed
+              target_temperature: !lambda |-
+                return x+5.;
   - platform: homeassistant   # Forecast precipitation
     id: weather_precipitation
     entity_id: sensor.today_rain
@@ -264,6 +281,7 @@ time:
 
 climate:
   - platform: thermostat
+    id: thermostat_air
     name: "Thermostat Air Temp"
     sensor: temperature_air
     default_target_temperature_low: 20 °C
