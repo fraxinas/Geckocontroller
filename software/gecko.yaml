@@ -226,11 +226,10 @@ sun:
       then:
         - lambda: |-
               auto call = id(scenic_light).turn_on();
-              call.set_effect("Sunrise");
+              call.set_effect("Sunrise Color");
               call.perform();
-              auto call2 = id(day_light).make_call();
-              call2.set_transition_length(240*60*1000);
-              call2.set_brightness(1.0);
+              auto call2 = id(day_light).turn_on();
+              call2.set_effect("Sunrise Daylight");
               call2.perform();
         - logger.log: Good morning, Gecko.
 
@@ -239,15 +238,14 @@ sun:
       then:
         - lambda: |-
               auto call = id(day_light).make_call();
-              call.set_transition_length(240*60*1000);
-              call.set_brightness(0.0);
+              call.set_effect("Sunset Daylight");
               call.perform();
     - elevation: 0°
       then:
         - logger.log: Good night, Gecko.
         - lambda: |-
               auto call = id(scenic_light).turn_on();
-              call.set_effect("Sunset");
+              call.set_effect("Sunset Color");
               call.perform();
 
 time:
