@@ -13,7 +13,7 @@ wifi:
     ssid: "Geckocontrol Fallback Hotspot"
     password: !secret fallback_password
 
-captive_portal:
+#captive_portal:
 
 # Enable logging
 logger:
@@ -60,24 +60,6 @@ switch:
           id: rain_pump
           level: 0%
       - switch.turn_off: pump_switch_momentary
-
-# doesn't work - can't be switched off manually
-  - platform: template
-    id: heat_bed_manual
-    name: "Manually heat bed"
-    turn_on_action:
-      - output.set_level:
-          id: heat_bed_pwm
-          level: 100%
-    turn_off_action:
-      - switch.turn_off: heat_bed_internal
-      - output.set_level:
-          id: heat_bed_pwm
-          level: 0%
-  - platform: gpio
-    name: "Heat Bed"
-    id: heat_bed_internal
-    pin: 2
 
 output:
   - platform: ac_dimmer
@@ -322,21 +304,6 @@ globals:
      restore_value: no
      initial_value: '0'
 
-binary_sensor:
-  - platform: template
-    name: "effects"
-    on_click:
-    - lambda: |-
-              auto call = id(scenic_light).turn_on();
-              unsigned char* fx_idx = &id(scenic_light_effect);
-              if (*fx_idx < 3) {
-                call.set_effect(*fx_idx);
-                *fx_idx += 1;
-              } else {
-                *fx_idx = 0;
-              }
-              call.perform();
-
 spi:
   clk_pin: GPIO18
   mosi_pin: GPIO23
@@ -351,7 +318,7 @@ display:
     id: gecko_display
     dc_pin: GPIO5
     reset_pin: GPIO21
-    dimensions: 135x240
+    dimensions: 240x240
     rotation: 90°
     update_interval: 1s
     lambda: |-
