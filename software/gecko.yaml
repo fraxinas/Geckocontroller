@@ -260,6 +260,7 @@ sun:
 
 time:
   - platform: homeassistant
+    id: esptime
 
 climate:
   - platform: thermostat
@@ -317,3 +318,32 @@ binary_sensor:
                 *fx_idx = 0;
               }
               call.perform();
+
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO23
+
+font:
+  - file: "/usr/share/fonts/TTF/OpenSans-SemiBoldItalic.ttf"
+    id: font1
+    size: 32
+
+display:
+  - platform: st7789v
+    id: gecko_display
+    dc_pin: GPIO5
+    reset_pin: GPIO21
+    dimensions: 135x240
+    rotation: 90°
+    update_interval: 1s
+    lambda: |-
+      it.print(0, 0, id(font1), "Geckocontrol");
+      it.strftime(0, 32, id(font1), TextAlign::TOP_LEFT, "%H:%M:%S", id(esptime).now());
+      if (id(weather_tempmin).has_state() && id(weather_tempmax).has_state())
+      {
+        it.printf(0, 66, id(font1), 0xFFFF, TextAlign::TOP_LEFT, "T: %.1f-%.1f°C", id(weather_tempmin).state, id(weather_tempmax).state);
+      }
+      if (id(weather_precipitation).has_state())
+      {
+        it.printf(0, 92, id(font1), 0xFFFF, TextAlign::TOP_LEFT, "prec: %.1fmm", id(weather_precipitation).state);
+      }
