@@ -111,10 +111,19 @@ void ST7789V::setup() {
 
   backlight_(true);
 
-  ESP_LOGD(TAG,"buffer_length=%d", this->get_buffer_length_());
-  
   this->init_internal_(this->get_buffer_length_());
-  memset(this->buffer_, 0x00, this->get_buffer_length_());
+  ESP_LOGD(TAG,"inited display buffer %d DisplayBufferHeapList @ %p number of chunks: %d", this->get_buffer_length_(), this->buffers_, this->buffers_->size());
+  if (this->buffers_ == nullptr)
+    return;
+  
+  for (size_t i = 0; i < this->buffers_->size(); i++)
+  {
+    size_t len;
+    uint8_t *chunk = nullptr;
+    this->buffers_->getChunk(i, chunk, len);
+    ESP_LOGD(TAG,"clearing chunk %d @ %p len=%" PRIu32, i, chunk, len);
+    memset(chunk, 0xFF, len);
+  }
 }
 
 void ST7789V::dump_config() {
@@ -129,6 +138,8 @@ void ST7789V::dump_config() {
 float ST7789V::get_setup_priority() const { return setup_priority::PROCESSOR; }
 
 void ST7789V::update() {
+  if (this->buffers_ == nullptr)
+    return;
   this->do_update_();
   this->write_display_data();
 }
@@ -158,8 +169,13 @@ void ST7789V::write_display_data() {
   this->write_byte(ST7789_RAMWR);
   this->dc_pin_->digital_write(true);
 
-  this->write_array(this->buffer_, this->get_buffer_length_());
-
+  for (size_t i = 0; i < this->buffers_->size(); i++)
+  {
+    size_t len;
+    uint8_t *chunk = nullptr;
+    this->buffers_->getChunk(i, chunk, len);
+    this->write_array(chunk, len);
+  }
   this->disable();
 }
 
@@ -268,8 +284,9 @@ void HOT ST7789V::draw_absolute_pixel_internal(int x, int y, Color color) {
   auto color565 = color.to_rgb_565();
 
   uint16_t pos = (x + y * this->get_width_internal()) * 2;
-  this->buffer_[pos++] = (color565 >> 8) & 0xff;
-  this->buffer_[pos] = color565 & 0xff;
+//   uint8_t* bla = this->buffers_[55];
+//   this->buffers_[pos++] = (color565 >> 8) & 0xff;
+//   this->buffers_[pos] = color565 & 0xff;
 }
 
 }  // namespace st7789v
