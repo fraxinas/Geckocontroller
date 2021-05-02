@@ -120,9 +120,9 @@ void ST7789V::setup() {
   {
     size_t len;
     uint8_t *chunk = nullptr;
-    this->buffers_->getChunk(i, chunk, len);
+    this->buffers_->get_chunk(i, chunk, len);
     ESP_LOGD(TAG,"clearing chunk %d @ %p len=%" PRIu32, i, chunk, len);
-    memset(chunk, 0xFF, len);
+    memset(chunk, 0x00, len);
   }
 }
 
@@ -147,11 +147,17 @@ void ST7789V::update() {
 void ST7789V::loop() {}
 
 void ST7789V::write_display_data() {
+// 240x240 1.3"
+  uint16_t x1 = 0;   // _offsetx
+  uint16_t x2 = 320;  // _offsetx
+  uint16_t y1 = 0;   // _offsety
+  uint16_t y2 = 320;  // _offsety
+/* 135x240 ?!
   uint16_t x1 = 52;   // _offsetx
   uint16_t x2 = 186;  // _offsetx
   uint16_t y1 = 40;   // _offsety
   uint16_t y2 = 279;  // _offsety
-
+*/
   this->enable();
 
   // set column(x) address
@@ -173,7 +179,7 @@ void ST7789V::write_display_data() {
   {
     size_t len;
     uint8_t *chunk = nullptr;
-    this->buffers_->getChunk(i, chunk, len);
+    this->buffers_->get_chunk(i, chunk, len);
     this->write_array(chunk, len);
   }
   this->disable();
@@ -284,9 +290,8 @@ void HOT ST7789V::draw_absolute_pixel_internal(int x, int y, Color color) {
   auto color565 = color.to_rgb_565();
 
   uint16_t pos = (x + y * this->get_width_internal()) * 2;
-//   uint8_t* bla = this->buffers_[55];
-//   this->buffers_[pos++] = (color565 >> 8) & 0xff;
-//   this->buffers_[pos] = color565 & 0xff;
+  this->buffers_->set_pixel(pos, (color565 >> 8) & 0xff);
+  this->buffers_->set_pixel(pos+1, (color565 & 0xff));
 }
 
 }  // namespace st7789v
