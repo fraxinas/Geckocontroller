@@ -116,14 +116,7 @@ void ST7789V::setup() {
   if (this->buffers_ == nullptr)
     return;
   
-  for (size_t i = 0; i < this->buffers_->size(); i++)
-  {
-    size_t len;
-    uint8_t *chunk = nullptr;
-    this->buffers_->get_chunk(i, chunk, len);
-    ESP_LOGD(TAG,"clearing chunk %d @ %p len=%" PRIu32, i, chunk, len);
-    memset(chunk, 0x00, len);
-  }
+  this->buffers_->clear_pixels();
 }
 
 void ST7789V::dump_config() {
