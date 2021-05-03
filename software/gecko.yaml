@@ -332,3 +332,6 @@ display:
       {
         it.printf(0, 92, id(font1), 0xFFFF, TextAlign::TOP_LEFT, "prec: %.1fmm", id(weather_precipitation).state);
       }
+
+status_led:
+  pin: GPIO12
