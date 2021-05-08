@@ -493,14 +493,6 @@ TXD
 NoConn ~ 4900 1900
 NoConn ~ 4900 1800
 Wire Wire Line
-	6500 3200 6100 3200
-Wire Wire Line
-	6500 3000 6100 3000
-Wire Wire Line
-	6500 2900 6100 2900
-Wire Wire Line
-	6500 2800 6100 2800
-Wire Wire Line
 	4900 1600 4700 1600
 NoConn ~ 4900 2900
 NoConn ~ 4900 2800
@@ -521,29 +513,10 @@ F 3 "" H 5500 4200 50  0001 C CNN
 	1    5500 4200
 	1    0    0    -1  
 $EndComp
-$Comp
-L RF_Module:ESP32-WROOM-32 U1
-U 1 1 601F033C
-P 5500 2800
-F 0 "U1" H 5500 4381 50  0000 C CNN
-F 1 "ESP32-WROOM-32" H 5500 4290 50  0000 C CNN
-F 2 "RF_Module:ESP32-WROOM-32" H 5500 1300 50  0001 C CNN
-F 3 "https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf" H 5200 2850 50  0001 C CNN
-	1    5500 2800
-	1    0    0    -1  
-$EndComp
-Wire Wire Line
-	6100 1700 6500 1700
 Text GLabel 6500 1700 2    50   Input ~ 0
 TXD0
 Wire Wire Line
-	6500 2400 6100 2400
-Wire Wire Line
-	6500 2200 6100 2200
-Wire Wire Line
 	6100 1600 6300 1600
-Wire Wire Line
-	6500 2100 6100 2100
 $Comp
 L Device:R R53
 U 1 1 61878A67
@@ -566,8 +539,6 @@ Wire Wire Line
 	6300 1600 6500 1600
 Text GLabel 6500 1600 2    50   Input ~ 0
 IO0
-Wire Wire Line
-	6500 1900 6100 1900
 Text GLabel 6500 1900 2    50   Input ~ 0
 RXD0
 Wire Wire Line
@@ -640,17 +611,6 @@ F 3 "~" H 2150 6350 50  0001 C CNN
 $EndComp
 Wire Notes Line
 	3900 800  3900 2150
-$Comp
-L Device:R R2
-U 1 1 60ACB927
-P 7050 1200
-F 0 "R2" V 7257 1200 50  0000 C CNN
-F 1 "470R" V 7166 1200 50  0000 C CNN
-F 2 "Resistor_SMD:R_0805_2012Metric_Pad1.20x1.40mm_HandSolder" V 6980 1200 50  0001 C CNN
-F 3 "~" H 7050 1200 50  0001 C CNN
-	1    7050 1200
-	0    -1   -1   0   
-$EndComp
 $Comp
 L power:+3.3V #PWR0135
 U 1 1 650CEEEC
@@ -774,7 +734,6 @@ Wire Wire Line
 Connection ~ 1250 6050
 Wire Wire Line
 	1250 6050 1050 6050
-Connection ~ 6300 1200
 $Comp
 L Device:R R3
 U 1 1 64D36222
@@ -788,19 +747,6 @@ F 3 "~" H 7050 1800 50  0001 C CNN
 $EndComp
 Wire Wire Line
 	7300 1800 7200 1800
-Wire Wire Line
-	6100 1800 6900 1800
-$Comp
-L Device:LED D102
-U 1 1 60A49158
-P 7450 1200
-F 0 "D102" V 7489 1082 50  0000 R CNN
-F 1 "LED" V 7398 1082 50  0000 R CNN
-F 2 "LED_SMD:LED_0805_2012Metric_Pad1.15x1.40mm_HandSolder" H 7450 1200 50  0001 C CNN
-F 3 "~" H 7450 1200 50  0001 C CNN
-	1    7450 1200
-	-1   0    0    1   
-$EndComp
 $Comp
 L power:GND #PWR0137
 U 1 1 60B514AE
@@ -812,12 +758,6 @@ F 3 "" H 7750 4200 50  0001 C CNN
 	1    7750 4200
 	1    0    0    -1  
 $EndComp
-Wire Wire Line
-	6300 1200 6900 1200
-Wire Wire Line
-	7200 1200 7300 1200
-Wire Wire Line
-	7750 1200 7600 1200
 Text Notes 10900 3250 2    50   ~ 0
 Display 240x240\nJoy IT-SBC-LCD01
 $Comp
@@ -856,16 +796,12 @@ Text GLabel 9400 3750 0    50   Input ~ 0
 SPI_MISO
 Text GLabel 9400 3650 0    50   Input ~ 0
 SPI_RES
-Text GLabel 6500 2700 2    50   Input ~ 0
+Text GLabel 6500 3100 2    50   Input ~ 0
 SPI_DC
-Wire Wire Line
-	6500 2700 6100 2700
 Text GLabel 9400 3550 0    50   Input ~ 0
 SPI_DC
 Text GLabel 6500 2600 2    50   Input ~ 0
 SPI_BL
-Wire Wire Line
-	6500 2600 6100 2600
 Text GLabel 9400 3450 0    50   Input ~ 0
 SPI_BL
 Wire Wire Line
@@ -921,8 +857,6 @@ RX1
 Text GLabel 6500 2400 2    50   Input ~ 0
 TX1
 Wire Wire Line
-	6500 2500 6100 2500
-Wire Wire Line
 	4800 6850 5800 6850
 Text GLabel 4800 6750 0    50   Input ~ 0
 RX1
@@ -940,27 +874,12 @@ Wire Notes Line
 	6650 7600 4000 7600
 Wire Notes Line
 	4000 7600 4000 6250
-Text GLabel 6500 2000 2    50   Input ~ 0
-ENC_A
-Text GLabel 6500 2100 2    50   Input ~ 0
-ENC_B
-Text GLabel 6500 2200 2    50   Input ~ 0
-ENC_SW
-Connection ~ 7750 1800
-Wire Wire Line
-	7750 1800 7750 1200
 Wire Wire Line
 	7750 1800 7750 3600
-Wire Wire Line
-	6500 2000 6100 2000
 Text GLabel 6500 3300 2    50   Input ~ 0
 I2C_SDI
 Text GLabel 6500 3400 2    50   Input ~ 0
 I2C_SCK
-Wire Wire Line
-	6500 3400 6100 3400
-Wire Wire Line
-	6100 3300 6500 3300
 Text GLabel 9200 5350 0    50   Input ~ 0
 ENC_B
 Text GLabel 10450 5150 2    50   Input ~ 0
@@ -1196,8 +1115,6 @@ $EndComp
 Wire Wire Line
 	7200 3550 7200 3600
 Wire Wire Line
-	7200 3600 6100 3600
-Wire Wire Line
 	7400 3550 7400 3600
 Wire Wire Line
 	7400 3600 7750 3600
@@ -1395,8 +1312,6 @@ Wire Wire Line
 Connection ~ 6850 5850
 Text GLabel 6500 2300 2    50   Input ~ 0
 RGB
-Wire Wire Line
-	6500 2300 6100 2300
 Text GLabel 4150 5100 1    50   Input ~ 0
 RGB
 Wire Wire Line
@@ -1563,11 +1478,7 @@ $EndComp
 Wire Wire Line
 	7450 4850 7450 4900
 Connection ~ 7450 4900
-NoConn ~ 6100 3100
 NoConn ~ 6100 3500
-NoConn ~ 6100 3700
-NoConn ~ 6100 3800
-NoConn ~ 6100 3900
 NoConn ~ 5800 7250
 NoConn ~ 5800 7150
 NoConn ~ 5800 6650
@@ -1623,4 +1534,57 @@ Wire Wire Line
 	2800 3750 2800 4600
 Wire Wire Line
 	1600 4500 2000 4500
+Wire Wire Line
+	7200 3600 6100 3600
+Wire Wire Line
+	6500 3400 6100 3400
+Wire Wire Line
+	6100 3300 6500 3300
+Wire Wire Line
+	6500 3200 6100 3200
+Wire Wire Line
+	6500 3000 6100 3000
+Wire Wire Line
+	6500 2900 6100 2900
+Wire Wire Line
+	6500 2800 6100 2800
+Wire Wire Line
+	6500 3100 6100 3100
+Wire Wire Line
+	6500 2600 6100 2600
+Wire Wire Line
+	6500 2500 6100 2500
+Wire Wire Line
+	6500 2400 6100 2400
+Wire Wire Line
+	6500 2300 6100 2300
+Wire Wire Line
+	6500 1900 6100 1900
+Wire Wire Line
+	6100 1800 6900 1800
+Wire Wire Line
+	6100 1700 6500 1700
+$Comp
+L RF_Module:ESP32-WROOM-32 U1
+U 1 1 601F033C
+P 5500 2800
+F 0 "U1" H 5500 4381 50  0000 C CNN
+F 1 "ESP32-WROOM-32" H 5500 4290 50  0000 C CNN
+F 2 "RF_Module:ESP32-WROOM-32" H 5500 1300 50  0001 C CNN
+F 3 "https://www.espressif.com/sites/default/files/documentation/esp32-wroom-32_datasheet_en.pdf" H 5200 2850 50  0001 C CNN
+	1    5500 2800
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	6500 3900 6100 3900
+Wire Wire Line
+	6500 3800 6100 3800
+Wire Wire Line
+	6500 3700 6100 3700
+Text GLabel 6500 3900 2    50   Input ~ 0
+ENC_SW
+Text GLabel 6500 3800 2    50   Input ~ 0
+ENC_B
+Text GLabel 6500 3700 2    50   Input ~ 0
+ENC_A
 $EndSCHEMATC
