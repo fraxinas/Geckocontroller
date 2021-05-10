@@ -1,0 +1,71 @@
+esphome:
+  name: geckocontrol
+  platform: ESP32
+  board: nodemcu-32s
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Geckocontrol Fallback Hotspot"
+    password: !secret fallback_password
+
+captive_portal:
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API
+api:
+
+ota:
+
+time:
+  - platform: homeassistant
+    id: esptime
+
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO23
+
+sensor:
+  - platform: homeassistant   # Forecast minimal temperature
+    id: weather_tempmin
+    entity_id: sensor.today_min
+
+  - platform: homeassistant   # Forecast maximal temperature
+    id: weather_tempmax
+    entity_id: sensor.today_max
+
+  - platform: homeassistant   # Forecast precipitation
+    id: weather_precipitation
+    entity_id: sensor.today_rain
+
+font:
+  - file: "/usr/share/fonts/TTF/OpenSans-SemiBoldItalic.ttf"
+    id: font1
+    size: 32
+
+display:
+  - platform: st7789v
+    id: gecko_display
+    dc_pin: GPIO22
+    reset_pin: GPIO21
+    backlight_pin: GPIO32
+    dimensions: 240x240
+    update_interval: 1s
+    lambda: |-
+      it.print(0, 0, id(font1), "Geckocontrol");
+      it.strftime(0, 32, id(font1), TextAlign::TOP_LEFT, "%H:%M:%S", id(esptime).now());
+      if (id(weather_tempmin).has_state() && id(weather_tempmax).has_state())
+      {
+        it.printf(0, 66, id(font1), 0xFFFF, TextAlign::TOP_LEFT, "T: %.1f-%.1f°C", id(weather_tempmin).state, id(weather_tempmax).state);
+      }
+      if (id(weather_precipitation).has_state())
+      {
+        it.printf(0, 92, id(font1), 0xFFFF, TextAlign::TOP_LEFT, "prec: %.1fmm", id(weather_precipitation).state);
+      }
+
