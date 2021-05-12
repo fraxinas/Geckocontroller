@@ -31,7 +31,35 @@ spi:
   clk_pin: GPIO18
   mosi_pin: GPIO23
 
+uart:
+  rx_pin: GPIO15
+  tx_pin: GPIO13
+  baud_rate: 9600
+
+binary_sensor:
+  - platform: gpio
+    id: button
+    name: "Rotary Button"
+    pin:
+      number: GPIO16
+      inverted: true
+
 sensor:
+  - platform: rotary_encoder
+    id: rotary_enc
+    name: "Rotary Encoder"
+    pin_a: GPIO17
+    pin_b: GPIO05
+
+  - platform: mhz19
+    id: co2_sensor
+    co2:
+      name: "MH-Z19 CO2 Value"
+    temperature:
+      name: "MH-Z19 Temperature"
+    update_interval: 60s
+    automatic_baseline_calibration: false
+
   - platform: homeassistant   # Forecast minimal temperature
     id: weather_tempmin
     entity_id: sensor.today_min
@@ -43,6 +71,19 @@ sensor:
   - platform: homeassistant   # Forecast precipitation
     id: weather_precipitation
     entity_id: sensor.today_rain
+
+output:
+  - platform: ledc
+    pin: GPIO04
+    id: buzzer
+
+light:
+  - platform: monochromatic
+    output: buzzer
+    name: "Buzzer"
+
+status_led:
+  pin: GPIO02
 
 font:
   - file: "/usr/share/fonts/TTF/OpenSans-SemiBoldItalic.ttf"
@@ -68,4 +109,3 @@ display:
       {
         it.printf(0, 92, id(font1), 0xFFFF, TextAlign::TOP_LEFT, "prec: %.1fmm", id(weather_precipitation).state);
       }
-
