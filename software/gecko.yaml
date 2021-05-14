@@ -147,6 +147,7 @@ i2c:
 
 dallas:
   - pin: 22
+    update_interval: 5min
 
 sensor:
   - platform: hx711
@@ -161,14 +162,14 @@ sensor:
           - -29500 -> 0
           - -118200 -> 42.5
 
-  - platform: dallas
-    address: 0x0305473B405A0028
-    name: "Temperature HeatBed"
-    unit_of_measurement: "°C"
-    id: temperature_heatbed
+  #- platform: dallas
+    #address: 0x0305473B405A0028
+    #name: "Temperature HeatBed"
+    #unit_of_measurement: "°C"
+    #id: temperature_heatbed
 
   - platform: dallas
-    address: 0x5505473B82670028
+    address: 0x8105473B8D640028
     name: "Temperature Substrate"
     unit_of_measurement: "°C"
     id: temperature_substrate
