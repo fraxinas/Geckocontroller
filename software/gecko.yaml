@@ -52,13 +52,11 @@ switch:
     id: pump_switch_momentary
     name: "Let it rain"
     turn_on_action:
-      - output.set_level:
+      - output.turn_on:
           id: rain_pump
-          level: 100%
       - delay: 5s
-      - output.set_level:
+      - output.turn_off:
           id: rain_pump
-          level: 0%
       - switch.turn_off: pump_switch_momentary
 
 output:
@@ -74,12 +72,9 @@ output:
     pin: 2
     id: heat_bed_pwm
     period: 2min
-  - platform: slow_pwm
+  - platform: gpio
     pin: 4
     id: rain_pump
-    period: 60min
-    max_power: 0.05
-    # max. 3 min of contiuous rain per hour
   - platform: ledc
     pin: 32
     id: component_red
@@ -288,16 +283,16 @@ climate:
       ki: 0.5
       kd: 1.0
 
-  - platform: pid
-    id: pid_humidity
-    name: "Humidity"
-    sensor: humidity
-    default_target_temperature: 75
-    heat_output: rain_pump
-    control_parameters:
-      kp: 0.5
-      ki: 0.1
-      kd: 0.05
+  #- platform: pid
+    #id: pid_humidity
+    #name: "Humidity"
+    #sensor: humidity
+    #default_target_temperature: 75
+    #heat_output: rain_pump
+    #control_parameters:
+      #kp: 0.5
+      #ki: 0.1
+      #kd: 0.05
 
 globals:
    - id: scenic_light_effect
