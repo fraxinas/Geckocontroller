@@ -213,10 +213,10 @@ sensor:
               id: thermostat_air
               target_temperature_high: !lambda |-
                 return x;
-        - climate.control:
-              id: pid_headbed
-              target_temperature: !lambda |-
-                return x+5.;
+        #- climate.control:
+              #id: pid_heatbed
+              #target_temperature: !lambda |-
+                #return x+5.;
   - platform: homeassistant   # Forecast precipitation
     id: weather_precipitation
     entity_id: sensor.today_rain
@@ -272,16 +272,16 @@ climate:
       - switch.turn_off: heat_lamp
       - switch.turn_off: fan_switch
 
-  - platform: pid
-    id: pid_headbed
-    name: "PID Heatbed"
-    sensor: temperature_heatbed
-    default_target_temperature: 30°C
-    heat_output: heat_bed_pwm
-    control_parameters:
-      kp: 2.5
-      ki: 0.5
-      kd: 1.0
+  #- platform: pid
+    #id: pid_heatbed
+    #name: "PID Heatbed"
+    #sensor: temperature_heatbed
+    #default_target_temperature: 30°C
+    #heat_output: heat_bed_pwm
+    #control_parameters:
+      #kp: 2.5
+      #ki: 0.5
+      #kd: 1.0
 
   #- platform: pid
     #id: pid_humidity
