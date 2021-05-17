@@ -57,12 +57,11 @@ Using ESPHome.io
 * simulated sunrise, sunset, lightening storm
 
 ## TODO
-* case for main unit with power outlets
-* rainfall/humidity
-* ventilation
+* rainfall/humidity automation
+* ventilation automation
 * more automation
-* console (display / rotary encoder controller unit)
-* 3d-printed case for BME280 sensor
+* finish console (display / rotary encoder controller unit)
+* 3d-printed cases for BME280 sensor and console
 
 ## Project Diary
 | Date       | Version | Milestone                                       |
@@ -72,4 +71,4 @@ Using ESPHome.io
 | 2021-04-10 |         | Fixed hardware issues with [LeoDJ](https://github.com/LeoDJ) & [Patagona](https://github.com/patagonaa) |
 | 2021-04-15 | v1.2    | Commission of 2nd revision PCB with aisler.net  |
 | 2021-05-03 | v1.2    | Completed PCB assembly, all modules working     |
-
+| 2021-05-16 | v1.2    | Assembling of case and first deployment of unit |
