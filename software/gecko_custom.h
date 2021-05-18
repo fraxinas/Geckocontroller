@@ -73,7 +73,7 @@ class SunColorLightEffect : public LightEffect {
   ssize_t incr_{};
 };
 
-#define MAX_DAYLIGHT 0.9
+#define MAX_DAYLIGHT 0.5
 
 class SunDayLightEffect : public LightEffect {
  public:
@@ -81,7 +81,8 @@ class SunDayLightEffect : public LightEffect {
 
   void start() override {
     ESP_LOGD(TAG, "Starting SunDayLightEffect '%s' %s", this->name_.c_str(), this->inverse_ ? "inversed" : "");
-    this->transition_length_ = id(sun_effect_delay)*10;
+    this->transition_length_ = id(sun_effect_delay)*235;
+    // with delay of 180 the entire transition will take 3 hours
     float current_brightness;
     id(day_light).current_values_as_brightness(&current_brightness);
     if (this->inverse_) {
@@ -132,7 +133,7 @@ class SunDayLightEffect : public LightEffect {
 class GeckoCustomComponent : public Component {
  public:
   void setup() override {
-    sun_effect_delay = new globals::GlobalsComponent<uint16_t>(10);
+    sun_effect_delay = new globals::GlobalsComponent<uint16_t>(180);
     App.register_component(sun_effect_delay);
 
     SunColorLightEffect *sunrise_colorlighteffect, *sunset_colorlighteffect;

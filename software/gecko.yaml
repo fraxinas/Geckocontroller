@@ -245,7 +245,7 @@ sun:
               auto call = id(day_light).make_call();
               call.set_effect("Sunset Daylight");
               call.perform();
-    - elevation: 0°
+    - elevation: -6°
       then:
         - logger.log: Good night, Gecko.
         - lambda: |-
