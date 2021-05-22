@@ -157,14 +157,14 @@ sensor:
           - -29500 -> 0
           - -118200 -> 42.5
 
-  #- platform: dallas
-    #address: 0x0305473B405A0028
-    #name: "Temperature HeatBed"
-    #unit_of_measurement: "°C"
-    #id: temperature_heatbed
+  - platform: dallas
+    address: !secret DsAddressHeatBed
+    name: "Temperature HeatBed"
+    unit_of_measurement: "°C"
+    id: temperature_heatbed
 
   - platform: dallas
-    address: 0x8105473B8D640028
+    address: !secret DsAddressSubstrate
     name: "Temperature Substrate"
     unit_of_measurement: "°C"
     id: temperature_substrate
