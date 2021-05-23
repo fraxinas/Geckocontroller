@@ -130,6 +130,69 @@ class SunDayLightEffect : public LightEffect {
   float incr_{};
 };
 
+class RainPumpOutput : public FloatOutput, public Component {
+ public:
+  void set_period(unsigned int period) { period_ = period; };
+
+  /// Initialize pin
+  void setup() override;
+  void dump_config() override;
+  /// HARDWARE setup_priority
+  float get_setup_priority() const override { return setup_priority::HARDWARE; }
+
+ protected:
+  void write_state(float state) override;
+  void loop() override;
+
+  float state_{0};
+  bool current_state_{false};
+  unsigned int period_start_time_{0};
+  unsigned int period_{300*1000};
+};
+
+void RainPumpOutput::setup() {
+  this->turn_off();
+  this->current_state_ = false;
+}
+
+void RainPumpOutput::loop() {
+  unsigned long now = millis();
+  float scaled_state = this->state_ * (float)this->period_;
+
+  if (now - this->period_start_time_ > this->period_) {
+    ESP_LOGD(TAG, "now=%lu period=%u End of period. State: %.2f, Scaled state: %.0f", now, this->period_, this->state_, scaled_state);
+    this->period_start_time_ += this->period_;
+  }
+
+  if (scaled_state > now - this->period_start_time_) {
+    if (!this->current_state_) {
+      ESP_LOGD(TAG, "Turn on rain pump");
+      id(rain_pump).turn_on();
+      this->current_state_ = true;
+    }
+    return;
+  } else if (this->current_state_) {
+    ESP_LOGD(TAG, "Turn off rain pump");
+    id(rain_pump).turn_off();
+    this->current_state_ = false;
+  }
+}
+
+void RainPumpOutput::dump_config() {
+  ESP_LOGCONFIG(TAG, "Rain Pump Output:");
+  int h, m, s;
+  h = (this->period_/3600000);
+  m = (this->period_/1000 -(3600*h))/60;
+  s = (this->period_/1000 -(3600*h)-(m*60));
+  ESP_LOGCONFIG(TAG, "  Period: %02d:%02d:%02d", h, m, s);
+  LOG_FLOAT_OUTPUT(this);
+}
+
+void RainPumpOutput::write_state(float state) { 
+  ESP_LOGD(TAG, "write_state(%f)", state);
+  this->state_ = state;
+}
+
 class GeckoCustomComponent : public Component {
  public:
   void setup() override {

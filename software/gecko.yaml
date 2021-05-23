@@ -59,6 +59,11 @@ switch:
           id: rain_pump
       - switch.turn_off: pump_switch_momentary
 
+  - platform: template
+    name: "PID Climate Autotune"
+    turn_on_action:
+      - climate.pid.autotune: pid_humidity
+
 output:
   - platform: ac_dimmer
     id: dimmer1
@@ -89,6 +94,17 @@ output:
     id: fan_pwm
     frequency: 25000 hz
     channel: 4
+  - platform: custom
+    type: float
+    lambda: |-
+      auto rain_pump_output_c = new RainPumpOutput();
+      App.register_component(rain_pump_output_c);
+      return {rain_pump_output_c};
+    outputs:
+      id: rain_pump_float
+      #period: 30min
+      max_power: 0.01
+      # max. 18 seconds of rain per half hour
 
 light:
   - platform: monochromatic
@@ -283,16 +299,20 @@ climate:
       #ki: 0.5
       #kd: 1.0
 
-  #- platform: pid
-    #id: pid_humidity
-    #name: "Humidity"
-    #sensor: humidity
-    #default_target_temperature: 75
-    #heat_output: rain_pump
-    #control_parameters:
-      #kp: 0.5
-      #ki: 0.1
-      #kd: 0.05
+  - platform: pid
+    id: pid_humidity 
+    name: "Humidity"
+    sensor: humidity
+    default_target_temperature: 65
+    heat_output: rain_pump_float
+    control_parameters:
+      kp: 0.0
+      ki: 0.0
+      kd: 0.0
+    visual:
+      min_temperature: 30
+      max_temperature: 98
+      temperature_step: 2
 
 globals:
    - id: scenic_light_effect
