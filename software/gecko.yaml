@@ -103,7 +103,7 @@ output:
     outputs:
       id: rain_pump_float
       #period: 30min
-      max_power: 0.01
+      max_power: 0.02
       # max. 18 seconds of rain per half hour
 
 light:
@@ -305,10 +305,11 @@ climate:
     sensor: humidity
     default_target_temperature: 65
     heat_output: rain_pump_float
+    cool_output: fan_pwm
     control_parameters:
-      kp: 0.0
-      ki: 0.0
-      kd: 0.0
+      kp: 1.18169
+      ki: 0.00388
+      kd: 89.99014
     visual:
       min_temperature: 30
       max_temperature: 98

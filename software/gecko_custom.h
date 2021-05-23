@@ -147,7 +147,7 @@ class RainPumpOutput : public FloatOutput, public Component {
   float state_{0};
   bool current_state_{false};
   unsigned int period_start_time_{0};
-  unsigned int period_{300*1000};
+  unsigned int period_{180*1000};
 };
 
 void RainPumpOutput::setup() {
