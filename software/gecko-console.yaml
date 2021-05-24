@@ -2,6 +2,10 @@ esphome:
   name: geckocontrol
   platform: ESP32
   board: nodemcu-32s
+  includes:
+    - custom_components/vcnl4040/vcnl4040.h
+  libraries:
+   - "Adafruit VCNL4040@^1.0.1"
 
 wifi:
   ssid: !secret wifi_ssid
@@ -31,10 +35,16 @@ spi:
   clk_pin: GPIO18
   mosi_pin: GPIO23
 
-uart:
-  rx_pin: GPIO15
-  tx_pin: GPIO13
-  baud_rate: 9600
+#uart:
+  #rx_pin: GPIO15
+  #tx_pin: GPIO13
+  #baud_rate: 9600
+
+i2c:
+  sda: 21
+  scl: 22
+  scan: True
+  id: bus_a
 
 binary_sensor:
   - platform: gpio
@@ -51,14 +61,14 @@ sensor:
     pin_a: GPIO17
     pin_b: GPIO05
 
-  - platform: mhz19
-    id: co2_sensor
-    co2:
-      name: "MH-Z19 CO2 Value"
-    temperature:
-      name: "MH-Z19 Temperature"
-    update_interval: 60s
-    automatic_baseline_calibration: false
+  #- platform: mhz19
+    #id: co2_sensor
+    #co2:
+      #name: "MH-Z19 CO2 Value"
+    #temperature:
+      #name: "MH-Z19 Temperature"
+    #update_interval: 60s
+    #automatic_baseline_calibration: false
 
   - platform: homeassistant   # Forecast minimal temperature
     id: weather_tempmin
@@ -71,6 +81,16 @@ sensor:
   - platform: homeassistant   # Forecast precipitation
     id: weather_precipitation
     entity_id: sensor.today_rain
+    
+  - platform: custom
+    lambda: |-
+      auto MyVCNL4040_sensor = new MyVCNL4040();
+      App.register_component(MyVCNL4040_sensor);
+      return {MyVCNL4040_sensor->prox_sensor, MyVCNL4040_sensor->lux_sensor, MyVCNL4040_sensor->rawLight_sensor};
+    sensors:
+    - name: "Proximity sensor"
+    - name: "Lux sensor"
+    - name: "Raw Light sensor"
 
 output:
   - platform: ledc
