@@ -386,8 +386,6 @@ Wire Wire Line
 	1400 5900 1650 5900
 Wire Wire Line
 	1200 4100 1200 3800
-Text Label 1000 4600 0    50   ~ 0
-VDD
 $Comp
 L Device:R R55
 U 1 1 6177BE60
@@ -1019,12 +1017,12 @@ $EndComp
 $Comp
 L power:+5V #PWR0119
 U 1 1 611D533E
-P 7400 4700
-F 0 "#PWR0119" H 7400 4550 50  0001 C CNN
-F 1 "+5V" H 7415 4873 50  0000 C CNN
-F 2 "" H 7400 4700 50  0001 C CNN
-F 3 "" H 7400 4700 50  0001 C CNN
-	1    7400 4700
+P 4300 4650
+F 0 "#PWR0119" H 4300 4500 50  0001 C CNN
+F 1 "+5V" H 4315 4823 50  0000 C CNN
+F 2 "" H 4300 4650 50  0001 C CNN
+F 3 "" H 4300 4650 50  0001 C CNN
+	1    4300 4650
 	1    0    0    -1  
 $EndComp
 $Comp
@@ -1040,7 +1038,6 @@ F 3 "" H 4300 5050 50  0001 C CNN
 $EndComp
 Connection ~ 5650 4750
 Connection ~ 5050 4750
-Connection ~ 4450 4750
 Wire Notes Line
 	8100 4450 10950 4450
 Connection ~ 6200 4750
@@ -1051,8 +1048,6 @@ Text GLabel 4100 4950 1    50   Input ~ 0
 RGB
 Wire Wire Line
 	4300 4850 4300 4750
-Wire Wire Line
-	4300 4750 4450 4750
 $Comp
 L Device:C_Small C62
 U 1 1 60961F10
@@ -1186,8 +1181,6 @@ NoConn ~ 9950 1400
 NoConn ~ 9950 900 
 Text Notes 10250 1550 0    63   ~ 0
 PWM\nTx\nRx\nVin\nGND\nVo\nHD
-Wire Wire Line
-	4450 4750 4900 4750
 Wire Wire Line
 	5050 4750 5500 4750
 Wire Wire Line
@@ -1429,8 +1422,6 @@ Wire Wire Line
 	5650 4750 5650 5150
 Wire Wire Line
 	5050 4750 5050 5150
-Wire Wire Line
-	4450 4750 4450 5150
 Wire Wire Line
 	8900 5450 9850 5450
 Wire Wire Line
@@ -1951,4 +1942,27 @@ Connection ~ 10200 6500
 Connection ~ 10750 6500
 Wire Wire Line
 	10750 6500 10750 6450
+$Comp
+L Diode:1N4148WS D60
+U 1 1 61767885
+P 4450 4950
+F 0 "D60" V 4496 4870 50  0000 R CNN
+F 1 "1N4148WS" V 4405 4870 50  0000 R CNN
+F 2 "Diode_SMD:D_SOD-323_HandSoldering" H 4450 4775 50  0001 C CNN
+F 3 "https://www.vishay.com/docs/85751/1n4148ws.pdf" H 4450 4950 50  0001 C CNN
+	1    4450 4950
+	0    -1   -1   0   
+$EndComp
+Wire Wire Line
+	4300 4750 4450 4750
+Wire Wire Line
+	4450 5150 4450 5100
+Wire Wire Line
+	4450 4800 4450 4750
+Connection ~ 4450 4750
+Wire Wire Line
+	4450 4750 4900 4750
+Wire Wire Line
+	4300 4650 4300 4750
+Connection ~ 4300 4750
 $EndSCHEMATC
