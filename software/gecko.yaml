@@ -174,12 +174,13 @@ sensor:
     dout_pin: 34
     clk_pin: 13
     gain: 128
-    update_interval: 60s
+    update_interval: 15s
     unit_of_measurement: g
     filters:
       - calibrate_linear:
-          - -29500 -> 0
-          - -118200 -> 42.5
+          - 250000 -> 0
+          - 456666 -> 100
+      - delta: 0.2
 
   - platform: dallas
     address: !secret DsAddressHeatBed
