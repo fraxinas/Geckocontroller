@@ -21,6 +21,14 @@ logger:
 
 # Enable Home Assistant API
 api:
+  services:
+    - service: control_humidity
+      variables:
+        level: float
+      then:
+        - output.set_level:
+            id: rain_pump_float
+            level: !lambda 'return level / 100.0;'
 
 ota:
 
