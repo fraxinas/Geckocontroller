@@ -182,6 +182,7 @@ sensor:
           - 250000 -> 0
           - 456666 -> 100
       - delta: 0.2
+      - filter_out: -121
       - lambda: |-
             return (x > 2.5 ? x : 0.0);
              
