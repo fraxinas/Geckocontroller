@@ -101,17 +101,17 @@ $EndComp
 $Comp
 L power:GND #PWR0110
 U 1 1 619104AB
-P 1350 6100
-F 0 "#PWR0110" H 1350 5850 50  0001 C CNN
-F 1 "GND" H 1355 5927 50  0000 C CNN
-F 2 "" H 1350 6100 50  0001 C CNN
-F 3 "" H 1350 6100 50  0001 C CNN
-	1    1350 6100
+P 1650 6100
+F 0 "#PWR0110" H 1650 5850 50  0001 C CNN
+F 1 "GND" H 1655 5927 50  0000 C CNN
+F 2 "" H 1650 6100 50  0001 C CNN
+F 3 "" H 1650 6100 50  0001 C CNN
+	1    1650 6100
 	1    0    0    -1  
 $EndComp
-Text Notes 1500 6250 0    50   ~ 0
-I²C / BME280 Thermo/Hygo/Baro Input
-Text Notes 850  6075 2    59   ~ 0
+Text Notes 1850 6250 0    50   ~ 0
+I²C  (Thermo/Hygo/Baro Input)
+Text Notes 1150 6075 2    59   ~ 0
 SCK\nSDI\nGND\nVCC
 $Comp
 L Device:C C51
@@ -189,7 +189,7 @@ Wire Notes Line
 Wire Notes Line
 	3100 6300 600  6300
 Wire Wire Line
-	1350 5950 1350 6100
+	1650 5950 1650 6100
 Wire Wire Line
 	5400 3900 5200 3900
 Wire Wire Line
@@ -1594,9 +1594,9 @@ Wire Wire Line
 	2700 5600 2700 5650
 Connection ~ 2700 5650
 Wire Wire Line
-	1100 5950 1350 5950
+	1400 5950 1650 5950
 Wire Wire Line
-	1100 6050 2700 6050
+	1400 6050 2700 6050
 Connection ~ 2700 5950
 Wire Wire Line
 	2700 5950 2700 6050
@@ -1629,12 +1629,10 @@ $EndComp
 Wire Wire Line
 	2200 5950 2700 5950
 Wire Wire Line
-	1100 5850 1750 5850
+	1400 5850 1750 5850
 Connection ~ 1750 5850
 Wire Wire Line
 	1750 5850 3300 5850
-Wire Wire Line
-	1100 5750 1750 5750
 Connection ~ 1750 5750
 Wire Wire Line
 	1750 5750 3200 5750
@@ -1649,12 +1647,12 @@ Wire Wire Line
 $Comp
 L Connector:Conn_01x04_Male J21
 U 1 1 61878125
-P 900 5950
-F 0 "J21" H 1008 6231 50  0001 C CNN
-F 1 "I²C (BME280)" H 1008 6139 50  0000 C CNN
-F 2 "Connector_JST:JST_PH_B4B-PH-K_1x04_P2.00mm_Vertical" H 900 5950 50  0001 C CNN
-F 3 "~" H 900 5950 50  0001 C CNN
-	1    900  5950
+P 1200 5950
+F 0 "J21" H 1308 6231 50  0001 C CNN
+F 1 "BME280" H 1308 6139 50  0000 C CNN
+F 2 "Connector_JST:JST_PH_B4B-PH-K_1x04_P2.00mm_Vertical" H 1200 5950 50  0001 C CNN
+F 3 "~" H 1200 5950 50  0001 C CNN
+	1    1200 5950
 	1    0    0    1   
 $EndComp
 $Comp
@@ -3114,4 +3112,29 @@ F 3 "" H 10000 1600 50  0001 C CNN
 	1    10000 1600
 	1    0    0    -1  
 $EndComp
+$Comp
+L Connector:Conn_01x04_Male J?
+U 1 1 60BDA454
+P 700 5950
+F 0 "J?" H 808 6231 50  0001 C CNN
+F 1 "SHT31" H 808 6139 50  0000 C CNN
+F 2 "Connector_JST:JST_PH_B4B-PH-K_1x04_P2.00mm_Vertical" H 700 5950 50  0001 C CNN
+F 3 "~" H 700 5950 50  0001 C CNN
+	1    700  5950
+	1    0    0    1   
+$EndComp
+Wire Wire Line
+	900  5750 1400 5750
+Connection ~ 1400 5750
+Wire Wire Line
+	1400 5750 1750 5750
+Wire Wire Line
+	900  5850 1400 5850
+Connection ~ 1400 5850
+Wire Wire Line
+	900  5950 1400 5950
+Connection ~ 1400 5950
+Wire Wire Line
+	900  6050 1400 6050
+Connection ~ 1400 6050
 $EndSCHEMATC
