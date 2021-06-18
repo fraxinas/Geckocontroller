@@ -200,15 +200,25 @@ sensor:
 
   - platform: bme280
     temperature:
-      name: "Air Temperature"
+      name: "Ceiling Temperature"
       oversampling: 16x
-      id: temperature_air
+      id: temperature_ceiling
     pressure:
       name: "Air Pressure"
     humidity:
-      name: "Air Humidity"
-      id: humidity
+      name: "Ceiling Humidity"
+      id: humidity_ceiling
     address: 0x76
+    update_interval: 60s
+
+  - platform: sht3xd
+    temperature:
+      name: "Ground Temperature"
+      id: temperature_ground
+    humidity:
+      name: "Ground Humidity"
+      id: humidity_ground
+    address: 0x44
     update_interval: 60s
 
   - platform: pulse_counter
@@ -290,7 +300,7 @@ climate:
   - platform: thermostat
     id: thermostat_air
     name: "Thermostat Air Temp"
-    sensor: temperature_air
+    sensor: temperature_ceiling
     default_target_temperature_low: 20 °C
     default_target_temperature_high: 28 °C
     cool_action:
@@ -315,10 +325,9 @@ climate:
   - platform: pid
     id: pid_humidity 
     name: "Humidity"
-    sensor: humidity
+    sensor: humidity_ground
     default_target_temperature: 65
     heat_output: rain_pump_float
-    cool_output: fan_pwm
     control_parameters:
       kp: 1.18169
       ki: 0.00388
