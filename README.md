@@ -13,7 +13,7 @@
 ### Relay Output
 * 3 solid state relays with zero-cross switching
 * individual load 1A each
-* Labelled HeadBed, HeatLamp and Pump
+* Labelled HeatBed, HeatLamp and Pump
 
 ### Dimmer Output
 * opto-coupler zero cross detection
