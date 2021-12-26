@@ -278,7 +278,7 @@ sun:
         - logger.log: Good morning, Gecko.
 
   on_sunrise:
-    - elevation: -60°
+    - elevation: -40°
       then:
         - lambda: |-
               auto call = id(day_light).make_call();
