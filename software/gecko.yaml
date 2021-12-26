@@ -45,12 +45,12 @@ switch:
   - platform: template
     id: fan_switch
     name: "Ventilator on/off"
-    on_turn_on:
+    turn_on_action:
       then:
         - output.set_level:
             id: fan_pwm
             level: 75%
-    on_turn_off:
+    turn_off_action:
       then:
         - output.set_level:
             id: fan_pwm
@@ -303,6 +303,11 @@ climate:
     sensor: temperature_ceiling
     default_target_temperature_low: 20 °C
     default_target_temperature_high: 28 °C
+    min_cooling_off_time: 60s
+    min_cooling_run_time: 60s
+    min_heating_off_time: 60s
+    min_heating_run_time: 120s
+    min_idle_time: 60s
     cool_action:
       - switch.turn_on: fan_switch
     heat_action:
