@@ -8,9 +8,10 @@ static const char *TAG = "gecko";
 globals::GlobalsComponent<uint16_t> *sun_effect_delay;
 // in seconds, to control SunLightEffects speed
 
-#define SUN_LUT_LEN 6
+#define SUN_LUT_LEN 7
 static uint8_t sun_lut[SUN_LUT_LEN][4] = {
-  {10, 5, 5, 250},
+  {40, 20, 250, 20},
+  {10, 5, 250, 150},
   {80, 5, 5, 250},
   {100, 200, 5, 200},
   {150, 250, 130, 5},
@@ -210,7 +211,6 @@ class GeckoCustomComponent : public Component {
     sunset_daylighteffect = new SunDayLightEffect("Sunset Daylight");
     sunset_daylighteffect->set_inverse(true);
     day_light->add_effects({sunrise_daylighteffect, sunset_daylighteffect});
-
     ESP_LOGD(TAG, "Added SunLightEffects");
   }
 };
