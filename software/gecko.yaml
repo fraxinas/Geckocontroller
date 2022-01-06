@@ -226,13 +226,18 @@ sensor:
     humidity:
       name: "Ceiling Humidity"
       id: humidity_ceiling
+      filters:
+        - filter_out: 100
     address: 0x76
     update_interval: 60s
+
 
   - platform: sht3xd
     temperature:
       name: "Ground Temperature"
       id: temperature_ground
+      filters:
+        - filter_out: 188.1
     humidity:
       name: "Ground Humidity"
       id: humidity_ground
