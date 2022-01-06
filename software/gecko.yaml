@@ -22,14 +22,13 @@ logger:
 # Enable Home Assistant API
 api:
   services:
-    - service: control_humidity
+    - service: control_rain
       variables:
         level: float
       then:
         - output.set_level:
             id: rain_pump_float
             level: !lambda 'return level / 100.0;'
-
 ota:
 
 custom_component:
@@ -38,10 +37,6 @@ custom_component:
     return {gecko_custom};
 
 switch:
-  - platform: gpio
-    name: "Heat Lamp"
-    pin: 15
-    id: heat_lamp
   - platform: template
     id: fan_switch
     name: "Ventilator on/off"
@@ -54,6 +49,20 @@ switch:
       then:
         - output.set_level:
             id: fan_pwm
+            level: 0%
+            
+  - platform: template
+    id: heat_lamp
+    name: "Heat Lamp on/off"
+    turn_on_action:
+      then:
+        - output.set_level:
+            id: heat_lamp_pwm
+            level: 100%
+    turn_off_action:
+      then:
+        - output.set_level:
+            id: heat_lamp_pwm
             level: 0%
 
   - platform: template
@@ -68,9 +77,15 @@ switch:
       - switch.turn_off: pump_switch_momentary
 
   - platform: template
-    name: "PID Climate Autotune"
+    id: fog_switch_momentary
+    name: "Sleepy hollow"
     turn_on_action:
-      - climate.pid.autotune: pid_humidity
+      - output.turn_on:
+          id: fogger
+      - delay: 30s
+      - output.turn_off:
+          id: fogger
+      - switch.turn_off: fog_switch_momentary
 
 output:
   - platform: ac_dimmer
@@ -82,12 +97,15 @@ output:
       mode: INPUT
       inverted: no
   - platform: slow_pwm
-    pin: 2
-    id: heat_bed_pwm
+    pin: 15
+    id: heat_lamp_pwm
     period: 2min
   - platform: gpio
     pin: 4
     id: rain_pump
+  - platform: gpio
+    pin: 2
+    id: fogger
   - platform: ledc
     pin: 32
     id: component_red
@@ -327,20 +345,23 @@ climate:
       #ki: 0.5
       #kd: 1.0
 
-  - platform: pid
-    id: pid_humidity 
+  - platform: bang_bang
+    id: humidity_control
     name: "Humidity"
-    sensor: humidity_ground
-    default_target_temperature: 65
-    heat_output: rain_pump_float
-    control_parameters:
-      kp: 1.18169
-      ki: 0.00388
-      kd: 89.99014
+    sensor: humidity_ceiling
+    default_target_temperature_low: 60 °C
+    default_target_temperature_high: 80 °C
     visual:
       min_temperature: 30
       max_temperature: 98
       temperature_step: 2
+    heat_action:
+      - output.turn_on: fogger
+    cool_action:
+      - switch.turn_on: fan_switch
+    idle_action:
+      - output.turn_off: fogger
+      - switch.turn_off: fan_switch
 
 globals:
    - id: scenic_light_effect
