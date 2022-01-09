@@ -256,29 +256,30 @@ sensor:
     name: Sun Elevation
     type: elevation
 
-  - platform: homeassistant   # Forecast minimal temperature
-    id: weather_tempmin
-    entity_id: sensor.today_min
+  - platform: homeassistant   # actual historic temperature
+    id: weather_temperature
+    entity_id: sensor.temperature_noumea
     on_value:
       then:
         - climate.control:
               id: thermostat_air
               target_temperature_low: !lambda |-
-                return x;
+                return x-2;
+              target_temperature_high: !lambda |-
+                return x+2;
 
-  - platform: homeassistant   # Forecast maximal temperature
-    id: weather_tempmax
-    entity_id: sensor.today_max
+  - platform: homeassistant   # actual historic humidity
+    id: weather_humidity
+    entity_id: sensor.humidity_noumea
     on_value:
       then:
         - climate.control:
-              id: thermostat_air
+              id: humidity_control
+              target_temperature_low: !lambda |-
+                return x-4;
               target_temperature_high: !lambda |-
                 return x;
-        #- climate.control:
-              #id: pid_heatbed
-              #target_temperature: !lambda |-
-                #return x+5.;
+
   - platform: homeassistant   # Forecast precipitation
     id: weather_precipitation
     entity_id: sensor.today_rain
