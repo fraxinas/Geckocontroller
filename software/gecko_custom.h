@@ -74,7 +74,7 @@ class SunColorLightEffect : public LightEffect {
   ssize_t incr_{};
 };
 
-#define MAX_DAYLIGHT 0.5
+#define MAX_DAYLIGHT 0.75
 
 class SunDayLightEffect : public LightEffect {
  public:

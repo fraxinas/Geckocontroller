@@ -280,9 +280,37 @@ sensor:
               target_temperature_high: !lambda |-
                 return x;
 
-  - platform: homeassistant   # Forecast precipitation
+  - platform: homeassistant   # actual historic rain intensity (range 0-5)
     id: weather_precipitation
-    entity_id: sensor.today_rain
+    entity_id: sensor.rain_noumea
+    on_value:
+      then:
+        - output.set_level:
+            id: rain_pump_float
+            level: !lambda |-
+                return x/5.0;
+
+  # actual historic sky conditions
+  # a numeric value in the range of (0-22) which indicates increasing sky covering
+  # we're going to interpret it as a correction factor for the daylight intensitiy,
+  # the higher the value, the more daylight will be dimmed down
+  - platform: homeassistant
+    id: weather_sky
+    entity_id: sensor.sky_noumea
+    on_value:
+      then:
+        - lambda: |-
+            ESP_LOGD(TAG, "sky value changed to: %f ", x);
+            float b, dim_factor;
+            id(day_light).current_values_as_brightness(&b);
+            ESP_LOGD(TAG, "current brightness: %f", b);
+            dim_factor = (24-x)/24;
+            b *= dim_factor;
+            ESP_LOGD(TAG, "dimming by: %f, target_brightness: %f", dim_factor, b);
+            auto call = id(day_light).make_call();
+            call.set_transition_length(60*1000);
+            call.set_brightness(b);
+            call.perform();
 
   - platform: template
     name: "Combined humidity"
