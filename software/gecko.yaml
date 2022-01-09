@@ -228,9 +228,9 @@ sensor:
       id: humidity_ceiling
       filters:
         - filter_out: 100
+        - filter_out: 0
     address: 0x76
-    update_interval: 60s
-
+    update_interval: 30s
 
   - platform: sht3xd
     temperature:
@@ -242,7 +242,7 @@ sensor:
       name: "Ground Humidity"
       id: humidity_ground
     address: 0x44
-    update_interval: 60s
+    update_interval: 30s
 
   - platform: pulse_counter
     name: "Fan Tacho"
@@ -282,6 +282,17 @@ sensor:
   - platform: homeassistant   # Forecast precipitation
     id: weather_precipitation
     entity_id: sensor.today_rain
+
+  - platform: template
+    name: "Combined humidity"
+    id: humidity_combined
+    lambda: |-
+      if (id(humidity_ground).state > id(humidity_ceiling).state) {
+        return id(humidity_ground).state;
+      } else {
+        return id(humidity_ceiling).state;
+      }
+    update_interval: 30s
 
 sun:
   latitude: -22.6
@@ -353,7 +364,7 @@ climate:
   - platform: bang_bang
     id: humidity_control
     name: "Humidity"
-    sensor: humidity_ceiling
+    sensor: humidity_combined
     default_target_temperature_low: 60 °C
     default_target_temperature_high: 80 °C
     visual:
@@ -364,6 +375,7 @@ climate:
       - output.turn_on: fogger
     cool_action:
       - switch.turn_on: fan_switch
+      - output.turn_off: fogger
     idle_action:
       - output.turn_off: fogger
       - switch.turn_off: fan_switch
