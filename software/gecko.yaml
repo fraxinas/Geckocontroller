@@ -299,20 +299,6 @@ sun:
               call2.set_effect("Sunrise Daylight");
               call2.perform();
         - logger.log: Good morning, Gecko.
-        - climate.control:
-              id: humidity_control
-              target_temperature_high: !lambda |-
-                return 99;
-              target_temperature_low: !lambda |-
-                return 85;
-    - elevation: 15°
-      then:
-        - climate.control:
-              id: humidity_control
-              target_temperature_high: !lambda |-
-                return 60;
-              target_temperature_low: !lambda |-
-                return 75;
 
   on_sunrise:
     - elevation: -40°
@@ -328,20 +314,6 @@ sun:
               auto call = id(scenic_light).turn_on();
               call.set_effect("Sunset Color");
               call.perform();
-        - climate.control:
-              id: humidity_control
-              target_temperature_high: !lambda |-
-                return 99;
-              target_temperature_low: !lambda |-
-                return 85;
-    - elevation: 6°
-      then:
-        - climate.control:
-              id: humidity_control
-              target_temperature_high: !lambda |-
-                return 80;
-              target_temperature_low: !lambda |-
-                return 85;
 
 time:
   - platform: homeassistant
