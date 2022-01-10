@@ -74,8 +74,6 @@ class SunColorLightEffect : public LightEffect {
   ssize_t incr_{};
 };
 
-#define MAX_DAYLIGHT 0.75
-
 class SunDayLightEffect : public LightEffect {
  public:
   explicit SunDayLightEffect(const std::string &name) : LightEffect(name) {}
@@ -86,13 +84,14 @@ class SunDayLightEffect : public LightEffect {
     // with delay of 180 the entire transition will take 3 hours
     float current_brightness;
     id(day_light).current_values_as_brightness(&current_brightness);
+    current_brightness /= id(daylight_attenuation);
     if (this->inverse_) {
       this->brightness_ = current_brightness;
       this->final_brightness_ = 0.01;
       this->incr_ = (-1.f)/255.f;
     } else {
       this->brightness_ = current_brightness;
-      this->final_brightness_ = MAX_DAYLIGHT;
+      this->final_brightness_ = id(daylight_max);
       this->incr_ = (+1.f)/255.f;
     }
   }
@@ -111,7 +110,7 @@ class SunDayLightEffect : public LightEffect {
       call.set_state(false);
     } else {
       this->brightness_ += this->incr_;
-      call.set_brightness(this->brightness_);
+      call.set_brightness(this->brightness_*id(daylight_attenuation));
       call.set_publish(true);
       call.set_transition_length(this->transition_length_);
       call.set_state(true);

@@ -306,10 +306,13 @@ sensor:
             ESP_LOGD(TAG, "sky value changed to: %f ", x);
             float b, dim_factor;
             id(day_light).current_values_as_brightness(&b);
-            ESP_LOGD(TAG, "current brightness: %f", b);
-            dim_factor = (24-x)/24;
-            b *= dim_factor;
-            ESP_LOGD(TAG, "dimming by: %f, target_brightness: %f", dim_factor, b);
+            ESP_LOGD(TAG, "previous attenuated brightness: %f", b);
+            b /= id(daylight_attenuation);
+            ESP_LOGD(TAG, "previous normalized brightness: %f", b);
+            id(daylight_attenuation) = id(daylight_max) * (24-x)/24;
+            b *= id(daylight_attenuation);
+            ESP_LOGD(TAG, "daylight_attenuation: %f", id(daylight_attenuation));
+            ESP_LOGD(TAG, "target_brightness: %f", b);
             auto call = id(day_light).make_call();
             call.set_transition_length(60*1000);
             call.set_brightness(b);
@@ -417,6 +420,16 @@ globals:
      type: uint8_t
      restore_value: no
      initial_value: '0'
+
+   - id: daylight_max
+     type: float
+     restore_value: no
+     initial_value: '0.75'
+
+   - id: daylight_attenuation
+     type: float
+     restore_value: no
+     initial_value: '0.7'
 
 status_led:
   pin: GPIO12
