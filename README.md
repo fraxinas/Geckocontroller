@@ -49,26 +49,34 @@
 * for future extensions like a display or console
 
 ## Software
-Using ESPHome.io
-* simple YAML configuration for different sensor / output modules
-* Home Assistant web interface
-* picks Nouvelle-Calédonie (Crested Gecko's natural habitat) weather report
-* uses actual temperature values for thermostat set points
+
+### Using ESPHome.io
+* simple YAML configuration for different sensor / actor modules
+* Through Home Assistant web interface:
+  * data logging and visualization of all environmental readings
+  * manually control all actors, modify set points of controllers
+
+### Weather Simulation
+* use Nouvelle-Calédonie (Crested Gecko's natural habitat) real weather records
+* use temperature, humidity, rain and sky cover values for creating a realistic varied simulation of the habitants' indigenous environment
 * simulated sunrise, sunset, lightening storm
 
 ## TODO
-* rainfall/humidity automation
-* ventilation automation
-* more automation
-* finish console (display / rotary encoder controller unit)
-* 3d-printed cases for BME280 sensor and console
+- [ ] finish console (display / rotary encoder controller unit)
+- [x] 3d-printed cases for BME280 sensor and console
+- [x] rainfall/humidity automation
+- [ ] ventilation automation
+- [ ] moonlight simulation
+- [ ] thunderstorm simulation
 
 ## Project Diary
-| Date       | Version | Milestone                                       |
-| :--------- | :------ | :---------------------------------------------- |
-| 2021-02-21 | v1.0    | Commission of 1st prototype PCB with aisler.net |
-| 2021-03-12 | v1.1    | First time programming of bodged prototype PCB  |
+| Date       | Version | Milestone                                        |
+| :--------- | :------ | :----------------------------------------------- |
+| 2021-02-21 | v1.0    | Commission of 1st prototype PCB with aisler.net  |
+| 2021-03-12 | v1.1    | First time programming of bodged prototype PCB   |
 | 2021-04-10 |         | Fixed hardware issues with [LeoDJ](https://github.com/LeoDJ) & [Patagona](https://github.com/patagonaa) |
-| 2021-04-15 | v1.2    | Commission of 2nd revision PCB with aisler.net  |
-| 2021-05-03 | v1.2    | Completed PCB assembly, all modules working     |
-| 2021-05-16 | v1.2    | Assembling of case and first deployment of unit |
+| 2021-04-15 | v1.2    | Commission of 2nd revision PCB with aisler.net   |
+| 2021-05-03 | v1.2    | Completed PCB assembly, all modules working      |
+| 2021-05-16 | v1.2    | Assembling of case and first deployment of unit  |
+| 2022-01-02 | v1.2    | Added fogger to terrarium                        |
+| 2022-01-09 | v1.2    | Base weather simulation on real historic records |
