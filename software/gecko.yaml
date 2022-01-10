@@ -318,13 +318,13 @@ sensor:
   - platform: template
     name: "Combined humidity"
     id: humidity_combined
-    lambda: |-
-      if (id(humidity_ground).state > id(humidity_ceiling).state) {
-        return id(humidity_ground).state;
-      } else {
-        return id(humidity_ceiling).state;
-      }
     update_interval: 30s
+    unit_of_measurement: "%"
+    device_class: "humidity"
+    state_class: "measurement"
+    accuracy_decimals: 1
+    lambda: |-
+      return (id(humidity_ceiling).state + id(humidity_ground).state) / 2.0;
 
 sun:
   latitude: -22.6
