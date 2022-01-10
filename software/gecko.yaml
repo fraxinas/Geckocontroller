@@ -221,6 +221,9 @@ sensor:
       name: "Ceiling Temperature"
       oversampling: 16x
       id: temperature_ceiling
+      filters:
+        - filter_out: 188.1
+        - filter_out: -60.6
     pressure:
       name: "Air Pressure"
     humidity:
