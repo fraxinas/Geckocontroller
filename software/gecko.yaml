@@ -224,6 +224,7 @@ sensor:
       filters:
         - filter_out: 188.1
         - filter_out: -60.6
+        - filter_out: -61.9
     pressure:
       name: "Air Pressure"
     humidity:
