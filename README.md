@@ -1,6 +1,6 @@
 # Geckocontroller
 
-(CC) 2021 by Andreas Frisch <fraxinas@purplegecko.de>
+(CC) 2021-2022 by Andreas Frisch <github@fraxinas.dev>
 
 ## OwO what's this?
 **`geckocontroller` is an ESP32-based all-in-one solution for terrarium automation.**
@@ -13,7 +13,7 @@
 ### Relay Output
 * 3 solid state relays with zero-cross switching
 * individual load 1A each
-* Labelled HeatBed, HeatLamp and Pump
+* for HeatBed (/Fogger), HeatLamp and Pump
 
 ### Dimmer Output
 * opto-coupler zero cross detection
@@ -32,11 +32,12 @@
 ### Dallas Thermometer Input
 * 2 inputs for DS18B20 bus temperature sensors
 
-### I²C Port
-* for a BME280 Thermo/Hygro/Baro sensor module
+### I²C Ports
+* BME280 Thermo/Hygro/Baro sensor module (ceiling)
+* SHT-3xD Thermo/Hygro sensor (ground)
 
 ### Load Cell Input
-* HX711-based load cell ADC
+* HX711-based load cell amplifier/ADC
 * for weighing / occupancy detection
 
 ### USB-C Port
@@ -47,6 +48,9 @@
 
 ### SPI / Addon Connector
 * for future extensions like a display or console
+
+### Documentation
+* [Circuit Calculations](hardware/calculations/README.md)
 
 ## Software
 
@@ -60,6 +64,9 @@
 * use Nouvelle-Calédonie (Crested Gecko's natural habitat) real weather records
 * use temperature, humidity, rain and sky cover values for creating a realistic varied simulation of the habitants' indigenous environment
 * simulated sunrise, sunset, lightening storm
+
+### Documentation
+* [How-to Setup & Calibrate](software/README.md)
 
 ## TODO
 - [ ] finish console (display / rotary encoder controller unit)
@@ -78,5 +85,5 @@
 | 2021-04-15 | v1.2    | Commission of 2nd revision PCB with aisler.net   |
 | 2021-05-03 | v1.2    | Completed PCB assembly, all modules working      |
 | 2021-05-16 | v1.2    | Assembling of case and first deployment of unit  |
-| 2022-01-02 | v1.2    | Added fogger to terrarium                        |
-| 2022-01-09 | v1.2    | Base weather simulation on real historic records |
+| 2022-01-02 |         | Added fogger to terrarium                        |
+| 2022-01-09 |         | Base weather simulation on real historic records |
