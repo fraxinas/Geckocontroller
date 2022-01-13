@@ -222,9 +222,10 @@ sensor:
       oversampling: 16x
       id: temperature_ceiling
       filters:
-        - filter_out: 188.1
-        - filter_out: -60.6
-        - filter_out: -61.9
+        - lambda: |-
+            if (x > 0 && x < 60)
+              return x;
+            return {};
     pressure:
       name: "Air Pressure"
     humidity:
@@ -241,7 +242,10 @@ sensor:
       name: "Ground Temperature"
       id: temperature_ground
       filters:
-        - filter_out: 188.1
+        - lambda: |-
+            if (x > 0 && x < 60)
+              return x;
+            return {};
     humidity:
       name: "Ground Humidity"
       id: humidity_ground
