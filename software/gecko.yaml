@@ -2,12 +2,13 @@ esphome:
   name: geckocontrol
   platform: ESP32
   board: nodemcu-32s
-  includes: gecko_custom.h
+  includes:
+    - gecko_custom.h
 
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-
+  
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
     ssid: "Geckocontrol Fallback Hotspot"
@@ -334,7 +335,35 @@ sensor:
     lambda: |-
       return (id(humidity_ceiling).state + id(humidity_ground).state) / 2.0;
 
+time:
+  - platform: homeassistant
+    id: esptime
+    on_time_sync:
+      then:
+        - lambda: |-
+              auto ts = id(esptime).now();
+              ESPTime remote_ts = time::ESPTime::from_epoch_utc(ts.timestamp - 182*24*60*60);
+              char datetimestr[21];
+              remote_ts.strftime(datetimestr, 20, "%Y-%m-%d %H:%M:%S");
+              ESP_LOGD(TAG, "offset timestamp: %s", datetimestr);
+              id(remote_time).set_epoch_time(ts.timestamp - 182*24*60*60);
+
+  - platform: homeassistant
+    id: remote_time
+    timezone: Pacific/Noumea
+    on_time_sync:
+      then:
+        - logger.log: "Synchronized remote_time"
+        - lambda: |-
+              auto ts = id(remote_time).now();
+              ESPTime remote_ts = time::ESPTime::from_epoch_utc(ts.timestamp);
+              char datetimestr[21];
+              remote_ts.strftime(datetimestr, 20, "%Y-%m-%d %H:%M:%S");
+              ESP_LOGD(TAG, "remote_time timestamp = %s", datetimestr);
+
 sun:
+  id: remote_sun
+  time_id: remote_time
   latitude: -22.6
   longitude: 167.5
 
@@ -366,9 +395,32 @@ sun:
               call.set_effect("Sunset Color");
               call.perform();
 
-time:
-  - platform: homeassistant
-    id: esptime
+  #on_sunrise:
+    #- elevation: 0°
+      #then:
+        #- lambda: |-
+              #auto call = id(scenic_light).turn_on();
+              #call.set_effect("Sunrise Color");
+              #call.perform();
+              #auto call2 = id(day_light).turn_on();
+              #call2.set_effect("Sunrise Daylight");
+              #call2.perform();
+        #- logger.log: Good morning, Gecko.
+
+  #on_sunset:
+    #- elevation: 44°
+      #then:
+        #- lambda: |-
+              #auto call = id(day_light).make_call();
+              #call.set_effect("Sunset Daylight");
+              #call.perform();
+    #- elevation: 5°
+      #then:
+        #- logger.log: Good night, Gecko.
+        #- lambda: |-
+              #auto call = id(scenic_light).turn_on();
+              #call.set_effect("Sunset Color");
+              #call.perform();
 
 climate:
   - platform: thermostat
