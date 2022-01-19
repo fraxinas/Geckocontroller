@@ -364,11 +364,15 @@ time:
 sun:
   id: remote_sun
   time_id: remote_time
-  latitude: -22.6
-  longitude: 167.5
+  #latitude: -22.6
+  #longitude: 167.5
+  # Take original Noumea / Nouvelle-Calédonie latitude
+  # but mirror it to the northern hemisphere
+  # and use actual local longitude
+  latitude: 22.6
+  longitude: 9.15
 
-# Sunset and Sunrise flipped because we are on the other side of the globe
-  on_sunset:
+  on_sunrise:
     - elevation: 0°
       then:
         - lambda: |-
@@ -380,47 +384,20 @@ sun:
               call2.perform();
         - logger.log: Good morning, Gecko.
 
-  on_sunrise:
-    - elevation: -40°
+  on_sunset:
+    - elevation: 44°
       then:
         - lambda: |-
               auto call = id(day_light).make_call();
               call.set_effect("Sunset Daylight");
               call.perform();
-    - elevation: -6°
+    - elevation: 5°
       then:
         - logger.log: Good night, Gecko.
         - lambda: |-
               auto call = id(scenic_light).turn_on();
               call.set_effect("Sunset Color");
               call.perform();
-
-  #on_sunrise:
-    #- elevation: 0°
-      #then:
-        #- lambda: |-
-              #auto call = id(scenic_light).turn_on();
-              #call.set_effect("Sunrise Color");
-              #call.perform();
-              #auto call2 = id(day_light).turn_on();
-              #call2.set_effect("Sunrise Daylight");
-              #call2.perform();
-        #- logger.log: Good morning, Gecko.
-
-  #on_sunset:
-    #- elevation: 44°
-      #then:
-        #- lambda: |-
-              #auto call = id(day_light).make_call();
-              #call.set_effect("Sunset Daylight");
-              #call.perform();
-    #- elevation: 5°
-      #then:
-        #- logger.log: Good night, Gecko.
-        #- lambda: |-
-              #auto call = id(scenic_light).turn_on();
-              #call.set_effect("Sunset Color");
-              #call.perform();
 
 climate:
   - platform: thermostat
