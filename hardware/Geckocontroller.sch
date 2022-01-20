@@ -3113,10 +3113,10 @@ F 3 "" H 10000 1600 50  0001 C CNN
 	1    0    0    -1  
 $EndComp
 $Comp
-L Connector:Conn_01x04_Male J?
+L Connector:Conn_01x04_Male J1
 U 1 1 60BDA454
 P 700 5950
-F 0 "J?" H 808 6231 50  0001 C CNN
+F 0 "J1" H 808 6231 50  0001 C CNN
 F 1 "SHT31" H 808 6139 50  0000 C CNN
 F 2 "Connector_JST:JST_PH_B4B-PH-K_1x04_P2.00mm_Vertical" H 700 5950 50  0001 C CNN
 F 3 "~" H 700 5950 50  0001 C CNN
