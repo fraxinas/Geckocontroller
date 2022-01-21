@@ -39,20 +39,6 @@ custom_component:
 
 switch:
   - platform: template
-    id: fan_switch
-    name: "Ventilator on/off"
-    turn_on_action:
-      then:
-        - output.set_level:
-            id: fan_pwm
-            level: 75%
-    turn_off_action:
-      then:
-        - output.set_level:
-            id: fan_pwm
-            level: 0%
-            
-  - platform: template
     id: heat_lamp
     name: "Heat Lamp on/off"
     turn_on_action:
@@ -172,10 +158,12 @@ light:
               flashing = false;
             }
 
-  - platform: monochromatic
+fan:
+  - platform: speed
+    id: fan_speed
     output: fan_pwm
-    name: "Ventilator"
-    gamma_correct: 1.0
+    name: "Ventilation"
+    speed_count: 100
 
 i2c:
   sda: 25
@@ -204,7 +192,7 @@ sensor:
       - filter_out: -121
       - lambda: |-
             return (x > 2.5 ? x : 0.0);
-             
+
   - platform: dallas
     address: !secret DsAddressHeatBed
     name: "Temperature HeatBed"
@@ -412,12 +400,12 @@ climate:
     min_heating_run_time: 120s
     min_idle_time: 60s
     cool_action:
-      - switch.turn_on: fan_switch
+      - fan.turn_on: fan_speed
     heat_action:
       - switch.turn_on: heat_lamp
     idle_action:
       - switch.turn_off: heat_lamp
-      - switch.turn_off: fan_switch
+      - fan.turn_off: fan_speed
 
   #- platform: pid
     #id: pid_heatbed
@@ -443,11 +431,11 @@ climate:
     heat_action:
       - output.turn_on: fogger
     cool_action:
-      - switch.turn_on: fan_switch
+      - fan.turn_on: fan_speed
       - output.turn_off: fogger
     idle_action:
       - output.turn_off: fogger
-      - switch.turn_off: fan_switch
+      - fan.turn_off: fan_speed
 
 globals:
    - id: scenic_light_effect
