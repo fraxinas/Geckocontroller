@@ -361,7 +361,7 @@ sun:
   longitude: 9.15
 
   on_sunrise:
-    - elevation: 0°
+    - elevation: 10°
       then:
         - lambda: |-
               auto call = id(scenic_light).turn_on();

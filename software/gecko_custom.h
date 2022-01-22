@@ -10,12 +10,12 @@ globals::GlobalsComponent<uint16_t> *sun_effect_delay;
 
 #define SUN_LUT_LEN 7
 static uint8_t sun_lut[SUN_LUT_LEN][4] = {
-  {40, 20, 250, 20},
-  {10, 5, 250, 150},
-  {80, 5, 5, 250},
-  {100, 200, 5, 200},
-  {150, 250, 130, 5},
-  {180, 250, 200, 20},
+  {100, 20, 250, 20},
+  {120, 5, 250, 150},
+  {140, 5, 5, 250},
+  {160, 200, 5, 200},
+  {180, 250, 130, 5},
+  {200, 250, 200, 20},
   {220, 250, 250, 250}};
 
 class SunColorLightEffect : public LightEffect {
@@ -188,7 +188,7 @@ void RainPumpOutput::dump_config() {
   LOG_FLOAT_OUTPUT(this);
 }
 
-void RainPumpOutput::write_state(float state) { 
+void RainPumpOutput::write_state(float state) {
   ESP_LOGD(TAG, "write_state(%f)", state);
   this->state_ = state;
 }
