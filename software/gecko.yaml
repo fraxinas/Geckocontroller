@@ -8,7 +8,7 @@ esphome:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-  
+
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
     ssid: "Geckocontrol Fallback Hotspot"
@@ -67,12 +67,19 @@ switch:
     id: fog_switch_momentary
     name: "Sleepy hollow"
     turn_on_action:
-      - output.turn_on:
-          id: fogger
+      - output.set_level:
+            id: fogger_float
+            level: 100%
       - delay: 30s
-      - output.turn_off:
-          id: fogger
+      - output.set_level:
+            id: fogger_float
+            level: 0%
       - switch.turn_off: fog_switch_momentary
+
+  - platform: template
+    name: "PID Humidity Autotune"
+    turn_on_action:
+      - climate.pid.autotune: humidity_control
 
 output:
   - platform: ac_dimmer
@@ -90,9 +97,12 @@ output:
   - platform: gpio
     pin: 4
     id: rain_pump
-  - platform: gpio
+  - platform: slow_pwm
     pin: 2
-    id: fogger
+    id: fogger_float
+    min_power: 0.0417
+    max_power: 0.25
+    period: 120s
   - platform: ledc
     pin: 32
     id: component_red
@@ -224,7 +234,7 @@ sensor:
         - filter_out: 100
         - filter_out: 0
     address: 0x76
-    update_interval: 30s
+    update_interval: 5s
 
   - platform: sht3xd
     temperature:
@@ -239,7 +249,7 @@ sensor:
       name: "Ground Humidity"
       id: humidity_ground
     address: 0x44
-    update_interval: 30s
+    update_interval: 10s
 
   - platform: pulse_counter
     name: "Fan Tacho"
@@ -272,10 +282,8 @@ sensor:
       then:
         - climate.control:
               id: humidity_control
-              target_temperature_low: !lambda |-
-                return x-4;
-              target_temperature_high: !lambda |-
-                return x;
+              target_temperature: !lambda |-
+                return x-1;
 
   - platform: homeassistant   # actual historic rain intensity (range 0-5)
     id: weather_precipitation
@@ -315,7 +323,7 @@ sensor:
   - platform: template
     name: "Combined humidity"
     id: humidity_combined
-    update_interval: 30s
+    update_interval: 5s
     unit_of_measurement: "%"
     device_class: "humidity"
     state_class: "measurement"
@@ -407,35 +415,21 @@ climate:
       - switch.turn_off: heat_lamp
       - fan.turn_off: fan_speed
 
-  #- platform: pid
-    #id: pid_heatbed
-    #name: "PID Heatbed"
-    #sensor: temperature_heatbed
-    #default_target_temperature: 30°C
-    #heat_output: heat_bed_pwm
-    #control_parameters:
-      #kp: 2.5
-      #ki: 0.5
-      #kd: 1.0
-
-  - platform: bang_bang
+  - platform: pid
     id: humidity_control
     name: "Humidity"
     sensor: humidity_combined
-    default_target_temperature_low: 60 °C
-    default_target_temperature_high: 80 °C
+    default_target_temperature: 70 °C
+    heat_output: fogger_float
+    cool_output: fan_pwm
     visual:
       min_temperature: 30
-      max_temperature: 98
+      max_temperature: 100
       temperature_step: 2
-    heat_action:
-      - output.turn_on: fogger
-    cool_action:
-      - fan.turn_on: fan_speed
-      - output.turn_off: fogger
-    idle_action:
-      - output.turn_off: fogger
-      - fan.turn_off: fan_speed
+    control_parameters:
+      kp: 0
+      ki: 0
+      kd: 0
 
 globals:
    - id: scenic_light_effect
