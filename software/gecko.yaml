@@ -100,7 +100,7 @@ output:
   - platform: slow_pwm
     pin: 2
     id: fogger_float
-    min_power: 0.0417
+    min_power: 0.0
     max_power: 0.25
     period: 120s
   - platform: ledc
@@ -234,7 +234,7 @@ sensor:
         - filter_out: 100
         - filter_out: 0
     address: 0x76
-    update_interval: 5s
+    update_interval: 15s
 
   - platform: sht3xd
     temperature:
@@ -249,7 +249,7 @@ sensor:
       name: "Ground Humidity"
       id: humidity_ground
     address: 0x44
-    update_interval: 10s
+    update_interval: 20s
 
   - platform: pulse_counter
     name: "Fan Tacho"
@@ -323,7 +323,7 @@ sensor:
   - platform: template
     name: "Combined humidity"
     id: humidity_combined
-    update_interval: 5s
+    update_interval: 15s
     unit_of_measurement: "%"
     device_class: "humidity"
     state_class: "measurement"
@@ -427,9 +427,9 @@ climate:
       max_temperature: 100
       temperature_step: 2
     control_parameters:
-      kp: 0
-      ki: 0
-      kd: 0
+      kp: 0.22
+      ki: 0.005
+      kd: 6.38
 
 globals:
    - id: scenic_light_effect
