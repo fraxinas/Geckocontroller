@@ -96,9 +96,7 @@ output:
   - platform: slow_pwm
     pin: 2
     id: fogger_float
-    min_power: 0.0
-    max_power: 0.25
-    period: 120s
+    period: 60s
   - platform: ledc
     pin: 32
     id: component_red
@@ -124,6 +122,19 @@ output:
       max_power: 0.02
       # max. 18 seconds of rain per half hour
   - platform: template
+    id: fogger_humidifier
+    type: float
+    write_action:
+      - lambda: |-
+            ClimateAction action = id(humidity_control).action;
+            if (action == CLIMATE_ACTION_HEATING) {
+              float duty_cycle = state/4.0;
+              ESP_LOGD(TAG, "Active Humidity PID Controller set fogger to: %.3f (duty cycle: %.0f%%)", state, duty_cycle*100);
+              id(fogger_float).set_level(duty_cycle);
+            } else {
+              ESP_LOGD(TAG, "Humidity PID Controller turn off fogger");
+            }
+  - platform: template
     id: fan_dehumidifier
     type: float
     write_action:
@@ -132,7 +143,7 @@ output:
             ClimateAction action = id(humidity_control).action;
             if (action == CLIMATE_ACTION_COOLING || action == CLIMATE_ACTION_DRYING) {
               auto fan = id(fan_speed).make_call();
-              ESP_LOGD(TAG, "Active Humidity PID Controller set fan to: %f ", state);
+              ESP_LOGD(TAG, "Active Humidity PID Controller set fan to: %.3f ", state);
               if (state) {
                 fan.set_state(true);
                 fan.set_speed(state*100);
@@ -141,9 +152,8 @@ output:
               }
               fan.perform();
             } else {
-              ESP_LOGD(TAG, "Humidity PID Controller not currently drying, ignore fan value of %f", state);
+              ESP_LOGD(TAG, "Humidity PID Controller not currently drying, ignore fan value of %.3f", state);
             }
-
   - platform: template
     id: fan_cooler
     type: binary
@@ -158,7 +168,6 @@ output:
               fan.set_state(state);
               fan.perform();
             }
-
 
 light:
   - platform: monochromatic
@@ -451,7 +460,7 @@ climate:
     name: "Humidity"
     sensor: humidity_combined
     default_target_temperature: 70 °C
-    heat_output: fogger_float
+    heat_output: fogger_humidifier
     cool_output: fan_dehumidifier
     visual:
       min_temperature: 30
