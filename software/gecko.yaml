@@ -128,6 +128,42 @@ output:
       #period: 30min
       max_power: 0.02
       # max. 18 seconds of rain per half hour
+  - platform: template
+    id: fan_dehumidifier
+    type: float
+    write_action:
+      # fan slider MUST be controlled with FanStateCalls, fan->turn_on() etc. don't work
+      - lambda: |-
+            ClimateAction action = id(humidity_control).action;
+            if (action == CLIMATE_ACTION_COOLING || action == CLIMATE_ACTION_DRYING) {
+              auto fan = id(fan_speed).make_call();
+              ESP_LOGD(TAG, "Active Humidity PID Controller set fan to: %f ", state);
+              if (state) {
+                fan.set_state(true);
+                fan.set_speed(state*100);
+              } else {
+                fan.set_state(false);
+              }
+              fan.perform();
+            } else {
+              ESP_LOGD(TAG, "Humidity PID Controller not currently drying, ignore fan value of %f", state);
+            }
+
+  - platform: template
+    id: fan_cooler
+    type: binary
+    write_action:
+      - lambda: |-
+            ClimateAction action = id(humidity_control).action;
+            if (state && action == CLIMATE_ACTION_HEATING) {
+              ESP_LOGD(TAG, "not turning on cooling fan because currently humidifying!");
+            } else {
+              ESP_LOGD(TAG, "Temperature PID Controller set fan to: %d ", state);
+              auto fan = id(fan_speed).make_call();
+              fan.set_state(state);
+              fan.perform();
+            }
+
 
 light:
   - platform: monochromatic
@@ -408,12 +444,12 @@ climate:
     min_heating_run_time: 120s
     min_idle_time: 60s
     cool_action:
-      - fan.turn_on: fan_speed
+      - output.turn_on: fan_cooler
     heat_action:
       - switch.turn_on: heat_lamp
     idle_action:
       - switch.turn_off: heat_lamp
-      - fan.turn_off: fan_speed
+      - output.turn_off: fan_cooler
 
   - platform: pid
     id: humidity_control
@@ -421,7 +457,7 @@ climate:
     sensor: humidity_combined
     default_target_temperature: 70 °C
     heat_output: fogger_float
-    cool_output: fan_pwm
+    cool_output: fan_dehumidifier
     visual:
       min_temperature: 30
       max_temperature: 100
