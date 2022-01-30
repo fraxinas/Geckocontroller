@@ -52,34 +52,30 @@ switch:
             id: heat_lamp_pwm
             level: 0%
 
+button:
   - platform: template
-    id: pump_switch_momentary
+    id: pump_button
     name: "Let it rain"
-    turn_on_action:
+    icon: "mdi:weather-rainy"
+    on_press:
       - output.turn_on:
           id: rain_pump
-      - delay: 5s
+      - delay: 4s
       - output.turn_off:
           id: rain_pump
-      - switch.turn_off: pump_switch_momentary
 
   - platform: template
-    id: fog_switch_momentary
+    id: fog_button
     name: "Sleepy hollow"
-    turn_on_action:
+    icon: "mdi:weather-fog"
+    on_press:
       - output.set_level:
             id: fogger_float
-            level: 100%
+            level: 1.0
       - delay: 30s
       - output.set_level:
             id: fogger_float
-            level: 0%
-      - switch.turn_off: fog_switch_momentary
-
-  - platform: template
-    name: "PID Humidity Autotune"
-    turn_on_action:
-      - climate.pid.autotune: humidity_control
+            level: 0.0
 
 output:
   - platform: ac_dimmer
