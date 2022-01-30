@@ -116,7 +116,6 @@ output:
     pin: GPIO14
     id: fan_pwm
     frequency: 25000 hz
-    channel: 4
   - platform: custom
     type: float
     lambda: |-
