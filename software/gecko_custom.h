@@ -105,9 +105,11 @@ class SunDayLightEffect : public LightEffect {
     if (!this->inverse_ && this->brightness_ >= this->final_brightness_) {
       ESP_LOGD(TAG, "SunDayLightEffect '%s' at max. brightness.", this->name_.c_str());
       call.set_effect(0);
+      id(is_daytime) = true;
     } else if (this->inverse_ && this->brightness_ <= this->final_brightness_) {
       ESP_LOGD(TAG, "SunDayLightEffect '%s' off.", this->name_.c_str());
       call.set_state(false);
+      id(is_daytime) = false;
     } else {
       this->brightness_ += this->incr_;
       call.set_brightness(this->brightness_*id(daylight_attenuation));

@@ -39,18 +39,16 @@ custom_component:
 
 switch:
   - platform: template
-    id: heat_lamp
-    name: "Heat Lamp on/off"
+    name: "Daytime / Nighttime"
+    icon: mdi:theme-light-dark
+    lambda: |-
+      return id(is_daytime);
     turn_on_action:
-      then:
-        - output.set_level:
-            id: heat_lamp_pwm
-            level: 100%
+      - lambda: |-
+          id(is_daytime) = true;
     turn_off_action:
-      then:
-        - output.set_level:
-            id: heat_lamp_pwm
-            level: 0%
+      - lambda: |-
+          id(is_daytime) = false;
 
 button:
   - platform: template
@@ -89,7 +87,7 @@ output:
   - platform: slow_pwm
     pin: 15
     id: heat_lamp_pwm
-    period: 2min
+    period: 1min
   - platform: gpio
     pin: 4
     id: rain_pump
@@ -177,15 +175,15 @@ output:
             }
 
   - platform: template
-    id: daylight_heater
+    id: heater
     type: float
     write_action:
       - lambda: |-
             ClimateMode mode = id(thermostat_air).mode;
-            if (mode != CLIMATE_MODE_HEAT_COOL) {
-              ESP_LOGD(TAG, "ignored daylight write_action because thermostat is off");
-            } else {
-              ESP_LOGD(TAG, "Temperature PID Controller daylight lamp write_action: %.3f", state);
+            if (mode == CLIMATE_MODE_OFF) {
+                ESP_LOGD(TAG, "ignored heater write_action because thermostat is off");
+            } else if (id(is_daytime) == true) {
+              ESP_LOGD(TAG, "Temperature PID Controller daylight write_action: %.3f", state);
               auto daylight = id(day_light).make_call();
               daylight.set_transition_length(10000);
               float brightness = state;
@@ -209,6 +207,12 @@ output:
               daylight.set_state(true);
               daylight.set_brightness(brightness);
               daylight.perform();
+            } else {
+              ESP_LOGD(TAG, "Temperature PID Controller nighttime heatlamp write_action: %.3f", state);
+              auto heatlamp = id(heat_lamp).make_call();
+              heatlamp.set_state(!!state);
+              heatlamp.set_brightness(state ? state : 0.001);
+              heatlamp.perform();
             }
 
 light:
@@ -218,6 +222,11 @@ light:
     name: "Dimmer Daylight"
     gamma_correct: 1.0
     default_transition_length: 0s
+
+  - platform: monochromatic
+    id: heat_lamp
+    output: heat_lamp_pwm
+    name: "Heat Lamp"
 
   - platform: rgb
     name: "Scenic Light"
@@ -481,7 +490,7 @@ climate:
     name: "Thermostat Air Temp"
     sensor: temperature_ceiling
     default_target_temperature: 22 °C
-    heat_output: daylight_heater
+    heat_output: heater
     cool_output: fan_cooler
     visual:
       min_temperature: 12
@@ -522,6 +531,11 @@ globals:
      type: float
      restore_value: no
      initial_value: '0.7'
+
+   - id: is_daytime
+     type: bool
+     restore_value: yes
+     initial_value: 'false'
 
 status_led:
   pin: GPIO12
