@@ -192,13 +192,17 @@ output:
                 ESP_LOGD(TAG, "clamped to daylight_attenuation=%.2f", brightness);
               }
               else if (brightness < (id(daylight_attenuation)*0.5)) {
-                auto tmp_ctrl = id(thermostat_air).make_call();
+                auto therm_ctrl = id(thermostat_air).make_call();
                 float target_temp = id(thermostat_air).target_temperature;
                 float actual_temp = (id(temperature_ceiling).state + id(temperature_ground).state) / 2.0;
                 float diff = actual_temp-target_temp;
                 ESP_LOGD(TAG, "target_temp=%.2f°C, actual_temp=%.2f°C, diff=%.2fK", target_temp, actual_temp, diff);
-                brightness = (id(daylight_attenuation)*0.5) - diff*0.3;
-                ESP_LOGD(TAG, "0.5*daylight_attenuation=%.2f (%+.2f) => brightness=%.2f", id(daylight_attenuation)*0.5, diff*(-0.3), brightness);
+                if (diff > 0.0)
+                  diff /= 3.0;
+                else
+                  diff /= 10.0;
+                brightness = (id(daylight_attenuation)*0.5) - diff;
+                ESP_LOGD(TAG, "0.5*daylight_attenuation=%.2f (%+.2f) => brightness=%.2f", id(daylight_attenuation)*0.5, diff*(-1.0), brightness);
                 if (brightness <= 0.0) {
                   brightness = 0.001;
                 }
@@ -560,7 +564,7 @@ globals:
    - id: daylight_max
      type: float
      restore_value: no
-     initial_value: '1.0'
+     initial_value: '0.75'
 
    - id: daylight_attenuation
      type: float
