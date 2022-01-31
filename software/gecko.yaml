@@ -39,7 +39,7 @@ custom_component:
 
 switch:
   - platform: template
-    name: "Daytime / Nighttime"
+    name: "Nighttime / Daytime"
     icon: mdi:theme-light-dark
     lambda: |-
       return id(is_daytime);
@@ -356,7 +356,7 @@ sensor:
 
   - platform: homeassistant   # actual historic temperature
     id: weather_temperature
-    entity_id: sensor.temperature_noumea
+    entity_id: sensor.temperature_in_france_noumea_182_days_ago
     on_value:
       then:
         - climate.control:
@@ -366,7 +366,7 @@ sensor:
 
   - platform: homeassistant   # actual historic humidity
     id: weather_humidity
-    entity_id: sensor.humidity_noumea
+    entity_id: sensor.humidity_in_france_noumea_182_days_ago
     on_value:
       then:
         - climate.control:
@@ -376,7 +376,7 @@ sensor:
 
   - platform: homeassistant   # actual historic rain intensity (range 0-5)
     id: weather_precipitation
-    entity_id: sensor.rain_noumea
+    entity_id: sensor.rain_in_france_noumea_182_days_ago
     on_value:
       then:
         - output.set_level:
@@ -390,7 +390,7 @@ sensor:
   # the higher the value, the more daylight will be dimmed down
   - platform: homeassistant
     id: weather_sky
-    entity_id: sensor.sky_noumea
+    entity_id: sensor.sky_in_france_noumea_182_days_ago
     on_value:
       then:
         - lambda: |-
