@@ -394,7 +394,7 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            ESP_LOGD(TAG, "sky value changed to: %f ", x);
+            ESP_LOGD(TAG, "sky value changed to: %.0f", x);
             float b, dim_factor;
             id(day_light).current_values_as_brightness(&b);
             ESP_LOGD(TAG, "previous attenuated brightness: %f", b);
@@ -408,6 +408,21 @@ sensor:
             call.set_transition_length(60*1000);
             call.set_brightness(b);
             call.perform();
+
+  - platform: homeassistant
+    id: moon
+    entity_id: sensor.moon_in_france_noumea_182_days_ago
+    on_value:
+      then:
+        - lambda: |-
+            std::string effect = id(scenic_light)->get_effect_name();
+            if (id(is_daytime) == false && effect == "None") {
+              auto call = id(scenic_light).make_call();
+              float attenuated_moonlight = (x/2.0 + x/2.0*(id(daylight_attenuation)/id(daylight_max)))/100.0 + 0.01;
+              call.set_brightness(attenuated_moonlight);
+              call.set_state(state > 0.0 ? true : false);
+              call.perform();
+            }
 
   - platform: template
     name: "Combined humidity"
