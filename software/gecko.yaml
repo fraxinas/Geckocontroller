@@ -148,29 +148,67 @@ output:
             if (action == CLIMATE_ACTION_COOLING || action == CLIMATE_ACTION_DRYING) {
               auto fan = id(fan_speed).make_call();
               ESP_LOGD(TAG, "Active Humidity PID Controller set fan to: %.3f ", state);
-              if (state) {
-                fan.set_state(true);
-                fan.set_speed(state*100);
-              } else {
-                fan.set_state(false);
-              }
+              fan.set_state(state > 0.0 ? true : false);
+              fan.set_speed(state*100);
               fan.perform();
             } else {
               ESP_LOGD(TAG, "Humidity PID Controller not currently drying, ignore fan value of %.3f", state);
             }
   - platform: template
     id: fan_cooler
-    type: binary
+    type: float
     write_action:
       - lambda: |-
-            ClimateAction action = id(humidity_control).action;
-            if (state && action == CLIMATE_ACTION_HEATING) {
-              ESP_LOGD(TAG, "not turning on cooling fan because currently humidifying!");
+            auto hum_ctrl = id(humidity_control);
+            float hum_ctrl_val = hum_ctrl->get_output_value() * (-1.0);
+            auto tmp_ctrl = id(thermostat_air);
+            float tmp_ctrl_val = tmp_ctrl->get_output_value() * (-1.0);
+            ESP_LOGD(TAG, "thermostat cooler fan write action. humidifier: %.2f  thermostat: %.2f", hum_ctrl_val, tmp_ctrl_val);
+            if (hum_ctrl_val < 0.0) {
+              ESP_LOGD(TAG, "not turning on cooling fan (%.3f) because currently humidifying!", state);
+            } else if (hum_ctrl_val > tmp_ctrl_val) {
+              ESP_LOGD(TAG, "not lowering fan speed because dehumidifier value is higher (%.2f > %.2f)", hum_ctrl_val, tmp_ctrl_val);
             } else {
-              ESP_LOGD(TAG, "Temperature PID Controller set fan to: %d ", state);
+              ESP_LOGD(TAG, "Temperature PID Controller set fan to: %.3f ", state);
               auto fan = id(fan_speed).make_call();
-              fan.set_state(state);
+              fan.set_state(state > 0.0 ? true : false);
+              fan.set_speed(state*100);
               fan.perform();
+            }
+
+  - platform: template
+    id: daylight_heater
+    type: float
+    write_action:
+      - lambda: |-
+            ClimateMode mode = id(thermostat_air).mode;
+            if (mode != CLIMATE_MODE_HEAT_COOL) {
+              ESP_LOGD(TAG, "ignored daylight write_action because thermostat is off");
+            } else {
+              ESP_LOGD(TAG, "Temperature PID Controller daylight lamp write_action: %.3f", state);
+              auto daylight = id(day_light).make_call();
+              daylight.set_transition_length(10000);
+              float brightness = state;
+              if (brightness > id(daylight_attenuation)) {
+                brightness = id(daylight_attenuation);
+                ESP_LOGD(TAG, "clamped to daylight_attenuation=%.2f", brightness);
+              }
+              else if (brightness < (id(daylight_attenuation)*0.5)) {
+                auto tmp_ctrl = id(thermostat_air).make_call();
+                float target_temp = id(thermostat_air).target_temperature;
+                float actual_temp = (id(temperature_ceiling).state + id(temperature_ground).state) / 2.0;
+                float diff = actual_temp-target_temp;
+                ESP_LOGD(TAG, "target_temp=%.2f°C, actual_temp=%.2f°C, diff=%.2fK", target_temp, actual_temp, diff);
+                brightness = (id(daylight_attenuation)*0.5) - diff*0.3;
+                ESP_LOGD(TAG, "0.5*daylight_attenuation=%.2f (%+.2f) => brightness=%.2f", id(daylight_attenuation)*0.5, diff*(-0.3), brightness);
+                if (brightness <= 0.0) {
+                  daylight.set_state(false);
+                  brightness = 0.001;
+                }
+              }
+              daylight.set_state(true);
+              daylight.set_brightness(brightness);
+              daylight.perform();
             }
 
 light:
@@ -314,10 +352,8 @@ sensor:
       then:
         - climate.control:
               id: thermostat_air
-              target_temperature_low: !lambda |-
-                return x-2;
-              target_temperature_high: !lambda |-
-                return x+2;
+              target_temperature: !lambda |-
+                return x;
 
   - platform: homeassistant   # actual historic humidity
     id: weather_humidity
@@ -359,7 +395,7 @@ sensor:
             b *= id(daylight_attenuation);
             ESP_LOGD(TAG, "daylight_attenuation: %f", id(daylight_attenuation));
             ESP_LOGD(TAG, "target_brightness: %f", b);
-            auto call = id(day_light).make_call();
+            auto call = id(scenic_light).make_call();
             call.set_transition_length(60*1000);
             call.set_brightness(b);
             call.perform();
@@ -440,24 +476,20 @@ sun:
               call.perform();
 
 climate:
-  - platform: thermostat
+  - platform: pid
     id: thermostat_air
     name: "Thermostat Air Temp"
     sensor: temperature_ceiling
-    default_target_temperature_low: 20 °C
-    default_target_temperature_high: 28 °C
-    min_cooling_off_time: 60s
-    min_cooling_run_time: 60s
-    min_heating_off_time: 60s
-    min_heating_run_time: 120s
-    min_idle_time: 60s
-    cool_action:
-      - output.turn_on: fan_cooler
-    heat_action:
-      - switch.turn_on: heat_lamp
-    idle_action:
-      - switch.turn_off: heat_lamp
-      - output.turn_off: fan_cooler
+    default_target_temperature: 22 °C
+    heat_output: daylight_heater
+    cool_output: fan_cooler
+    visual:
+      min_temperature: 12
+      max_temperature: 36
+    control_parameters:
+      kp: 2.34544
+      ki: 0.00987
+      kd: 208.97874
 
   - platform: pid
     id: humidity_control
