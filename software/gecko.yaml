@@ -131,7 +131,7 @@ output:
             ClimateAction action = id(humidity_control).action;
             if (action == CLIMATE_ACTION_HEATING) {
               float duty_cycle = state/4.0;
-              ESP_LOGD(TAG, "Active Humidity PID Controller set fogger to: %.3f (duty cycle: %.0f%%)", state, duty_cycle*100);
+              ESP_LOGD(TAG, "Humidity PID Controller fogger write_action: %.3f / duty cycle: %.0f%%", state, duty_cycle*100);
               id(fogger_float).set_level(duty_cycle);
             } else {
               ESP_LOGD(TAG, "Humidity PID Controller turn off fogger");
@@ -142,36 +142,54 @@ output:
     write_action:
       # fan slider MUST be controlled with FanStateCalls, fan->turn_on() etc. don't work
       - lambda: |-
-            ClimateAction action = id(humidity_control).action;
-            if (action == CLIMATE_ACTION_COOLING || action == CLIMATE_ACTION_DRYING) {
+            ClimateMode therm_mode = id(thermostat_air).mode;
+            ClimateMode humid_mode = id(humidity_control).mode;
+            if (humid_mode == CLIMATE_MODE_HEAT_COOL || humid_mode == CLIMATE_MODE_COOL) {
               auto fan = id(fan_speed).make_call();
-              ESP_LOGD(TAG, "Active Humidity PID Controller set fan to: %.3f ", state);
-              fan.set_state(state > 0.0 ? true : false);
-              fan.set_speed(state*100);
+              float hum_ctrl_val = id(humidity_control)->get_output_value() * (-1.0);
+              float therm_ctrl_val = id(thermostat_air)->get_output_value() * (-1.0);
+              float set_val = state * 100.0;
+              if (therm_mode != CLIMATE_MODE_OFF) {
+                set_val = (hum_ctrl_val*2.0 + therm_ctrl_val*0.5) * 50.0;
+              }
+              if (set_val > 100.0)
+                set_val = 100.0;
+              else if (set_val < 0)
+                set_val = 0;
+              ESP_LOGD(TAG, "Humidity PID Controller fan write_action: %.3f / humidifier: %.2f / thermostat: %.2f / result: %.0f%%", state, hum_ctrl_val, therm_ctrl_val, set_val);
+              fan.set_state(!!set_val);
+              fan.set_speed(set_val);
               fan.perform();
             } else {
-              ESP_LOGD(TAG, "Humidity PID Controller not currently drying, ignore fan value of %.3f", state);
+              ESP_LOGD(TAG, "Humidity PID Controller dehumidifcation disabled, ignore fan value of %.3f", state);
             }
   - platform: template
     id: fan_cooler
     type: float
     write_action:
       - lambda: |-
-            auto hum_ctrl = id(humidity_control);
-            float hum_ctrl_val = hum_ctrl->get_output_value() * (-1.0);
-            auto tmp_ctrl = id(thermostat_air);
-            float tmp_ctrl_val = tmp_ctrl->get_output_value() * (-1.0);
-            ESP_LOGD(TAG, "thermostat cooler fan write action. humidifier: %.2f  thermostat: %.2f", hum_ctrl_val, tmp_ctrl_val);
-            if (hum_ctrl_val < 0.0) {
-              ESP_LOGD(TAG, "not turning on cooling fan (%.3f) because currently humidifying!", state);
-            } else if (hum_ctrl_val > tmp_ctrl_val) {
-              ESP_LOGD(TAG, "not lowering fan speed because dehumidifier value is higher (%.2f > %.2f)", hum_ctrl_val, tmp_ctrl_val);
-            } else {
-              ESP_LOGD(TAG, "Temperature PID Controller set fan to: %.3f ", state);
+            ClimateMode therm_mode = id(thermostat_air).mode;
+            ClimateMode humid_mode = id(humidity_control).mode;
+            if (therm_mode == CLIMATE_MODE_HEAT_COOL || humid_mode == CLIMATE_MODE_COOL) {
               auto fan = id(fan_speed).make_call();
-              fan.set_state(state > 0.0 ? true : false);
-              fan.set_speed(state*100);
+              float hum_ctrl_val = id(humidity_control)->get_output_value() * (-1.0);
+              float therm_ctrl_val = id(thermostat_air)->get_output_value() * (-1.0);
+              float set_val = state * 100.0;
+              if (therm_mode != CLIMATE_MODE_OFF) {
+                set_val = (hum_ctrl_val*2.0 + therm_ctrl_val*0.5) * 50.0;
+              } else {
+                set_val = state * 100.0;
+              }
+              if (set_val > 100.0)
+                set_val = 100.0;
+              else if (set_val < 0)
+                set_val = 0;
+              ESP_LOGD(TAG, "Thermostat PID Controller fan write_action: %.3f / humidifier: %.2f / thermostat: %.2f / result: %.0f%%", state, hum_ctrl_val, therm_ctrl_val, set_val);
+              fan.set_state(!!set_val);
+              fan.set_speed(set_val);
               fan.perform();
+            } else {
+              ESP_LOGD(TAG, "Thermostat PID Controller cooling disabled, ignore fan value of %.3f", state);
             }
 
   - platform: template
