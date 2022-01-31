@@ -100,16 +100,20 @@ output:
   - platform: ledc
     pin: 32
     id: component_red
+    channel: 0
   - platform: ledc
     pin: 33
     id: component_green
+    channel: 2
   - platform: ledc
     pin: 27
     id: component_blue
+    channel: 4
   - platform: ledc
     pin: GPIO14
     id: fan_pwm
     frequency: 25000 hz
+    channel: 7
   - platform: custom
     type: float
     lambda: |-
