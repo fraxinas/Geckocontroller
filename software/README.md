@@ -17,21 +17,6 @@ Using esphome, the Geckocontroller shows up as a device in your Home Assistant a
     filename: noumea_weather_2021.json
     offset_days: 182
     offset_hours: 0
-
-  - platform: template
-    sensors:
-      temperature_noumea:
-        value_template: "{{ states('sensor.temperature_in_france_noumea_182_days_ago') | default('24') }}"
-        friendly_name: Temperature in Noumea half a year ago
-      humidity_noumea:
-        value_template: "{{ states('sensor.humidity_in_france_noumea_182_days_ago')| default('75') }}"
-        friendly_name: Humidity in Noumea half a year ago
-      rain_noumea:
-        value_template: "{{ states('sensor.rain_in_france_noumea_182_days_ago')| default('0') }}"
-        friendly_name: Rain in Noumea half a year ago
-      sky_noumea:
-        value_template: "{{ states('sensor.sky_in_france_noumea_182_days_ago')| default('0') }}"
-        friendly_name: Sky condition in Noumea half a year ago
 ```
 * temperature and humidity controllers still work without Home Assistant / Historic Weather component and are then using standard values
 

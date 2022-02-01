@@ -72,9 +72,9 @@
 - [ ] finish console (display / rotary encoder controller unit)
 - [x] 3d-printed cases for BME280 sensor and console
 - [x] rainfall/humidity automation
-- [ ] ventilation automation
-- [ ] moonlight simulation
-- [ ] thunderstorm simulation
+- [x] ventilation automation
+- [x] moonlight simulation
+- [x] thunderstorm simulation
 
 ## Project Diary
 | Date       | Version | Milestone                                        |
@@ -87,3 +87,4 @@
 | 2021-05-16 | v1.2    | Assembling of case and first deployment of unit  |
 | 2022-01-02 |         | Added fogger to terrarium                        |
 | 2022-01-09 |         | Base weather simulation on real historic records |
+| 2022-01-28 |         | Order Console PCB at aisler.net & parts at LCSC  |
