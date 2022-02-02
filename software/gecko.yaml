@@ -437,18 +437,31 @@ sensor:
               }
             }
             if (id(is_daytime)) {
-              float b, dim_factor;
-              id(scenic_light).current_values_as_brightness(&b);
-              ESP_LOGD(TAG, "previous attenuated brightness: %f", b);
-              b /= id(daylight_attenuation);
-              ESP_LOGD(TAG, "previous normalized brightness: %f", b);
-              id(daylight_attenuation) = id(daylight_max) * (24-x)/24;
-              b *= id(daylight_attenuation);
-              ESP_LOGD(TAG, "daylight_attenuation: %f", id(daylight_attenuation));
-              ESP_LOGD(TAG, "target_brightness: %f", b);
+              float scenic_b, day_b, dim_factor;
+              auto sceniclight = id(scenic_light).make_call();
+              auto daylight = id(day_light).make_call();
+
+              id(scenic_light).current_values_as_brightness(&scenic_b);
+              id(day_light).current_values_as_brightness(&day_b);
+              ESP_LOGD(TAG, "previous attenuated brightness scenic: %.3f, daylight: %.3f, old skycond_attenuation: %.3f", scenic_b, day_b, id(skycond_attenuation));
+
+              scenic_b /= id(skycond_attenuation);
+              day_b /= (id(skycond_attenuation)*id(twilight_attenuation));
+
+              id(skycond_attenuation) = (24-x)/24;
+              ESP_LOGD(TAG, "previous normalized brightness scenic: %.3f, daylight: %.3f, new skycond_attenuation: %.3f", scenic_b, day_b, id(skycond_attenuation));
+
+              scenic_b *= id(skycond_attenuation);
+              day_b *= (id(skycond_attenuation)*id(twilight_attenuation));
+              ESP_LOGD(TAG, "target_brightness: scenic: %.3f, daylight: %.3f", scenic_b, day_b);
+
               sceniclight.set_transition_length(60*1000);
-              sceniclight.set_brightness(b);
+              sceniclight.set_brightness(scenic_b);
               sceniclight.perform();
+
+              daylight.set_transition_length(60*1000);
+              daylight.set_brightness(scenic_b);
+              daylight.perform();
             }
 
   - platform: homeassistant
@@ -460,7 +473,7 @@ sensor:
             std::string effect = id(scenic_light)->get_effect_name();
             if (id(is_daytime) == false && effect == "None") {
               auto call = id(scenic_light).make_call();
-              float attenuated_moonlight = (x/2.0 + x/2.0*(id(daylight_attenuation)/id(daylight_max)))/100.0 + 0.01;
+              float attenuated_moonlight = (x/2.0 + x/2.0*(id(skycond_attenuation)))/100.0 + 0.01;
               call.set_brightness(attenuated_moonlight);
               call.set_state(x > 0.0 ? true : false);
               call.perform();
@@ -579,15 +592,15 @@ globals:
      restore_value: no
      initial_value: '0'
 
-   - id: daylight_max
-     type: float
-     restore_value: no
-     initial_value: '0.75'
-
-   - id: daylight_attenuation
+   - id: skycond_attenuation
      type: float
      restore_value: no
      initial_value: '0.7'
+
+   - id: twilight_attenuation
+     type: float
+     restore_value: no
+     initial_value: '1'
 
    - id: is_daytime
      type: bool

@@ -82,16 +82,12 @@ class SunDayLightEffect : public LightEffect {
     ESP_LOGD(TAG, "Starting SunDayLightEffect '%s' %s", this->name_.c_str(), this->inverse_ ? "inversed" : "");
     this->transition_length_ = id(sun_effect_delay)*235;
     // with delay of 180 the entire transition will take 3 hours
-    float current_brightness;
-    id(day_light).current_values_as_brightness(&current_brightness);
-    current_brightness /= id(daylight_attenuation);
     if (this->inverse_) {
-      this->brightness_ = current_brightness;
-      this->final_brightness_ = 0.01;
+      id(twilight_attenuation) = 1.0;
       this->incr_ = (-1.f)/255.f;
     } else {
-      this->brightness_ = current_brightness;
-      this->final_brightness_ = id(daylight_max);
+      this->brightness_ = 0.0;
+      id(twilight_attenuation) = 0.0;
       this->incr_ = (+1.f)/255.f;
     }
   }
@@ -102,17 +98,26 @@ class SunDayLightEffect : public LightEffect {
       return;
     }
     auto call = day_light->make_call();
-    if (!this->inverse_ && this->brightness_ >= this->final_brightness_) {
-      ESP_LOGD(TAG, "SunDayLightEffect '%s' at max. brightness.", this->name_.c_str());
+    if (!this->inverse_ && id(twilight_attenuation) >= 1.0) {
+      ESP_LOGD(TAG, "SunDayLightEffect '%s' finished.", this->name_.c_str());
       call.set_effect(0);
       id(is_daytime) = true;
-    } else if (this->inverse_ && this->brightness_ <= this->final_brightness_) {
-      ESP_LOGD(TAG, "SunDayLightEffect '%s' off.", this->name_.c_str());
+    } else if (this->inverse_ && id(twilight_attenuation) <= 0.0) {
+      ESP_LOGD(TAG, "SunDayLightEffect '%s' finished.", this->name_.c_str());
       call.set_state(false);
       id(is_daytime) = false;
     } else {
-      this->brightness_ += this->incr_;
-      call.set_brightness(this->brightness_*id(daylight_attenuation));
+      id(day_light).current_values_as_brightness(&this->brightness_);
+      ESP_LOGD(TAG, "SunDayLightEffect '%s' apply. current_values_as_brightness=%.3f", this->name_.c_str(), this->brightness_);
+      this->brightness_ /= (id(twilight_attenuation)*id(skycond_attenuation));
+      if (this->brightness_ > 1.0) {
+        this->brightness_ = 1.0;
+      }
+      id(twilight_attenuation) += this->incr_;
+      float new_brightness = this->brightness_*id(twilight_attenuation)*id(skycond_attenuation);
+      ESP_LOGD(TAG, "SunDayLightEffect normalized brightness=%.3f, twilight_attenuation=%.3f, skycond_attenuation=%.3f, new_brightness=%.3f", this->brightness_, id(twilight_attenuation), id(skycond_attenuation), new_brightness);
+      this->brightness_ = new_brightness;
+      call.set_brightness(this->brightness_);
       call.set_publish(true);
       call.set_transition_length(this->transition_length_);
       call.set_state(true);
@@ -128,7 +133,6 @@ class SunDayLightEffect : public LightEffect {
   uint32_t last_brightness_change_{0};
   uint32_t transition_length_{};
   float brightness_{};
-  float final_brightness_{};
   float incr_{};
 };
 
