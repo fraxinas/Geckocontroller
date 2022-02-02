@@ -218,4 +218,30 @@ class GeckoCustomComponent : public Component {
     day_light->add_effects({sunrise_daylighteffect, sunset_daylighteffect});
     ESP_LOGD(TAG, "Added SunLightEffects");
   }
+
+  bool set_weighted_fan_value(bool hygro_action, float state) {
+    ClimateMode therm_mode = id(thermostat_air).mode;
+    ClimateMode humid_mode = id(humidity_control).mode;
+    ClimateMode primary_mode = hygro_action ? humid_mode : therm_mode;
+    if (primary_mode == CLIMATE_MODE_HEAT_COOL || primary_mode == CLIMATE_MODE_COOL) {
+      auto fan = id(fan_speed).make_call();
+      float hum_ctrl_val = id(humidity_control).get_output_value() * (-1.0);
+      float therm_ctrl_val = id(thermostat_air).get_output_value() * (-1.0);
+      float set_val = state * 100.0;
+      if (therm_mode != CLIMATE_MODE_OFF) {
+        set_val = (hum_ctrl_val*2.0 + therm_ctrl_val*0.5) * 50.0;
+      }
+      if (set_val > 100.0)
+        set_val = 100.0;
+      else if (set_val < 0)
+        set_val = 0;
+      ESP_LOGD(TAG, "%s PID Controller fan write_action: %.3f / humidifier: %.2f / thermostat: %.2f / result: %.0f%%", hygro_action ? "Hygrostat" : "Thermostat", state, hum_ctrl_val, therm_ctrl_val, set_val);
+      fan.set_state(!!set_val);
+      fan.set_speed(set_val);
+      fan.perform();
+      return true;
+    }
+    return false;
+  }
+
 };

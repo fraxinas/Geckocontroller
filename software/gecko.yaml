@@ -36,6 +36,8 @@ custom_component:
 - lambda: |-
     auto gecko_custom = new GeckoCustomComponent();
     return {gecko_custom};
+  components:
+    - id: gecko
 
 switch:
   - platform: template
@@ -142,55 +144,17 @@ output:
     write_action:
       # fan slider MUST be controlled with FanStateCalls, fan->turn_on() etc. don't work
       - lambda: |-
-            ClimateMode therm_mode = id(thermostat_air).mode;
-            ClimateMode humid_mode = id(humidity_control).mode;
-            if (humid_mode == CLIMATE_MODE_HEAT_COOL || humid_mode == CLIMATE_MODE_COOL) {
-              auto fan = id(fan_speed).make_call();
-              float hum_ctrl_val = id(humidity_control)->get_output_value() * (-1.0);
-              float therm_ctrl_val = id(thermostat_air)->get_output_value() * (-1.0);
-              float set_val = state * 100.0;
-              if (therm_mode != CLIMATE_MODE_OFF) {
-                set_val = (hum_ctrl_val*2.0 + therm_ctrl_val*0.5) * 50.0;
-              }
-              if (set_val > 100.0)
-                set_val = 100.0;
-              else if (set_val < 0)
-                set_val = 0;
-              ESP_LOGD(TAG, "Humidity PID Controller fan write_action: %.3f / humidifier: %.2f / thermostat: %.2f / result: %.0f%%", state, hum_ctrl_val, therm_ctrl_val, set_val);
-              fan.set_state(!!set_val);
-              fan.set_speed(set_val);
-              fan.perform();
-            } else {
-              ESP_LOGD(TAG, "Humidity PID Controller dehumidifcation disabled, ignore fan value of %.3f", state);
-            }
+            GeckoCustomComponent* gcc = (GeckoCustomComponent*) id(gecko);
+            if (!gcc->set_weighted_fan_value(true, state))
+              ESP_LOGD(TAG, "Hygrostat PID Controller dehumidifcation disabled, ignore fan value of %.3f", state);
   - platform: template
     id: fan_cooler
     type: float
     write_action:
       - lambda: |-
-            ClimateMode therm_mode = id(thermostat_air).mode;
-            ClimateMode humid_mode = id(humidity_control).mode;
-            if (therm_mode == CLIMATE_MODE_HEAT_COOL || humid_mode == CLIMATE_MODE_COOL) {
-              auto fan = id(fan_speed).make_call();
-              float hum_ctrl_val = id(humidity_control)->get_output_value() * (-1.0);
-              float therm_ctrl_val = id(thermostat_air)->get_output_value() * (-1.0);
-              float set_val = state * 100.0;
-              if (therm_mode != CLIMATE_MODE_OFF) {
-                set_val = (hum_ctrl_val*2.0 + therm_ctrl_val*0.5) * 50.0;
-              } else {
-                set_val = state * 100.0;
-              }
-              if (set_val > 100.0)
-                set_val = 100.0;
-              else if (set_val < 0)
-                set_val = 0;
-              ESP_LOGD(TAG, "Thermostat PID Controller fan write_action: %.3f / humidifier: %.2f / thermostat: %.2f / result: %.0f%%", state, hum_ctrl_val, therm_ctrl_val, set_val);
-              fan.set_state(!!set_val);
-              fan.set_speed(set_val);
-              fan.perform();
-            } else {
+            GeckoCustomComponent* gcc = (GeckoCustomComponent*) id(gecko);
+            if (!gcc->set_weighted_fan_value(false, state))
               ESP_LOGD(TAG, "Thermostat PID Controller cooling disabled, ignore fan value of %.3f", state);
-            }
 
   - platform: template
     id: heater
