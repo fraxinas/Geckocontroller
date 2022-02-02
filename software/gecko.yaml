@@ -201,34 +201,40 @@ output:
             if (mode == CLIMATE_MODE_OFF) {
                 ESP_LOGD(TAG, "ignored heater write_action because thermostat is off");
             } else if (id(is_daytime) == true) {
-              ESP_LOGD(TAG, "Temperature PID Controller daylight write_action: %.3f", state);
-              auto daylight = id(day_light).make_call();
-              daylight.set_transition_length(10000);
+              auto therm = id(thermostat_air).make_call();
+              float att_max = id(twilight_attenuation)*id(skycond_attenuation);
+              float set_val = id(thermostat_air)->get_output_value();
+              ESP_LOGD(TAG, "Thermostat PID Controller daylight write_action: %.3f, set_val: %.3f, att_max: %.3f", state, set_val, att_max);
               float brightness = state;
-              if (brightness > id(daylight_attenuation)) {
-                brightness = id(daylight_attenuation);
-                ESP_LOGD(TAG, "clamped to daylight_attenuation=%.2f", brightness);
+              if (brightness > att_max) {
+                float max_ratio = (set_val-1.0)*0.1;
+                float att_ratio = (1.0-max_ratio)*att_max;
+                brightness = att_ratio + max_ratio;
+                ESP_LOGD(TAG, "set_val>att_max. %.2f%+.2f => brightness: %.2f", att_ratio, max_ratio, brightness);
               }
-              else if (brightness < (id(daylight_attenuation)*0.5)) {
+              else if (brightness < (att_max*0.5)) {
                 auto therm_ctrl = id(thermostat_air).make_call();
                 float target_temp = id(thermostat_air).target_temperature;
                 float actual_temp = (id(temperature_ceiling).state + id(temperature_ground).state) / 2.0;
                 float diff = actual_temp-target_temp;
                 ESP_LOGD(TAG, "target_temp=%.2f°C, actual_temp=%.2f°C, diff=%.2fK", target_temp, actual_temp, diff);
+                diff *= id(twilight_attenuation)*id(skycond_attenuation);
                 if (diff > 0.0)
-                  diff /= 3.0;
+                  diff /= 2.0;
                 else
-                  diff /= 10.0;
-                brightness = (id(daylight_attenuation)*0.5) - diff;
-                ESP_LOGD(TAG, "0.5*daylight_attenuation=%.2f (%+.2f) => brightness=%.2f", id(daylight_attenuation)*0.5, diff*(-1.0), brightness);
+                  diff /= 8.0;
+                brightness = (att_max*0.5) - diff;
+                ESP_LOGD(TAG, "set_val<att_max/2. %.2f%+.2f => brightness: %.2f", att_max*0.5, diff*(-1.0), brightness);
                 if (brightness <= 0.0) {
                   brightness = 0.001;
                 }
               }
+              auto daylight = id(day_light).make_call();
+              daylight.set_transition_length(30000);
               daylight.set_brightness(brightness);
               daylight.perform();
             } else {
-              ESP_LOGD(TAG, "Temperature PID Controller nighttime heatlamp write_action: %.3f", state);
+              ESP_LOGD(TAG, "Thermostat PID Controller nighttime heatlamp write_action: %.3f", state);
               auto heatlamp = id(heat_lamp).make_call();
               heatlamp.set_state(!!state);
               heatlamp.set_brightness(state ? state : 0.001);
@@ -460,7 +466,7 @@ sensor:
               sceniclight.perform();
 
               daylight.set_transition_length(60*1000);
-              daylight.set_brightness(scenic_b);
+              daylight.set_brightness(day_b);
               daylight.perform();
             }
 
