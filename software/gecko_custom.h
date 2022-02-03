@@ -8,6 +8,9 @@ static const char *TAG = "gecko";
 globals::GlobalsComponent<uint16_t> *sun_effect_delay;
 // in seconds, to control SunLightEffects speed
 
+globals::GlobalsComponent<float> *sun_rise_max;
+// sunrise maximum (for high power daylight lamps when not using a thermostat)
+
 #define SUN_LUT_LEN 7
 static uint8_t sun_lut[SUN_LUT_LEN][4] = {
   {100, 20, 250, 20},
@@ -23,7 +26,8 @@ class SunColorLightEffect : public LightEffect {
   explicit SunColorLightEffect(const std::string &name) : LightEffect(name) {}
 
   void start() override {
-    ESP_LOGD(TAG, "Starting SunColorLightEffect '%s' %s", this->name_.c_str(), this->inverse_ ? "inversed" : "");
+    ESP_LOGD(TAG, "Starting SunColorLightEffect '%s' %s",
+      this->name_.c_str(), this->inverse_ ? "inversed" : "");
     this->transition_length_ = id(sun_effect_delay)*1000;
     if (this->inverse_) {
       this->index_ = SUN_LUT_LEN;
@@ -79,14 +83,15 @@ class SunDayLightEffect : public LightEffect {
   explicit SunDayLightEffect(const std::string &name) : LightEffect(name) {}
 
   void start() override {
-    ESP_LOGD(TAG, "Starting SunDayLightEffect '%s' %s", this->name_.c_str(), this->inverse_ ? "inversed" : "");
+    ESP_LOGD(TAG, "Starting SunDayLightEffect '%s' %s",
+      this->name_.c_str(), this->inverse_ ? "inversed" : "");
     this->transition_length_ = id(sun_effect_delay)*235;
     // with delay of 180 the entire transition will take 3 hours
     if (this->inverse_) {
       id(twilight_attenuation) = 1.0;
       this->incr_ = (-1.f)/255.f;
     } else {
-      this->brightness_ = 0.0;
+      id(is_daytime) = true;
       id(twilight_attenuation) = 0.0;
       this->incr_ = (+1.f)/255.f;
     }
@@ -98,24 +103,31 @@ class SunDayLightEffect : public LightEffect {
       return;
     }
     auto call = day_light->make_call();
+    id(twilight_attenuation) += this->incr_;
     if (!this->inverse_ && id(twilight_attenuation) >= 1.0) {
       ESP_LOGD(TAG, "SunDayLightEffect '%s' finished.", this->name_.c_str());
       call.set_effect(0);
-      id(is_daytime) = true;
     } else if (this->inverse_ && id(twilight_attenuation) <= 0.0) {
       ESP_LOGD(TAG, "SunDayLightEffect '%s' finished.", this->name_.c_str());
       call.set_state(false);
       id(is_daytime) = false;
     } else {
       id(day_light).current_values_as_brightness(&this->brightness_);
-      ESP_LOGD(TAG, "SunDayLightEffect '%s' apply. current_values_as_brightness=%.3f", this->name_.c_str(), this->brightness_);
-      this->brightness_ /= (id(twilight_attenuation)*id(skycond_attenuation));
-      if (this->brightness_ > 1.0) {
-        this->brightness_ = 1.0;
+      ESP_LOGD(TAG, "SunDayLightEffect '%s' apply. current_values_as_brightness=%.3f",
+        this->name_.c_str(), this->brightness_);
+      if (this->inverse_) {
+        id(day_light).current_values_as_brightness(&this->brightness_);
+        this->brightness_ /= (id(twilight_attenuation)*id(skycond_attenuation));
       }
-      id(twilight_attenuation) += this->incr_;
+      if (!this->inverse_) {
+        this->brightness_ = id(sun_rise_max);
+      }
+      if (this->brightness_ > 1.0) {
+          this->brightness_ = 1.0;
+      }
       float new_brightness = this->brightness_*id(twilight_attenuation)*id(skycond_attenuation);
-      ESP_LOGD(TAG, "SunDayLightEffect normalized brightness=%.3f, twilight_attenuation=%.3f, skycond_attenuation=%.3f, new_brightness=%.3f", this->brightness_, id(twilight_attenuation), id(skycond_attenuation), new_brightness);
+      ESP_LOGD(TAG, "SunDayLightEffect normalized brightness=%.3f, twilight_attenuation=%.3f, skycond_attenuation=%.3f, new_brightness=%.3f",
+        this->brightness_, id(twilight_attenuation), id(skycond_attenuation), new_brightness);
       this->brightness_ = new_brightness;
       call.set_brightness(this->brightness_);
       call.set_publish(true);
@@ -166,7 +178,8 @@ void RainPumpOutput::loop() {
   float scaled_state = this->state_ * (float)this->period_;
 
   if (now - this->period_start_time_ > this->period_) {
-    ESP_LOGD(TAG, "now=%lu period=%u End of period. State: %.2f, Scaled state: %.0f", now, this->period_, this->state_, scaled_state);
+    ESP_LOGD(TAG, "now=%lu period=%u End of period. State: %.2f, Scaled state: %.0f",
+      now, this->period_, this->state_, scaled_state);
     this->period_start_time_ += this->period_;
   }
 
@@ -199,11 +212,68 @@ void RainPumpOutput::write_state(float state) {
   this->state_ = state;
 }
 
+class WeightedFanOutput : public FloatOutput, public Component {
+ public:
+  WeightedFanOutput(fan::FanState *fan, pid::PIDClimate *hygro,
+   pid::PIDClimate *thermo, int hygro_weight, int thermo_weight)
+      : fan_(fan), hygro_(hygro), thermo_(thermo), hygro_weight_(hygro_weight),
+        thermo_weight_(thermo_weight) {}
+
+  void setup() override {};
+
+  void set_weighted_fan_value_hygro(float state) {
+    set_weighted_fan_value_(true, state);
+  };
+
+  void set_weighted_fan_value_thermo(float state) {
+    set_weighted_fan_value_(false, state);
+  };
+
+ protected:
+  void write_state(float state) override {};
+
+  void set_weighted_fan_value_(bool hygro_action, float state) {
+    std::string name = hygro_action ? this->hygro_->get_name() : this->thermo_->get_name();
+    ClimateMode therm_mode = this->thermo_->mode;
+    ClimateMode humid_mode = this->hygro_->mode;
+    ClimateMode primary_mode = hygro_action ? humid_mode : therm_mode;
+    if (primary_mode == CLIMATE_MODE_HEAT_COOL || primary_mode == CLIMATE_MODE_COOL) {
+      auto fan = this->fan_->make_call();
+      float hum_ctrl_val = this->hygro_->get_output_value() * (-1.0);
+      float therm_ctrl_val = this->thermo_->get_output_value() * (-1.0);
+      float set_val = state * 100.0;
+      if (therm_mode != CLIMATE_MODE_OFF) {
+        set_val = (hum_ctrl_val*2.0 + therm_ctrl_val*0.5) * 50.0;
+      }
+      if (set_val > 100.0)
+        set_val = 100.0;
+      else if (set_val < 0)
+        set_val = 0;
+      ESP_LOGD(TAG, "%s PID Controller fan write_action: %.3f / humidifier: %.2f / thermostat: %.2f / result: %.0f%%",
+        name.c_str(), state, hum_ctrl_val, therm_ctrl_val, set_val);
+      fan.set_state(!!set_val);
+      fan.set_speed(set_val);
+      fan.perform();
+      return;
+    }
+    ESP_LOGD(TAG, "%s PID Controller %s disabled, ignore fan value of %.3f",
+      name.c_str(), hygro_action ? "dehumidification" : "cooling", state);
+  }
+  fan::FanState *fan_;
+  pid::PIDClimate *hygro_{NULL};
+  pid::PIDClimate *thermo_{NULL};
+  float hygro_weight_{1};
+  float thermo_weight_{1};
+
+};
+
 class GeckoCustomComponent : public Component {
  public:
   void setup() override {
     sun_effect_delay = new globals::GlobalsComponent<uint16_t>(180);
     App.register_component(sun_effect_delay);
+    sun_rise_max = new globals::GlobalsComponent<float>(0.75);
+    App.register_component(sun_rise_max);
 
     SunColorLightEffect *sunrise_colorlighteffect, *sunset_colorlighteffect;
     sunrise_colorlighteffect = new SunColorLightEffect("Sunrise Color");
@@ -218,30 +288,4 @@ class GeckoCustomComponent : public Component {
     day_light->add_effects({sunrise_daylighteffect, sunset_daylighteffect});
     ESP_LOGD(TAG, "Added SunLightEffects");
   }
-
-  bool set_weighted_fan_value(bool hygro_action, float state) {
-    ClimateMode therm_mode = id(thermostat_air).mode;
-    ClimateMode humid_mode = id(humidity_control).mode;
-    ClimateMode primary_mode = hygro_action ? humid_mode : therm_mode;
-    if (primary_mode == CLIMATE_MODE_HEAT_COOL || primary_mode == CLIMATE_MODE_COOL) {
-      auto fan = id(fan_speed).make_call();
-      float hum_ctrl_val = id(humidity_control).get_output_value() * (-1.0);
-      float therm_ctrl_val = id(thermostat_air).get_output_value() * (-1.0);
-      float set_val = state * 100.0;
-      if (therm_mode != CLIMATE_MODE_OFF) {
-        set_val = (hum_ctrl_val*2.0 + therm_ctrl_val*0.5) * 50.0;
-      }
-      if (set_val > 100.0)
-        set_val = 100.0;
-      else if (set_val < 0)
-        set_val = 0;
-      ESP_LOGD(TAG, "%s PID Controller fan write_action: %.3f / humidifier: %.2f / thermostat: %.2f / result: %.0f%%", hygro_action ? "Hygrostat" : "Thermostat", state, hum_ctrl_val, therm_ctrl_val, set_val);
-      fan.set_state(!!set_val);
-      fan.set_speed(set_val);
-      fan.perform();
-      return true;
-    }
-    return false;
-  }
-
 };

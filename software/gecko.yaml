@@ -35,9 +35,12 @@ ota:
 custom_component:
 - lambda: |-
     auto gecko_custom = new GeckoCustomComponent();
-    return {gecko_custom};
+    auto weighted_fan = new WeightedFanOutput(id(fan_speed), id(hygrostat), id(thermostat_air), 4.0, 1.0);
+    App.register_component(weighted_fan);
+    return {gecko_custom, weighted_fan};
   components:
     - id: gecko
+    - id: weighted_fan
 
 switch:
   - platform: template
@@ -130,13 +133,13 @@ output:
     type: float
     write_action:
       - lambda: |-
-            ClimateAction action = id(humidity_control).action;
+            ClimateAction action = id(hygrostat).action;
             if (action == CLIMATE_ACTION_HEATING) {
               float duty_cycle = state/4.0;
-              ESP_LOGD(TAG, "Humidity PID Controller fogger write_action: %.3f / duty cycle: %.0f%%", state, duty_cycle*100);
+              ESP_LOGD(TAG, "Hygrostat PID Controller fogger write_action: %.3f / duty cycle: %.0f%%", state, duty_cycle*100);
               id(fogger_float).set_level(duty_cycle);
             } else {
-              ESP_LOGD(TAG, "Humidity PID Controller turn off fogger");
+              ESP_LOGD(TAG, "Hygrostat PID Controller turn off fogger");
             }
   - platform: template
     id: fan_dehumidifier
@@ -144,17 +147,15 @@ output:
     write_action:
       # fan slider MUST be controlled with FanStateCalls, fan->turn_on() etc. don't work
       - lambda: |-
-            GeckoCustomComponent* gcc = (GeckoCustomComponent*) id(gecko);
-            if (!gcc->set_weighted_fan_value(true, state))
-              ESP_LOGD(TAG, "Hygrostat PID Controller dehumidifcation disabled, ignore fan value of %.3f", state);
+            WeightedFanOutput* fanout = (WeightedFanOutput*) id(weighted_fan);
+            fanout->set_weighted_fan_value_hygro(state);
   - platform: template
     id: fan_cooler
     type: float
     write_action:
       - lambda: |-
-            GeckoCustomComponent* gcc = (GeckoCustomComponent*) id(gecko);
-            if (!gcc->set_weighted_fan_value(false, state))
-              ESP_LOGD(TAG, "Thermostat PID Controller cooling disabled, ignore fan value of %.3f", state);
+            WeightedFanOutput* fanout = (WeightedFanOutput*) id(weighted_fan);
+            fanout->set_weighted_fan_value_thermo(state);
 
   - platform: template
     id: heater
@@ -363,7 +364,7 @@ sensor:
     on_value:
       then:
         - climate.control:
-              id: humidity_control
+              id: hygrostat
               target_temperature: !lambda |-
                 return x-1;
 
@@ -527,7 +528,7 @@ sun:
 climate:
   - platform: pid
     id: thermostat_air
-    name: "Thermostat Air Temp"
+    name: "Thermostat Air"
     sensor: temperature_ceiling
     default_target_temperature: 22 °C
     heat_output: heater
@@ -541,8 +542,8 @@ climate:
       kd: 208.97874
 
   - platform: pid
-    id: humidity_control
-    name: "Humidity"
+    id: hygrostat
+    name: "Hygrostat"
     sensor: humidity_combined
     default_target_temperature: 70 °C
     heat_output: fogger_humidifier
