@@ -35,12 +35,9 @@ ota:
 custom_component:
 - lambda: |-
     auto gecko_custom = new GeckoCustomComponent();
-    auto weighted_fan = new WeightedFanOutput(id(fan_speed), id(hygrostat), id(thermostat_air), 4.0, 1.0);
-    App.register_component(weighted_fan);
-    return {gecko_custom, weighted_fan};
+    return {gecko_custom};
   components:
     - id: gecko
-    - id: weighted_fan
 
 switch:
   - platform: template
@@ -128,6 +125,18 @@ output:
       #period: 30min
       max_power: 0.02
       # max. 18 seconds of rain per half hour
+  - platform: custom
+    type: float
+    id: weighted_fan
+    lambda: |-
+      auto weighted_fan_c = new WeightedFanOutput(id(fan_speed), id(hygrostat), id(thermostat_air), id(temperature_vicinity), 4.0, 1.0);
+      App.register_component(weighted_fan_c);
+      return {weighted_fan_c};
+    outputs:
+      id: windspeed
+      # - id: fan_hygro
+      # - id: fan_thermo
+
   - platform: template
     id: fogger_humidifier
     type: float
@@ -145,17 +154,20 @@ output:
     id: fan_dehumidifier
     type: float
     write_action:
-      # fan slider MUST be controlled with FanStateCalls, fan->turn_on() etc. don't work
-      - lambda: |-
-            WeightedFanOutput* fanout = (WeightedFanOutput*) id(weighted_fan);
-            fanout->set_weighted_fan_value_hygro(state);
+    - lambda: |-
+          return;
+      # - output.set_level:
+      #     id: fan_hygro
+      #     level: !lambda return state;
   - platform: template
     id: fan_cooler
     type: float
     write_action:
-      - lambda: |-
-            WeightedFanOutput* fanout = (WeightedFanOutput*) id(weighted_fan);
-            fanout->set_weighted_fan_value_thermo(state);
+    - lambda: |-
+          return;
+      # - output.set_level:
+      #     id: fan_thermo
+      #     level: !lambda return state;
 
   - platform: template
     id: heater
@@ -278,9 +290,9 @@ sensor:
 
   - platform: dallas
     address: !secret DsAddressHeatBed
-    name: "Temperature HeatBed"
+    name: "Temperature Vicinity"
     unit_of_measurement: "°C"
-    id: temperature_heatbed
+    id: temperature_vicinity
 
   - platform: dallas
     address: !secret DsAddressSubstrate
@@ -365,6 +377,16 @@ sensor:
             id: rain_pump_float
             level: !lambda |-
                 return x/5.0;
+
+  - platform: homeassistant   # actual historic rain intensity (range 0-5)
+    id: weather_windspeed
+    entity_id: sensor.windspeed_in_france_noumea_182_days_ago
+    on_value:
+      then:
+        - output.set_level:
+            id: windspeed
+            level: !lambda |-
+                return x;
 
   # actual historic sky conditions
   # a numeric value in the range of (0-22) which indicates increasing sky covering
