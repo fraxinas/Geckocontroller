@@ -23,12 +23,12 @@ logger:
 # Enable Home Assistant API
 api:
   services:
-    - service: control_rain
+    - service: control_twilight_attenuation
       variables:
         level: float
       then:
         - output.set_level:
-            id: rain_pump_float
+            id: daylight_attenuation_output
             level: !lambda 'return level / 100.0;'
 ota:
 
@@ -140,7 +140,13 @@ output:
       - id: windspeed
       - id: fan_hygro
       - id: fan_thermo
-
+  - platform: template
+    id: daylight_attenuation_output
+    type: float
+    write_action:
+      - lambda: |-
+          id(twilight_attenuation) = state;
+          ESP_LOGD(TAG, "wrote twilight_attenuation: %.2f", id(twilight_attenuation));
   - platform: template
     id: fogger_humidifier
     type: float
