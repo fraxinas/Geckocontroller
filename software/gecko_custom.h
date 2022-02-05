@@ -215,65 +215,26 @@ void RainPumpOutput::write_state(float state) {
 
 class WeightedFanOutput : public FloatOutput, public Component {
  public:
-  WeightedFanOutput(fan::FanState *fan, pid::PIDClimate *hygro,
-   pid::PIDClimate *thermo, sensor::Sensor *vicinity, int hygro_weight, int thermo_weight)
-      : fan_(fan), hygro_(hygro), thermo_(thermo), vicinity_(vicinity), hygro_weight_(hygro_weight),
-        thermo_weight_(thermo_weight) {}
+  WeightedFanOutput(fan::FanState *fan, sensor::Sensor *vicinity,
+    sensor::Sensor *target_thermo, int hygro_weight, int thermo_weight)
+      : fan_(fan), vicinity_(vicinity), target_thermo_(target_thermo),
+        hygro_weight_(hygro_weight), thermo_weight_(thermo_weight) {}
 
   void setup() override;
 
-  void set_weighted_fan_value_hygro(float state) {
-    set_weighted_fan_value_(true, state);
-  };
+  void set_hygro(pid::PIDClimate *hygro);
+  void set_thermo(pid::PIDClimate *thermo);
 
-  void set_weighted_fan_value_thermo(float state) {
-    set_weighted_fan_value_(false, state);
-  };
+  void set_weighted_fan_value(bool hygro_action, float state);
 
  protected:
   void write_state(float state) override;
 
-  void set_weighted_fan_value_(bool hygro_action, float state) {
-    std::string name = hygro_action ? this->hygro_->get_name() : this->thermo_->get_name();
-    ClimateMode therm_mode = this->thermo_->mode;
-    ClimateMode humid_mode = this->hygro_->mode;
-    ClimateMode primary_mode = hygro_action ? humid_mode : therm_mode;
-    if (primary_mode == CLIMATE_MODE_HEAT_COOL || primary_mode == CLIMATE_MODE_COOL) {
-      auto fan = this->fan_->make_call();
-      float hum_ctrl_val = this->hygro_->get_output_value() * (-1.0);
-      float therm_ctrl_val = this->thermo_->get_output_value() * (-1.0);
-      float set_val = state * 100.0;
-
-      if (therm_mode != CLIMATE_MODE_OFF) {
-        auto therm_call = this->thermo_->make_call();
-        if (therm_call.get_target_temperature().has_value()) {
-            float target_temp = *therm_call.get_target_temperature();
-            float vicinity_temp = this->vicinity_->get_state();
-            ESP_LOGD(TAG, "%s PID Controller fan write_action target_temp: %.2f°C / vicinity_temp: %.2f°C",
-              name.c_str(), target_temp, vicinity_temp);
-            if (target_temp < vicinity_temp-1.0 && hum_ctrl_val >= 1.0) {
-              ESP_LOGD(TAG, "%s PID Controller fan write_action use weather data windspeed %.2f km/h",
-                name.c_str(), this->windspeed_);
-              set_val = this->windspeed_;
-            }
-        }
-        set_val = (hum_ctrl_val*this->hygro_weight_ + therm_ctrl_val*this->thermo_weight_) / (this->hygro_weight_+this->thermo_weight_) * 100.;
-      }
-      set_val = clamp(set_val, 100.f, 0.f);
-      ESP_LOGD(TAG, "%s PID Controller fan write_action: %.3f / humidifier: %.2f / thermostat: %.2f / result: %.0f%%",
-        name.c_str(), state, hum_ctrl_val, therm_ctrl_val, set_val);
-      fan.set_state(!!set_val);
-      fan.set_speed(set_val);
-      fan.perform();
-      return;
-    }
-    ESP_LOGD(TAG, "%s PID Controller %s disabled, ignore fan value of %.3f",
-      name.c_str(), hygro_action ? "dehumidification" : "cooling", state);
-  }
   fan::FanState *fan_;
   pid::PIDClimate *hygro_{NULL};
   pid::PIDClimate *thermo_{NULL};
   sensor::Sensor *vicinity_{NULL};
+  sensor::Sensor *target_thermo_{NULL};
   float hygro_weight_{1};
   float thermo_weight_{1};
   float windspeed_{0};
@@ -283,9 +244,103 @@ void WeightedFanOutput::setup() {
   ESP_LOGD(TAG, "WeightedFanOutput setup");
 }
 
+void WeightedFanOutput::set_hygro(pid::PIDClimate *hygro) {
+  ESP_LOGD(TAG, "WeightedFanOutput setup set_hygro %s", hygro->get_name().c_str());
+  this->hygro_ = hygro;
+}
+
+void WeightedFanOutput::set_thermo(pid::PIDClimate *thermo) {
+  ESP_LOGD(TAG, "WeightedFanOutput setup set_thermo %s", thermo->get_name().c_str());
+  this->thermo_ = thermo;
+}
+
 void WeightedFanOutput::write_state(float state) {
   ESP_LOGD(TAG, "WeightedFanOutput write_state %.2f km/h", state);
-  this->windspeed_ = state;
+  this->windspeed_ = state*100.;
+}
+
+void WeightedFanOutput::set_weighted_fan_value(bool hygro_action, float state) {
+    std::string name = hygro_action ? this->hygro_->get_name() : this->thermo_->get_name();
+    ClimateMode therm_mode = this->thermo_->mode;
+    ClimateMode humid_mode = this->hygro_->mode;
+    ClimateMode primary_mode = hygro_action ? humid_mode : therm_mode;
+    if (primary_mode == CLIMATE_MODE_HEAT_COOL || primary_mode == CLIMATE_MODE_COOL) {
+      auto fan = this->fan_->make_call();
+      float hum_ctrl_val = this->hygro_->get_output_value() * (-1.0);
+      float therm_ctrl_val = this->thermo_->get_output_value() * (-1.0);
+      float set_val = state * 100.0;
+      float speed;
+
+      if (therm_mode != CLIMATE_MODE_OFF) {
+        float target_temp = this->target_thermo_->get_state();
+        float vicinity_temp = this->vicinity_->get_state();
+        ESP_LOGD(TAG, "%s PID Controller fan write_action target_temp: %.2f°C / vicinity_temp: %.2f°C",
+          name.c_str(), target_temp, vicinity_temp);
+        if (target_temp < vicinity_temp-1.0 && hum_ctrl_val >= 1.0) {
+          ESP_LOGD(TAG, "%s PID Controller fan write_action use weather data windspeed %.2f km/h",
+            name.c_str(), this->windspeed_);
+          set_val = this->windspeed_;
+        } else
+        set_val = (hum_ctrl_val*this->hygro_weight_ + therm_ctrl_val*this->thermo_weight_) / (this->hygro_weight_+this->thermo_weight_) * 100.;
+      }
+      speed = clamp(set_val, 0.f, 100.f);
+      ESP_LOGD(TAG, "%s PID Controller clamp fan write_action: %.3f / humidifier: %.2f / thermostat: %.2f / set_val: %.2f / speed: %.0f%%",
+        name.c_str(), state, hum_ctrl_val, therm_ctrl_val, set_val, speed);
+      fan.set_state(!!speed);
+      fan.set_speed(speed);
+      fan.perform();
+      return;
+    }
+    ESP_LOGD(TAG, "%s PID Controller %s disabled, ignore fan value of %.3f",
+      name.c_str(), hygro_action ? "dehumidification" : "cooling", state);
+  }
+
+class HygroWeightedFanOutput : public FloatOutput, public Component {
+ public:
+  HygroWeightedFanOutput(WeightedFanOutput *weighted_fan, pid::PIDClimate *hygro)
+      : weighted_fan_(weighted_fan), hygro_(hygro) {}
+  void setup() override;
+
+ protected:
+  void write_state(float state) override;
+  WeightedFanOutput *weighted_fan_{NULL};
+  pid::PIDClimate *hygro_{NULL};
+};
+
+void HygroWeightedFanOutput::setup() {
+  ESP_LOGD(TAG, "HygroWeightedFanOutput setup");
+  if (this->weighted_fan_ && this->hygro_) {
+    this->weighted_fan_->set_hygro(this->hygro_);
+  }
+}
+
+void HygroWeightedFanOutput::write_state(float state) {
+  ESP_LOGD(TAG, "HygroWeightedFanOutput write_state %.2f", state);
+  this->weighted_fan_->set_weighted_fan_value(true, state);
+}
+
+class ThermoWeightedFanOutput : public FloatOutput, public Component {
+ public:
+  ThermoWeightedFanOutput(WeightedFanOutput *weighted_fan, pid::PIDClimate *thermo)
+      : weighted_fan_(weighted_fan), thermo_(thermo) {}
+  void setup() override;
+
+ protected:
+  void write_state(float state) override;
+  WeightedFanOutput *weighted_fan_{NULL};
+  pid::PIDClimate *thermo_{NULL};
+};
+
+void ThermoWeightedFanOutput::setup() {
+  ESP_LOGD(TAG, "ThermoWeightedFanOutput setup");
+  if (this->weighted_fan_ && this->thermo_) {
+    this->weighted_fan_->set_thermo(this->thermo_);
+  }
+}
+
+void ThermoWeightedFanOutput::write_state(float state) {
+  ESP_LOGD(TAG, "ThermoWeightedFanOutput write_state %.2f", state);
+  this->weighted_fan_->set_weighted_fan_value(false, state);
 }
 
 class GeckoCustomComponent : public Component {

@@ -129,13 +129,17 @@ output:
     type: float
     id: weighted_fan
     lambda: |-
-      auto weighted_fan_c = new WeightedFanOutput(id(fan_speed), id(hygrostat), id(thermostat_air), id(temperature_vicinity), 4.0, 1.0);
+      auto weighted_fan_c = new WeightedFanOutput(id(fan_speed), id(temperature_vicinity), id(weather_temperature), 4.0, 1.0);
       App.register_component(weighted_fan_c);
-      return {weighted_fan_c};
+      auto hygro_weighted_c = new HygroWeightedFanOutput(weighted_fan_c, id(hygrostat));
+      App.register_component(hygro_weighted_c);
+      auto thermo_weighted_c = new ThermoWeightedFanOutput(weighted_fan_c, id(thermostat_air));
+      App.register_component(thermo_weighted_c);
+      return {weighted_fan_c, hygro_weighted_c, thermo_weighted_c};
     outputs:
-      id: windspeed
-      # - id: fan_hygro
-      # - id: fan_thermo
+      - id: windspeed
+      - id: fan_hygro
+      - id: fan_thermo
 
   - platform: template
     id: fogger_humidifier
@@ -154,20 +158,16 @@ output:
     id: fan_dehumidifier
     type: float
     write_action:
-    - lambda: |-
-          return;
-      # - output.set_level:
-      #     id: fan_hygro
-      #     level: !lambda return state;
+      - output.set_level:
+          id: fan_hygro
+          level: !lambda return state;
   - platform: template
     id: fan_cooler
     type: float
     write_action:
-    - lambda: |-
-          return;
-      # - output.set_level:
-      #     id: fan_thermo
-      #     level: !lambda return state;
+      - output.set_level:
+          id: fan_thermo
+          level: !lambda return state;
 
   - platform: template
     id: heater
@@ -386,7 +386,7 @@ sensor:
         - output.set_level:
             id: windspeed
             level: !lambda |-
-                return x;
+                return x/100.;
 
   # actual historic sky conditions
   # a numeric value in the range of (0-22) which indicates increasing sky covering
