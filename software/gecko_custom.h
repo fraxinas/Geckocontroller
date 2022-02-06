@@ -266,17 +266,18 @@ void WeightedFanOutput::set_weighted_fan_value(bool hygro_action, float state) {
     ClimateMode primary_mode = hygro_action ? humid_mode : therm_mode;
     if (primary_mode == CLIMATE_MODE_HEAT_COOL || primary_mode == CLIMATE_MODE_COOL) {
       auto fan = this->fan_->make_call();
-      float hum_ctrl_val = this->hygro_->get_output_value() * (-1.0);
-      float therm_ctrl_val = this->thermo_->get_output_value() * (-1.0);
       float set_val = state * 100.0;
       float speed;
+      float hum_ctrl_val = this->hygro_->get_output_value() * (-1.0);
+      float therm_ctrl_val = this->thermo_->get_output_value() * (-1.0);
       if (therm_mode != CLIMATE_MODE_OFF) {
         float target_temp = this->target_thermo_->get_state();
         float vicinity_temp = this->vicinity_->get_state();
-        if (target_temp < vicinity_temp-1.0 && hum_ctrl_val >= 1.0) {
+        if (target_temp < vicinity_temp-1.0 && therm_ctrl_val > 1) {
           ESP_LOGD(TAG, "%s PID Controller fan write_action target_temp: %.2f°C < vicinity_temp: %.2f-1.0°C -> use weather data windspeed %.2f km/h",
-            name.c_str(), target_temp, vicinity_temp, this->windspeed_);
-          set_val = this->windspeed_;
+             name.c_str(), target_temp, vicinity_temp, this->windspeed_);
+          float setv = (hum_ctrl_val*this->hygro_weight_ + (this->windspeed_/100.)*this->thermo_weight_) / (this->hygro_weight_+(this->windspeed_/100.));
+          set_val = clamp(setv, hum_ctrl_val, setv) * 100.;
         } else
         set_val = (hum_ctrl_val*this->hygro_weight_ + therm_ctrl_val*this->thermo_weight_) / (this->hygro_weight_+this->thermo_weight_) * 100.;
       }
