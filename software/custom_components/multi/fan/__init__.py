@@ -12,7 +12,7 @@ DEPENDENCIES = ["fan"]
 
 CODEOWNERS = ["@fraxinas"]
 
-MultiFan = multi_ns.class_("MultiFan", cg.Component, fan.Fan)
+MultiFan = multi_ns.class_("MultiFan", cg.Component)
 
 CONFIG_SCHEMA = fan.FAN_SCHEMA.extend(
     {
@@ -23,6 +23,6 @@ CONFIG_SCHEMA = fan.FAN_SCHEMA.extend(
 
 async def to_code(config):
     output_ = await cg.get_variable(config[CONF_OUTPUT])
-    var = cg.new_Pvariable(config[CONF_OUTPUT_ID], output_)
+    state = await fan.create_fan_state(config)
+    var = cg.new_Pvariable(config[CONF_OUTPUT_ID], state, output_)
     await cg.register_component(var, config)
-    await fan.register_fan(var, config)

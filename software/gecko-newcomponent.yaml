@@ -35,5 +35,13 @@ logger:
 fan:
   - platform: multi
     id: gecko_multifan
+    output: fan_pwm
+
+output:
+  - platform: ledc
+    pin: GPIO14
+    id: fan_pwm
+    frequency: 25000 hz
+    channel: 7
 
 memory:
