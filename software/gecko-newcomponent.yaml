@@ -36,6 +36,30 @@ fan:
   - platform: multi
     id: gecko_multifan
     output: fan_pwm
+    hygrostat:
+      id: hygrostat
+      weight: 2.0
+    thermostat:
+      id: thermostat
+      weight: 0.5
+
+sensor:
+  - platform: template
+    name: "Combined humidity"
+    id: humidity_combined
+    update_interval: 15s
+    unit_of_measurement: "%"
+    device_class: "humidity"
+    state_class: "measurement"
+    accuracy_decimals: 1
+    lambda: |-
+      return 55.0;
+  - platform: template
+    name: "Thermometer"
+    id: temperature_ceiling
+    accuracy_decimals: 1
+    lambda: |-
+      return 23.0;
 
 output:
   - platform: ledc
@@ -44,4 +68,52 @@ output:
     frequency: 25000 hz
     channel: 7
 
-memory:
+  - platform: template
+    id: fogger_humidifier
+    type: float
+    write_action:
+      - lambda: |-
+            ESP_LOGD(TAG, "Hygrostat PID Controller fogger %f", state);
+  - platform: template
+    id: fan_dehumidifier
+    type: float
+    write_action:
+      - lambda: |-
+            ESP_LOGD(TAG, "Hygrostat PID Controller dehumidifier %f", state);
+  - platform: template
+    id: heater
+    type: float
+    write_action:
+      - lambda: |-
+            ESP_LOGD(TAG, "Thermostat PID Controller heater %f", state);
+  - platform: template
+    id: fan_cooler
+    type: float
+    write_action:
+      - lambda: |-
+            ESP_LOGD(TAG, "Thermostat PID Controller cooler %f", state);
+
+climate:
+  - platform: pid
+    id: hygrostat
+    name: "Hygrostat"
+    sensor: humidity_combined
+    default_target_temperature: 70 °C
+    heat_output: fogger_humidifier
+    cool_output: fan_dehumidifier
+    control_parameters:
+      kp: 0.22
+      ki: 0.005
+      kd: 6.38
+
+  - platform: pid
+    id: thermostat
+    name: "Thermostat"
+    sensor: temperature_ceiling
+    default_target_temperature: 22 °C
+    heat_output: heater
+    cool_output: fan_cooler
+    control_parameters:
+      kp: 2.34544
+      ki: 0.00987
+      kd: 208.97874
