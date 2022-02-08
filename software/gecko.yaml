@@ -284,7 +284,7 @@ sensor:
     unit_of_measurement: g
     filters:
       - calibrate_linear:
-          - 250000 -> 0
+          - 242000 -> 0
           - 456666 -> 100
       - delta: 0.5
       - lambda: |-
