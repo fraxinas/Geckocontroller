@@ -1,9 +1,9 @@
 esphome:
-  name: geckocontrolnewcomponent
+  name: geckocontrol
   platform: ESP32
   board: nodemcu-32s
-  # includes:
-  #   - gecko_custom.h
+  includes:
+    - ".esphome/build/geckocontrol/src/esphome/core/log.h"
 
 external_components:
   - source:
@@ -19,29 +19,21 @@ wifi:
     ssid: "Geckocontrol Fallback Hotspot"
     password: !secret fallback_password
 
-#captive_portal:
-
 # Enable logging
 logger:
   level: DEBUG
 
-# custom_component:
-# - lambda: |-
-#     auto gecko_custom = new GeckoCustomComponent();
-#     return {gecko_custom};
-#   components:
-#     - id: gecko
+ota:
 
 fan:
   - platform: multi
-    id: gecko_multifan
+    id: gccmult
     output: fan_pwm
     hygrostat:
       id: hygrostat
-      weight: 2.0
+      weight: 4.0
     thermostat:
       id: thermostat
-      weight: 0.5
 
 sensor:
   - platform: template
@@ -73,25 +65,25 @@ output:
     type: float
     write_action:
       - lambda: |-
-            ESP_LOGD(TAG, "Hygrostat PID Controller fogger %f", state);
+            ESP_LOGD("gecko-test", "Hygrostat PID Controller fogger %f", state);
   - platform: template
     id: fan_dehumidifier
     type: float
     write_action:
       - lambda: |-
-            ESP_LOGD(TAG, "Hygrostat PID Controller dehumidifier %f", state);
+            ESP_LOGD("gecko-test", "Hygrostat PID Controller dehumidifier %f", state);
   - platform: template
     id: heater
     type: float
     write_action:
       - lambda: |-
-            ESP_LOGD(TAG, "Thermostat PID Controller heater %f", state);
+            ESP_LOGD("gecko-test", "Thermostat PID Controller heater %f", state);
   - platform: template
     id: fan_cooler
     type: float
     write_action:
       - lambda: |-
-            ESP_LOGD(TAG, "Thermostat PID Controller cooler %f", state);
+            ESP_LOGD("gecko-test", "Thermostat PID Controller cooler %f", state);
 
 climate:
   - platform: pid
