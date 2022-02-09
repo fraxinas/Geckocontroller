@@ -1,5 +1,5 @@
 esphome:
-  name: geckocontrol
+  name: geckonewcomponent
   platform: ESP32
   board: nodemcu-32s
   includes:
@@ -28,12 +28,15 @@ ota:
 fan:
   - platform: multi
     id: gccmult
+    name: "Gecko Multifan"
     output: fan_pwm
     hygrostat:
       id: hygrostat
       weight: 4.0
     thermostat:
       id: thermostat
+    vicinity: vicinity_sensor
+    wind_speed: windspeed_sensor
 
 sensor:
   - platform: template
@@ -52,6 +55,18 @@ sensor:
     accuracy_decimals: 1
     lambda: |-
       return 23.0;
+  - platform: template
+    name: "Vicinity Temperature"
+    id: vicinity_sensor
+    accuracy_decimals: 1
+    lambda: |-
+      return 21.0;
+  - platform: template
+    name: "Windspeed"
+    id: windspeed_sensor
+    accuracy_decimals: 1
+    lambda: |-
+      return 4.0;
 
 output:
   - platform: ledc

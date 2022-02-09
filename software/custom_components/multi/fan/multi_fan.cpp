@@ -16,7 +16,7 @@ void MultiFan::setup() {
 void MultiFan::dump_config() {
   ESP_LOGCONFIG(TAG, "MultiFan '%s':", this->fan_->get_name().c_str());
   if (this->hygro_.component != NULL) {
-    ESP_LOGCONFIG(TAG, "MultiFan hygro id='%s', weight=%.2f", this->hygro_.component->get_name().c_str(), this->hygro_.weight);
+    ESP_LOGCONFIG(TAG, "MultiFan hygro name='%s', weight=%.2f", this->hygro_.component->get_name().c_str(), this->hygro_.weight);
   }
 }
 
@@ -51,6 +51,7 @@ void MultiFan::update() {
     if (call.get_target_temperature().has_value()) {
       float temp = call.get_target_temperature().value();
       ESP_LOGD(TAG, "has value %f", temp);
+      this->target_temperature_ = temp;
     }
   }
   set_weighted_fan_value();
@@ -62,23 +63,22 @@ void MultiFan::set_weighted_fan_value() {
   climate::ClimateMode hygro_mode = this->hygro_.component->mode;
   if (hygro_mode == climate::CLIMATE_MODE_HEAT_COOL || hygro_mode == climate::CLIMATE_MODE_COOL) {
     auto fan = this->fan_->make_call();
-    float set_val = state * 100.0;
     float speed;
     float hum_ctrl_val = this->hygro_.component->get_output_value() * (-1.0);
     float therm_ctrl_val = this->thermo_.component->get_output_value() * (-1.0);
+    float set_val = hum_ctrl_val * 100.0;
     if (therm_mode != climate::CLIMATE_MODE_OFF) {
-      float target_temp = this->target_thermo_->get_state();
-      if (target_temp < this->vicinity_temp_-1.0 && therm_ctrl_val > 1) {
+      if (this->target_temperature_ < this->vicinity_temp_-1.0 && therm_ctrl_val > 1) {
         ESP_LOGD(TAG, "target_temp: %.2f°C < vicinity_temp: %.2f-1.0°C -> use weather data windspeed %.2f km/h",
-            target_temp, this->vicinity_temp_, this->windspeed_);
+            this->target_temperature_, this->vicinity_temp_, this->windspeed_);
         float setv = (hum_ctrl_val*this->hygro_.weight + (this->windspeed_/100.)*this->thermo_.weight) / (this->hygro_.weight+(this->windspeed_/100.));
         set_val = clamp(setv, hum_ctrl_val, setv) * 100.;
       } else
       set_val = (hum_ctrl_val*this->hygro_.weight + therm_ctrl_val*this->thermo_.weight) / (this->hygro_.weight+this->thermo_.weight) * 100.;
     }
     speed = clamp(set_val, 0.f, 100.f);
-    ESP_LOGD(TAG, "Clamp fan write_action: %.3f / humidifier: %.2f / thermostat: %.2f / set_val: %.2f / speed: %.0f%%",
-      state, hum_ctrl_val, therm_ctrl_val, set_val, speed);
+    ESP_LOGD(TAG, "calculate fan value. humidifier: %.2f / thermostat: %.2f / set_val: %.2f / speed: %.0f%%",
+      hum_ctrl_val, therm_ctrl_val, set_val, speed);
     fan.set_state(!!speed);
     fan.set_speed(speed);
     fan.perform();
