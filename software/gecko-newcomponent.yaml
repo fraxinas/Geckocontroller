@@ -37,6 +37,7 @@ fan:
       id: thermostat
     vicinity: vicinity_sensor
     wind_speed: windspeed_sensor
+    update_interval: 20s
 
 sensor:
   - platform: template
