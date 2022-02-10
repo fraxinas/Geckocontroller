@@ -27,13 +27,20 @@ void MultiFan::loop() {
   this->next_update_ = false;
 }
 
+void MultiFan::write_state(float state) {
+  ESP_LOGCONFIG(TAG, "MultiFan::update state %.2f", state);
+}
+
+#if 0
 void MultiFan::update() {
   ESP_LOGCONFIG(TAG, "MultiFan::update");
+  bool recalc = false;
   if (this->vicinity_sens_ && this->vicinity_sens_->has_state()) {
     float state = this->vicinity_sens_->state;
     if (state != this->vicinity_temp_) {
       this->vicinity_temp_ = state;
       ESP_LOGCONFIG(TAG, "updated vicinity temperature: %.2f°C", this->vicinity_temp_);
+      recalc = true;
     }
   }
   if (this->windspeed_sens_ && this->windspeed_sens_->has_state()) {
@@ -41,6 +48,7 @@ void MultiFan::update() {
     if (state != this->windspeed_) {
       this->windspeed_ = state;
       ESP_LOGCONFIG(TAG, "updated wind speed: %.2f km/h", this->windspeed_);
+      recalc = true;
     }
   }
 
@@ -54,8 +62,10 @@ void MultiFan::update() {
       this->target_temperature_ = temp;
     }
   }
-  set_weighted_fan_value();
+  if (recalc)
+    set_weighted_fan_value();
 }
+#endif
 
 void MultiFan::set_weighted_fan_value() {
   ESP_LOGD(TAG, "set_weighted_fan_value");
@@ -68,9 +78,10 @@ void MultiFan::set_weighted_fan_value() {
     float therm_ctrl_val = this->thermo_.component->get_output_value() * (-1.0);
     float set_val = hum_ctrl_val * 100.0;
     if (therm_mode != climate::CLIMATE_MODE_OFF) {
-      if (this->target_temperature_ < this->vicinity_temp_-1.0 && therm_ctrl_val > 1) {
+      ESP_LOGD(TAG, "target_temp: %.2f°C", this->thermo_.component->target_temperature);
+      if (this->thermo_.component->target_temperature < this->vicinity_temp_-1.0 && therm_ctrl_val > 1) {
         ESP_LOGD(TAG, "target_temp: %.2f°C < vicinity_temp: %.2f-1.0°C -> use weather data windspeed %.2f km/h",
-            this->target_temperature_, this->vicinity_temp_, this->windspeed_);
+            this->thermo_.component->target_temperature, this->vicinity_temp_, this->windspeed_);
         float setv = (hum_ctrl_val*this->hygro_.weight + (this->windspeed_/100.)*this->thermo_.weight) / (this->hygro_.weight+(this->windspeed_/100.));
         set_val = clamp(setv, hum_ctrl_val, setv) * 100.;
       } else
@@ -86,6 +97,20 @@ void MultiFan::set_weighted_fan_value() {
   }
   ESP_LOGD(TAG, "Hygro PID Controller %s dehumidifcation disabled, don't set fan value",
     this->hygro_.component->get_name().c_str());
+}
+
+void MultiFan::set_hygro(const PidConf &hygro) {
+  this->hygro_ = hygro;
+  hygro.component->add_on_pid_computed_callback([this]() { this->update_from_pid_(true); });
+}
+void MultiFan::set_thermo(const PidConf &thermo) {
+  this->thermo_ = thermo;
+  thermo.component->add_on_pid_computed_callback([this]() { this->update_from_pid_(false); });
+}
+
+void MultiFan::update_from_pid_(bool hygro_action) {
+  ESP_LOGD(TAG, "update_from_pid %d", hygro_action);
+  set_weighted_fan_value();
 }
 
 float MultiFan::get_setup_priority() const { return setup_priority::PROCESSOR; }

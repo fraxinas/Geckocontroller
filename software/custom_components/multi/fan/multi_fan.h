@@ -15,7 +15,7 @@ struct PidConf {
 };
 
 
-class MultiFan : public sensor::Sensor, public PollingComponent {
+class MultiFan : public Component, public sensor::Sensor, public output::FloatOutput {
  public:
   MultiFan(fan::FanState *fan, output::FloatOutput *output)
      : fan_(fan), output_(output) {}
@@ -24,22 +24,21 @@ class MultiFan : public sensor::Sensor, public PollingComponent {
   void dump_config() override;
   float get_setup_priority() const override;
 
-  void set_hygro(const PidConf &hygro) { hygro_ = hygro; }
-  void set_thermo(const PidConf &thermo) { thermo_ = thermo; }
+  void set_hygro(const PidConf &hygro);
+  void set_thermo(const PidConf &thermo);
   void set_vicinity(sensor::Sensor *vicinity) { vicinity_sens_ = vicinity; }
   void set_windspeed(sensor::Sensor *windspeed) { windspeed_sens_ = windspeed; }
-  void update() override;
 
  protected:
   void set_weighted_fan_value();
+  void update_from_pid_(bool hygro_action);
+  void write_state(float state) override;
+
   fan::FanState *fan_;
   output::FloatOutput *output_;
   bool next_update_{true};
   float vicinity_temp_{0};
   float windspeed_{0};
-  float target_temperature_{0};
-  uint16_t update_interval_{0xFFFF};
-
   PidConf hygro_{NULL};
   PidConf thermo_{NULL};
   sensor::Sensor *vicinity_sens_{NULL};
