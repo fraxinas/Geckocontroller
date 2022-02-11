@@ -1,0 +1,118 @@
+esphome:
+  name: geckonewcomponent
+  platform: ESP32
+  board: nodemcu-32s
+  includes:
+    - ".esphome/build/geckocontrol/src/esphome/core/log.h"
+
+external_components:
+  - source:
+      type: local
+      path: custom_components
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Geckocontrol Fallback Hotspot"
+    password: !secret fallback_password
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API
+api:
+
+ota:
+
+fan:
+  - platform: multi
+    id: gccmult
+    name: "Gecko Multifan"
+    output: fan_pwm
+    hygrostat:
+      id: hygrostat
+      weight: 4.0
+    thermostat:
+      id: thermostat
+    vicinity: vicinity_sensor
+    wind_speed: windspeed_sensor
+
+sensor:
+  - platform: template
+    name: "Combined humidity"
+    id: humidity_combined
+    update_interval: 30s
+    unit_of_measurement: "%"
+    device_class: "humidity"
+    state_class: "measurement"
+    accuracy_decimals: 1
+    lambda: |-
+      return rand() % 100;
+  - platform: template
+    name: "Thermometer"
+    id: temperature_ceiling
+    update_interval: 30s
+    accuracy_decimals: 1
+    lambda: |-
+      return 15.0+(rand() % 100)/10;
+  - platform: template
+    name: "Vicinity Temperature"
+    id: vicinity_sensor
+    accuracy_decimals: 1
+    lambda: |-
+      return 21.0;
+  - platform: template
+    name: "Windspeed"
+    id: windspeed_sensor
+    accuracy_decimals: 1
+    lambda: |-
+      return 4.0;
+  - platform: template
+    name: "Temperature Setpoint"
+    id: temperature_setpoint
+    update_interval: 30s
+    accuracy_decimals: 1
+    lambda: |-
+      return 22.2;
+    on_value:
+      then:
+        - climate.control:
+              id: thermostat
+              target_temperature: !lambda |-
+                return x;
+
+output:
+  - platform: ledc
+    pin: GPIO14
+    id: fan_pwm
+    frequency: 25000 hz
+    channel: 7
+
+climate:
+  - platform: pid
+    id: hygrostat
+    name: "Hygrostat"
+    sensor: humidity_combined
+    default_target_temperature: 70 °C
+    heat_output: gccmult
+    cool_output: gccmult
+    control_parameters:
+      kp: 0.22
+      ki: 0.005
+      kd: 6.38
+
+  - platform: pid
+    id: thermostat
+    name: "Thermostat"
+    sensor: temperature_ceiling
+    default_target_temperature: 22 °C
+    heat_output: gccmult
+    cool_output: gccmult
+    control_parameters:
+      kp: 2.34544
+      ki: 0.00987
+      kd: 208.97874
