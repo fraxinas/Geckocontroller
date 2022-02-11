@@ -43,6 +43,7 @@ class MultiFan : public Component, public sensor::Sensor, public output::FloatOu
   sensor::Sensor *vicinity_sens_{NULL};
   sensor::Sensor *windspeed_sens_{NULL};
   bool next_update_{true};
+  bool enable_auto_mode_{true};
 };
 
 }  // namespace multi

@@ -11,7 +11,9 @@ static const char *const TAG = "multi.fan";
 
 void MultiFan::setup() {
   ESP_LOGCONFIG(TAG, "Setting up MultiFan...");
-    this->fan_->add_on_state_callback([this]() { this->next_update_ = true; });
+  auto traits = fan::FanTraits(true, true, false, 100);
+  this->fan_->set_traits(traits);
+  this->fan_->add_on_state_callback([this]() { this->next_update_ = true; });
 }
 
 void MultiFan::dump_config() {
@@ -35,6 +37,19 @@ void MultiFan::loop() {
     return;
   }
   this->next_update_ = false;
+
+  bool enable = this->fan_->oscillating;
+  if (enable != this->enable_auto_mode_) {
+    this->enable_auto_mode_ = enable;
+    ESP_LOGD(TAG, "Setting auto mode: %s", ONOFF(enable));
+  }
+
+  float speed = 0.0f;
+  if (this->fan_->state) {
+    speed = static_cast<float>(this->fan_->speed) / 100.f;
+  }
+  ESP_LOGD(TAG, "Setting speed: %.2f", speed);
+  this->output_->set_level(speed);
 }
 
 void MultiFan::write_state(float state) {
@@ -100,8 +115,9 @@ void MultiFan::set_thermo(const PidConf &thermo) {
 }
 
 void MultiFan::update_from_pid_(bool hygro_action) {
-  ESP_LOGD(TAG, "update_from_pid %d", hygro_action);
-  set_weighted_fan_value();
+  if (this->enable_auto_mode_) {
+    set_weighted_fan_value();
+  }
 }
 
 float MultiFan::get_setup_priority() const { return setup_priority::PROCESSOR; }

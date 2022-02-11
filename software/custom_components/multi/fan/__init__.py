@@ -55,7 +55,7 @@ ITEMLIST = (CONF_HYGRO, CONF_THERMO)
 async def to_code(config):
     fan_config = {
         CONF_ID: config[CONF_FAN_ID],
-        CONF_NAME: config[CONF_NAME]+'_fanstate',
+        CONF_NAME: config[CONF_NAME]+' Status',
         CONF_DISABLED_BY_DEFAULT: config[CONF_DISABLED_BY_DEFAULT]
     }
 
