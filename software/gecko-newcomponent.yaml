@@ -23,6 +23,9 @@ wifi:
 logger:
   level: DEBUG
 
+# Enable Home Assistant API
+api:
+
 ota:
 
 fan:
@@ -95,8 +98,8 @@ climate:
     name: "Hygrostat"
     sensor: humidity_combined
     default_target_temperature: 70 °C
-    heat_output: output_hygrostat_heat
-    cool_output: output_hygrostat_cool
+    heat_output: gccmult
+    cool_output: gccmult
     control_parameters:
       kp: 0.22
       ki: 0.005
@@ -107,8 +110,8 @@ climate:
     name: "Thermostat"
     sensor: temperature_ceiling
     default_target_temperature: 22 °C
-    heat_output: output_thermostat_heat
-    cool_output: output_thermostat_cool
+    heat_output: gccmult
+    cool_output: gccmult
     control_parameters:
       kp: 2.34544
       ki: 0.00987

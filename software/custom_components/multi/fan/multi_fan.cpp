@@ -1,3 +1,4 @@
+#include <float.h>
 #include "multi_fan.h"
 #include "esphome/core/log.h"
 #include "esphome/components/fan/fan_helpers.h"
@@ -16,7 +17,16 @@ void MultiFan::setup() {
 void MultiFan::dump_config() {
   ESP_LOGCONFIG(TAG, "MultiFan '%s':", this->fan_->get_name().c_str());
   if (this->hygro_.component != NULL) {
-    ESP_LOGCONFIG(TAG, "MultiFan hygro name='%s', weight=%.2f", this->hygro_.component->get_name().c_str(), this->hygro_.weight);
+    ESP_LOGCONFIG(TAG, "Hygro sensor name='%s', weight=%.2f", this->hygro_.component->get_name().c_str(), this->hygro_.weight);
+  }
+  if (this->thermo_.component != NULL) {
+    ESP_LOGCONFIG(TAG, "Thermo sensor name='%s', weight=%.2f", this->thermo_.component->get_name().c_str(), this->thermo_.weight);
+  }
+  if (this->vicinity_sens_ != NULL) {
+    ESP_LOGCONFIG(TAG, "Vicinity temperature sensor name='%s'", this->vicinity_sens_->get_name().c_str());
+  }
+  if (this->windspeed_sens_ != NULL) {
+    ESP_LOGCONFIG(TAG, "Vicinity windspeed sensor name='%s'", this->windspeed_sens_->get_name().c_str());
   }
 }
 
@@ -28,61 +38,43 @@ void MultiFan::loop() {
 }
 
 void MultiFan::write_state(float state) {
-  ESP_LOGCONFIG(TAG, "MultiFan::update state %.2f", state);
+  ESP_LOGV(TAG, "write_state %.2f (igmored)", state);
 }
 
-#if 0
-void MultiFan::update() {
-  ESP_LOGCONFIG(TAG, "MultiFan::update");
-  bool recalc = false;
-  if (this->vicinity_sens_ && this->vicinity_sens_->has_state()) {
-    float state = this->vicinity_sens_->state;
-    if (state != this->vicinity_temp_) {
-      this->vicinity_temp_ = state;
-      ESP_LOGCONFIG(TAG, "updated vicinity temperature: %.2f°C", this->vicinity_temp_);
-      recalc = true;
-    }
-  }
+float MultiFan::get_windspeed() {
   if (this->windspeed_sens_ && this->windspeed_sens_->has_state()) {
-    float state = this->windspeed_sens_->state * 100;
-    if (state != this->windspeed_) {
-      this->windspeed_ = state;
-      ESP_LOGCONFIG(TAG, "updated wind speed: %.2f km/h", this->windspeed_);
-      recalc = true;
-    }
+    return this->windspeed_sens_->state;
   }
-
-  if (this->thermo_.component)
-  {
-    auto call = this->thermo_.component->make_call();
-    ESP_LOGD(TAG, "therm @ %p", call);
-    if (call.get_target_temperature().has_value()) {
-      float temp = call.get_target_temperature().value();
-      ESP_LOGD(TAG, "has value %f", temp);
-      this->target_temperature_ = temp;
-    }
-  }
-  if (recalc)
-    set_weighted_fan_value();
+  return 0.f;
 }
-#endif
+
+bool MultiFan::get_vicinity_temperature(float *vicinity) {
+  if (this->vicinity_sens_ && this->vicinity_sens_->has_state()) {
+    *vicinity = this->vicinity_sens_->state;
+    return true;
+  }
+  return false;
+}
 
 void MultiFan::set_weighted_fan_value() {
-  ESP_LOGD(TAG, "set_weighted_fan_value");
   climate::ClimateMode therm_mode = this->thermo_.component->mode;
   climate::ClimateMode hygro_mode = this->hygro_.component->mode;
-  if (hygro_mode == climate::CLIMATE_MODE_HEAT_COOL || hygro_mode == climate::CLIMATE_MODE_COOL) {
+  bool dehumidification = (hygro_mode == climate::CLIMATE_MODE_HEAT_COOL || hygro_mode == climate::CLIMATE_MODE_COOL);
+  bool cooling = (therm_mode == climate::CLIMATE_MODE_HEAT_COOL || therm_mode == climate::CLIMATE_MODE_COOL);
+  if (dehumidification || cooling) {
+    float vt;
+    bool have_vt = get_vicinity_temperature(&vt);
     auto fan = this->fan_->make_call();
     float speed;
     float hum_ctrl_val = this->hygro_.component->get_output_value() * (-1.0);
     float therm_ctrl_val = this->thermo_.component->get_output_value() * (-1.0);
     float set_val = hum_ctrl_val * 100.0;
-    if (therm_mode != climate::CLIMATE_MODE_OFF) {
-      ESP_LOGD(TAG, "target_temp: %.2f°C", this->thermo_.component->target_temperature);
-      if (this->thermo_.component->target_temperature < this->vicinity_temp_-1.0 && therm_ctrl_val > 1) {
+    if (cooling) {
+      if (have_vt && this->thermo_.component->target_temperature < vt-1.0 && therm_ctrl_val > 1.0) {
+        float windspeed = get_windspeed();
         ESP_LOGD(TAG, "target_temp: %.2f°C < vicinity_temp: %.2f-1.0°C -> use weather data windspeed %.2f km/h",
-            this->thermo_.component->target_temperature, this->vicinity_temp_, this->windspeed_);
-        float setv = (hum_ctrl_val*this->hygro_.weight + (this->windspeed_/100.)*this->thermo_.weight) / (this->hygro_.weight+(this->windspeed_/100.));
+            this->thermo_.component->target_temperature, vt, windspeed);
+        float setv = (hum_ctrl_val*this->hygro_.weight + (windspeed/100.)*this->thermo_.weight) / (this->hygro_.weight+(windspeed/100.));
         set_val = clamp(setv, hum_ctrl_val, setv) * 100.;
       } else
       set_val = (hum_ctrl_val*this->hygro_.weight + therm_ctrl_val*this->thermo_.weight) / (this->hygro_.weight+this->thermo_.weight) * 100.;
@@ -95,8 +87,7 @@ void MultiFan::set_weighted_fan_value() {
     fan.perform();
     return;
   }
-  ESP_LOGD(TAG, "Hygro PID Controller %s dehumidifcation disabled, don't set fan value",
-    this->hygro_.component->get_name().c_str());
+  ESP_LOGD(TAG, "PID Controllers dehumidifcation and cooling disabled, don't set fan value");
 }
 
 void MultiFan::set_hygro(const PidConf &hygro) {

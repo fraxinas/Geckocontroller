@@ -32,17 +32,17 @@ class MultiFan : public Component, public sensor::Sensor, public output::FloatOu
  protected:
   void set_weighted_fan_value();
   void update_from_pid_(bool hygro_action);
+  bool get_vicinity_temperature(float *vicinity);
+  float get_windspeed();
   void write_state(float state) override;
 
   fan::FanState *fan_;
   output::FloatOutput *output_;
-  bool next_update_{true};
-  float vicinity_temp_{0};
-  float windspeed_{0};
   PidConf hygro_{NULL};
   PidConf thermo_{NULL};
   sensor::Sensor *vicinity_sens_{NULL};
   sensor::Sensor *windspeed_sens_{NULL};
+  bool next_update_{true};
 };
 
 }  // namespace multi
