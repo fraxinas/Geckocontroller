@@ -28,18 +28,6 @@ api:
 
 ota:
 
-fan:
-  - platform: multi
-    id: gccmult
-    name: "Gecko Multifan"
-    output: fan_pwm
-    hygrostat:
-      id: hygrostat
-      weight: 4.0
-    thermostat:
-      id: thermostat
-    vicinity: vicinity_sensor
-    wind_speed: windspeed_sensor
       then:
         - lambda: |-
             ESP_LOGD("skycond_attenuation", "set_action: %.2f", x);
@@ -52,78 +40,73 @@ fan:
     accuracy_decimals: 2
     lambda: |-
       return (rand() % 100) / 100.f;
-
 sensor:
-  - platform: template
-    name: "Combined humidity"
-    id: humidity_combined
-    update_interval: 30s
-    unit_of_measurement: "%"
-    device_class: "humidity"
-    state_class: "measurement"
-    accuracy_decimals: 1
-    lambda: |-
-      return rand() % 100;
-  - platform: template
-    name: "Thermometer"
-    id: temperature_ceiling
-    update_interval: 30s
-    accuracy_decimals: 1
-    lambda: |-
-      return 15.0+(rand() % 100)/10;
-  - platform: template
-    name: "Vicinity Temperature"
-    id: vicinity_sensor
-    accuracy_decimals: 1
-    lambda: |-
-      return 21.0;
-  - platform: template
-    name: "Windspeed"
-    id: windspeed_sensor
-    accuracy_decimals: 1
-    lambda: |-
-      return 4.0;
-  - platform: template
-    name: "Temperature Setpoint"
-    id: temperature_setpoint
-    update_interval: 30s
-    accuracy_decimals: 1
-    lambda: |-
-      return 22.2;
-    on_value:
-      then:
-        - climate.control:
-              id: thermostat
-              target_temperature: !lambda |-
-                return x;
+
+terralight:
+  id: terrariumlight
+  name: "Terrarium Light Controller"
+  entity_id: sensor.sky_in_france_noumea_182_days_ago
+
+light:
+  - platform: monochromatic
+    id: day_light
+    output: dimmer1
+    name: "Dimmer Daylight"
+    gamma_correct: 1.0
+    default_transition_length: 0s
+
+  - platform: rgb
+    name: "Scenic Light"
+    id: scenic_light
+    red: component_red
+    green: component_green
+    blue: component_blue
 
 output:
+  - platform: ac_dimmer
+    id: dimmer1
+    gate_pin: 16
+    min_power: 15%
+    zero_cross_pin:
+      number: 17
+      mode: INPUT
+      inverted: no
   - platform: ledc
-    pin: GPIO14
-    id: fan_pwm
-    frequency: 25000 hz
+    pin: 32
+    id: component_red
+    channel: 0
+  - platform: ledc
+    pin: 33
+    id: component_green
+    channel: 2
+  - platform: ledc
+    pin: 27
+    id: component_blue
+    channel: 4
+  - platform: template
+    id: daylight_attenuation_output
+    type: float
+    write_action:
+      - lambda: |-
+          id(twilight_attenuation) = state;
+          ESP_LOGD("gecko-newcomponent", "wrote twilight_attenuation: %.2f", id(twilight_attenuation));
 
-  #  - id: skycond_attenuation
-  #    type: float
-  #    restore_value: no
-  #    initial_value: '0.7'
-    sensor: humidity_combined
-    default_target_temperature: 70 °C
-    heat_output: gccmult
-    cool_output: gccmult
-    control_parameters:
-      kp: 0.22
-      ki: 0.005
-      kd: 6.38
-
+climate:
   - platform: pid
-    id: thermostat
-    name: "Thermostat"
-    sensor: temperature_ceiling
-    default_target_temperature: 22 °C
-    heat_output: gccmult
-    cool_output: gccmult
-    control_parameters:
-      kp: 2.34544
-      ki: 0.00987
-      kd: 208.97874
+    id: hygrostat
+    name: "Hygrostat"
+globals:
+   - id: scenic_light_effect
+     type: uint8_t
+     restore_value: no
+     initial_value: '0'
+
+   - id: skycond_attenuation
+     type: float
+     restore_value: no
+     initial_value: '0.7'
+
+   - id: twilight_attenuation
+     type: float
+     restore_value: no
+     initial_value: '1'
