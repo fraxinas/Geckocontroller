@@ -46,6 +46,7 @@ terralight:
   id: terrariumlight
   name: "Terrarium Light Controller"
   entity_id: sensor.sky_in_france_noumea_182_days_ago
+  twilight_attenuation: twilight_attenuation
 
 light:
   - platform: monochromatic
@@ -105,8 +106,3 @@ globals:
      type: float
      restore_value: no
      initial_value: '0.7'
-
-   - id: twilight_attenuation
-     type: float
-     restore_value: no
-     initial_value: '1'

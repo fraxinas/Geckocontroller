@@ -46,5 +46,20 @@ void TerraLight::loop() {
 
 float TerraLight::get_setup_priority() const { return setup_priority::PROCESSOR; }
 
+void TerraLightNumber::setup() {
+  ESP_LOGCONFIG(TAG, "Setting up TerraLightNumber...");
+}
+
+void TerraLightNumber::dump_config() {
+  ESP_LOGCONFIG(TAG, "TerraLightNumber '%s':", this->get_name().c_str());
+}
+
+void TerraLightNumber::control(float value) {
+  ESP_LOGV(TAG, "Setting number %f", value);
+  this->publish_state(value);
+}
+
+float TerraLightNumber::get_setup_priority() const { return setup_priority::PROCESSOR; }
+
 }  // namespace multi
 }  // namespace esphome
