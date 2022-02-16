@@ -46,6 +46,11 @@ void TerraLight::loop() {
 
 float TerraLight::get_setup_priority() const { return setup_priority::PROCESSOR; }
 
+void TerraLight::set_twilight_attenuation_number(TerraLightNumber *twilight_attenuation) {
+  ESP_LOGCONFIG(TAG, "set_twilight_attenuation_number %s", twilight_attenuation->get_name().c_str());
+  this->twilight_attenuation_ = twilight_attenuation;
+}
+
 void TerraLightNumber::setup() {
   ESP_LOGCONFIG(TAG, "Setting up TerraLightNumber...");
 }

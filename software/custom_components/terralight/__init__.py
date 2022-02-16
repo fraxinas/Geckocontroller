@@ -21,6 +21,7 @@ CODEOWNERS = ["@fraxinas"]
 _LOGGER = logging.getLogger(__name__)
 
 CONF_TWILIGHT = "twilight_attenuation"
+CONF_SKYCOND = "skycond_attenuation"
 TerraLight = terra_ns.class_("TerraLight", sensor.Sensor, cg.Component)
 TerraLightNumber = terra_ns.class_("TerraLightNumber", number.Number, cg.Component)
 
@@ -33,7 +34,7 @@ CONFIG_SCHEMA = sensor.sensor_schema(
         cv.GenerateID(CONF_ID): cv.declare_id(TerraLight),
         cv.Required(CONF_ENTITY_ID): cv.entity_id,
         cv.Optional(CONF_ATTRIBUTE): cv.string,
-        cv.Optional("skycond_attenuation"): cv.declare_id(sensor.Sensor),
+        cv.Optional(CONF_SKYCOND): cv.declare_id(sensor.Sensor),
         cv.GenerateID(CONF_TWILIGHT): cv.declare_id(TerraLightNumber)
     }
 ).extend(cv.COMPONENT_SCHEMA)
@@ -55,3 +56,4 @@ async def to_code(config):
     cg.add(terra_var.set_entity_id(config[CONF_ENTITY_ID]))
     if CONF_ATTRIBUTE in config:
         cg.add(terra_var.set_attribute(config[CONF_ATTRIBUTE]))
+    cg.add(terra_var.set_twilight_attenuation_number(number_var))
