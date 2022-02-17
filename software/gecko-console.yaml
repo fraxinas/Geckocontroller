@@ -1,11 +1,12 @@
 esphome:
-  name: geckocontrol
+  name: geckoconsole
   platform: ESP32
   board: nodemcu-32s
-  includes:
-    - custom_components/vcnl4040/vcnl4040.h
-  libraries:
-   - "Adafruit VCNL4040@^1.0.1"
+  # includes:
+  #   - custom_components/vcnl4040/vcnl4040.h
+  # libraries:
+  #  - "Adafruit BusIO@^1.11.1"
+  #  - "Adafruit VCNL4040@^1.0.1"
 
 wifi:
   ssid: !secret wifi_ssid
@@ -81,16 +82,16 @@ sensor:
   - platform: homeassistant   # Forecast precipitation
     id: weather_precipitation
     entity_id: sensor.today_rain
-    
-  - platform: custom
-    lambda: |-
-      auto MyVCNL4040_sensor = new MyVCNL4040();
-      App.register_component(MyVCNL4040_sensor);
-      return {MyVCNL4040_sensor->prox_sensor, MyVCNL4040_sensor->lux_sensor, MyVCNL4040_sensor->rawLight_sensor};
-    sensors:
-    - name: "Proximity sensor"
-    - name: "Lux sensor"
-    - name: "Raw Light sensor"
+
+  # - platform: custom
+  #   lambda: |-
+  #     auto MyVCNL4040_sensor = new MyVCNL4040();
+  #     App.register_component(MyVCNL4040_sensor);
+  #     return {MyVCNL4040_sensor->prox_sensor, MyVCNL4040_sensor->lux_sensor, MyVCNL4040_sensor->rawLight_sensor};
+  #   sensors:
+  #   - name: "Proximity sensor"
+  #   - name: "Lux sensor"
+  #   - name: "Raw Light sensor"
 
 output:
   - platform: ledc
@@ -98,34 +99,49 @@ output:
     id: buzzer
 
 light:
-  - platform: monochromatic
-    output: buzzer
-    name: "Buzzer"
+  - platform: fastled_clockless
+    chipset: WS2812B
+    pin: GPIO33
+    num_leds: 6
+    rgb_order: GRB
+    id: rgb_leds
+    name: "RGB LEDs"
+    default_transition_length: 0s
+    color_correct: [50%, 50%, 50%]
+    restore_mode: ALWAYS_ON
+  # - platform: monochromatic
+  #   output: buzzer
+  #   name: "Buzzer"
+
+rtttl:
+  output: buzzer
+  on_finished_playback:
+    - logger.log: 'Song ended!'
 
 status_led:
   pin: GPIO02
 
-font:
-  - file: "/usr/share/fonts/TTF/OpenSans-SemiBoldItalic.ttf"
-    id: font1
-    size: 32
+# font:
+#   - file: "/usr/share/fonts/TTF/OpenSans-SemiBoldItalic.ttf"
+#     id: font1
+#     size: 32
 
-display:
-  - platform: st7789v
-    id: gecko_display
-    dc_pin: GPIO22
-    reset_pin: GPIO21
-    backlight_pin: GPIO32
-    dimensions: 240x240
-    update_interval: 1s
-    lambda: |-
-      it.print(0, 0, id(font1), "Geckocontrol");
-      it.strftime(0, 32, id(font1), TextAlign::TOP_LEFT, "%H:%M:%S", id(esptime).now());
-      if (id(weather_tempmin).has_state() && id(weather_tempmax).has_state())
-      {
-        it.printf(0, 66, id(font1), 0xFFFF, TextAlign::TOP_LEFT, "T: %.1f-%.1f°C", id(weather_tempmin).state, id(weather_tempmax).state);
-      }
-      if (id(weather_precipitation).has_state())
-      {
-        it.printf(0, 92, id(font1), 0xFFFF, TextAlign::TOP_LEFT, "prec: %.1fmm", id(weather_precipitation).state);
-      }
+# display:
+#   - platform: st7789v
+#     id: gecko_display
+#     dc_pin: GPIO22
+#     reset_pin: GPIO21
+#     backlight_pin: GPIO32
+#     dimensions: 240x240
+#     update_interval: 1s
+#     lambda: |-
+#       it.print(0, 0, id(font1), "Geckocontrol");
+#       it.strftime(0, 32, id(font1), TextAlign::TOP_LEFT, "%H:%M:%S", id(esptime).now());
+#       if (id(weather_tempmin).has_state() && id(weather_tempmax).has_state())
+#       {
+#         it.printf(0, 66, id(font1), 0xFFFF, TextAlign::TOP_LEFT, "T: %.1f-%.1f°C", id(weather_tempmin).state, id(weather_tempmax).state);
+#       }
+#       if (id(weather_precipitation).has_state())
+#       {
+#         it.printf(0, 92, id(font1), 0xFFFF, TextAlign::TOP_LEFT, "prec: %.1fmm", id(weather_precipitation).state);
+#       }
