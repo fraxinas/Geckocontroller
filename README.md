@@ -69,7 +69,16 @@
 * [How-to Setup & Calibrate](software/README.md)
 
 ## TODO
-- [ ] finish console (display / rotary encoder controller unit)
+### Console unit
+- [X] schematic & PCB layout
+- [ ] 3d case
+- [X] CO2 sensor
+- [X] WS2812 RGB LEDs
+- [X] buzzer
+- [ ] software for ST7789 display
+- [ ] software for rotary encoder
+
+### Controller unit
 - [x] 3d-printed cases for BME280 sensor and console
 - [x] rainfall/humidity automation
 - [x] ventilation automation
@@ -88,3 +97,4 @@
 | 2022-01-02 |         | Added fogger to terrarium                        |
 | 2022-01-09 |         | Base weather simulation on real historic records |
 | 2022-01-28 |         | Order Console PCB at aisler.net & parts at LCSC  |
+| 2022-02-18 |         | Assembled Console PCB                            |
