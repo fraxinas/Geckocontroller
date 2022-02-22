@@ -283,9 +283,10 @@ void DisplayBuffer::print(int x, int y, Font *font, Color color, TextAlign align
       ESP_LOGW(TAG, "Encountered character without representation in font: '%c'", text[i]);
       if (!font->get_glyphs().empty()) {
         uint8_t glyph_width = font->get_glyphs()[0].glyph_data_->width;
-        for (int glyph_x = 0; glyph_x < glyph_width; glyph_x++)
+        for (int glyph_x = 0; glyph_x < glyph_width; glyph_x++) {
           for (int glyph_y = 0; glyph_y < height; glyph_y++)
             this->draw_pixel_at(glyph_x + x_at, glyph_y + y_start, color);
+        }
         x_at += glyph_width;
       }
 
