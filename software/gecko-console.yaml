@@ -426,10 +426,22 @@ sensor:
     co2:
       name: "MH-Z19 CO2 Value"
       id: co2_val
+      on_value:
+        then:
+          - lambda: |-
+              auto call = id(rgb_leds).make_call();
+              double r=0.0, g=0.0, b=0.0;
+              g = 1.6 - 0.001*x;
+              r = -0.5 + 0.001*x;
+              call.set_rgb(r,g,b);
+              call.perform();
+              if (x > 1800) {
+                id(rtttlplayer).play("GoodBad:d=4,o=5,b=56:32p,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,d#,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,c#6,32a#,32d#6,32a#,32d#6,8a#.,16f#.,32f.,32d#.,c#,32a#,32d#6,32a#,32d#6,8a#.,16g#.,d#,1p,1p,1p,1p,1p,1p");
+              }
     temperature:
       name: "MH-Z19 Temperature"
       id: temp_val
-    update_interval: 60s
+    update_interval: 20s
     automatic_baseline_calibration: false
 
 # Sensors from Home Assistant
@@ -501,6 +513,7 @@ rtttl:
   output: buzzer
   on_finished_playback:
     - logger.log: 'Song ended!'
+  id: rtttlplayer
 
 status_led:
   pin: GPIO02
