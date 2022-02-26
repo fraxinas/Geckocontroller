@@ -66,23 +66,7 @@ substitutions:
 #####  END OF CONFIGURATION BLOCK
 
 globals:
-# Screensaver
-   - id: ss_x
-     type: signed char
-     initial_value: '0'
-
-   - id: ss_y
-     type: signed char
-     initial_value: '8'
-
-   - id: ss_vx
-     type: signed char
-     initial_value: '1'
-
-   - id: ss_vy
-     type: signed char
-     initial_value: '1'
-
+# Wait indicator
    - id: wi
      type: unsigned char
      initial_value: '0'
@@ -142,7 +126,7 @@ globals:
      # How many items are there for each submenu? For continuous settings, what is the range?
    - id: menu_length
      type: unsigned char[${menuSize}]
-     initial_value: '{4,0,0,2,0,32}'
+     initial_value: '{4,0,0,2,0,50}'
 
 script:
 # What value to display for each menu item
@@ -150,9 +134,9 @@ script:
     then:
       - lambda: |-
           switch(id(menu_current_node)) {
-            case 2: id(menu_current_value) = id(co2_val).state; break;
+            case 1: id(menu_current_value) = id(co2_val).state; break;
 
-            case 3: id(menu_current_value) = id(temp_val).state; break;
+            case 2: id(menu_current_value) = id(temp_val).state; break;
 
             case 4: id(menu_current_value) = id(scenic_light_color_temp).state; break;
 
@@ -175,7 +159,7 @@ script:
             case 5: {
               float b;
               id(rgb_leds).current_values_as_brightness(&b);
-              id(rotary_dial).set_value(b*32.f);
+              id(rotary_dial).set_value(b*id(menu_length)[id(menu_current_node)]);
               ESP_LOGD("console", "read brightness: %f, initialized rotary dial with %f", b, id(rotary_dial).state);
               break;
             }
@@ -207,7 +191,7 @@ script:
                 ESP_LOGD("console", "change brightness to %f %%", b);
                 if (b > 0.)
                   call = id(rgb_leds).turn_on();
-                call.set_brightness(b/32.f);
+                call.set_brightness(b/id(menu_length)[id(menu_current_node)]);
                 call.perform();
 
 # Action when dial is pressed on screensaver screen
@@ -238,13 +222,9 @@ script:
 
 interval:
 # Screen saver logic & wait indicator
-  - interval: 0.2s
+  - interval: 2s
     then:
       - lambda: |-
-          id(ss_x) += id(ss_vx);
-          id(ss_y) += id(ss_vy);
-          if(id(ss_x)>45 || id(ss_x)<1) id(ss_vx) *= -1;
-          if(id(ss_y)>29 || id(ss_y)<6) id(ss_vy) *= -1;
           id(wi) = ++id(wi) > 15 ? 0 : id(wi); // wait indicator logic
 
 time:
@@ -522,7 +502,7 @@ font:
   - file: "/usr/share/fonts/TTF/OpenSans-Regular.ttf"
     id: big_font
     size: 40
-    glyphs: ":0123456789"
+    glyphs: ">-:0123456789."
 
   - file: "/usr/share/fonts/TTF/OpenSans-Light.ttf"
     id: small_font
@@ -542,8 +522,13 @@ display:
     backlight_pin: GPIO32
     cs_pin: GPIO02
     dimensions: 240x240
-    update_interval: 0.1s
+    update_interval: 0.5s
     lambda: |-
+      auto dark_purple = Color(50, 0, 128);
+      auto white = Color(255, 255, 255);
+      auto gray = Color(100, 100, 100);
+      auto brown = Color(100, 80, 0);
+
       if (!id(api_connected).state){
 
         // Little animation before API is online
@@ -557,17 +542,18 @@ display:
       // Screensaver is always node 0
       if(id(menu_current_node)==0) {
 
-        // Bouncy time
-        it.strftime(id(ss_x), id(ss_y), id(big_font), "%H:%M", id(ha_time).now());
+        // time
+        it.strftime(120, 60, id(big_font), TextAlign::TOP_CENTER, "%H:%M", id(ha_time).now());
       }
       else {
 
         // Header time
+        it.filled_rectangle(0,0,240,16,dark_purple);
         it.strftime(0, 6, id(tiny_font), COLOR_ON, TextAlign::CENTER_LEFT, "%H:%M", id(ha_time).now());
         // Header wifi
-        for(int i=0; i<5; i++) if(i<id(wifistep).state) it.filled_rectangle(102+i*5,8-i*2,4,i*2+4); else it.rectangle(102+i*5,8-i*2,4,i*2+4);
+        for(int i=0; i<5; i++) if(i<id(wifistep).state) it.filled_rectangle(216+i*5,8-i*2,4,i*2+4); else it.rectangle(216+i*5,8-i*2,4,i*2+4);
         // Header menu level
-        if(id(menu_level)>0){
+        if(id(menu_level)>0) {
 
           // y-ccord start of the level display
           int b = 64 - (4 * id(menu_level));
@@ -589,8 +575,8 @@ display:
 
           // Start of this symbol
           int itb = b + i*4;
-          if(id(menu_position)[id(menu_level)] == i) it.filled_rectangle(itb, 61, 3, 3);
-          else it.draw_pixel_at(itb+1, 62);
+          if(id(menu_position)[id(menu_level)] == i) it.filled_rectangle(itb, 6, 6, 6);
+          else it.filled_rectangle(itb+2, 8, 2, 2);
 
         };
 
@@ -601,7 +587,7 @@ display:
                  id(menu_functions)[id(menu_current_node)] == 3 ||
                  id(menu_functions)[id(menu_current_node)] == 4 ||
                  id(menu_functions)[id(menu_current_node)] == 6 );
-        it.printf(64, 33, id(small_font), TextAlign::TOP_LEFT, "%s%s", id(menu_labels)[id(menu_current_node)], s ? " >" : "" );
+        it.printf(120, 24, id(small_font), TextAlign::TOP_CENTER, "%s%s", id(menu_labels)[id(menu_current_node)], s ? " >" : "" );
 
         // Show value
         if(id(menu_set_mode)) {
@@ -609,14 +595,16 @@ display:
           switch(id(menu_functions)[id(menu_current_node)]){
 
             case 3:
-            case 6:
-              // Value
-              it.printf(127, 12, id(small_font), TextAlign::TOP_RIGHT, "%.2f", id(menu_current_value));
+            case 6: {
               // Setting progressbar, outline rectangle
-              it.rectangle(0, 20, 54, 12);
+              it.rectangle(8, 58, 224, 54, gray);
               // Inner fill
-              it.filled_rectangle(2, 22, round(id(rotary_dial).state*0.50), 8);
+              int x_pos = round(id(rotary_dial).state / id(menu_length)[id(menu_current_node)] * 220.d);
+              it.filled_rectangle(10, 60, x_pos, 50, brown);
+              // Value
+              it.printf(120, 60, id(big_font), white, TextAlign::TOP_CENTER, "%.2f", id(menu_current_value));
               break;
+            }
             case 4:
               // Labels
               it.printf(42, 12, id(small_font), TextAlign::TOP_RIGHT, "Off");
@@ -636,7 +624,7 @@ display:
             case 1:
             case 3:
             case 6:
-              it.printf(64, 12, id(small_font), TextAlign::TOP_LEFT, "%.2f", id(menu_current_value));
+              it.printf(120, 60, id(big_font), white, TextAlign::TOP_CENTER, "%.2f", id(menu_current_value));
               break;
             case 4:
             case 7:
