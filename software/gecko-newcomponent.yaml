@@ -40,6 +40,18 @@ fan:
       id: thermostat
     vicinity: vicinity_sensor
     wind_speed: windspeed_sensor
+      then:
+        - lambda: |-
+            ESP_LOGD("skycond_attenuation", "set_action: %.2f", x);
+
+  - platform: template
+    name: "randomness"
+    id: random_sensor
+    update_interval: 10s
+    state_class: "measurement"
+    accuracy_decimals: 2
+    lambda: |-
+      return (rand() % 100) / 100.f;
 
 sensor:
   - platform: template
@@ -90,12 +102,11 @@ output:
     pin: GPIO14
     id: fan_pwm
     frequency: 25000 hz
-    channel: 7
 
-climate:
-  - platform: pid
-    id: hygrostat
-    name: "Hygrostat"
+  #  - id: skycond_attenuation
+  #    type: float
+  #    restore_value: no
+  #    initial_value: '0.7'
     sensor: humidity_combined
     default_target_temperature: 70 °C
     heat_output: gccmult
