@@ -111,42 +111,53 @@ globals:
      # Set these to labels you want to display
    - id: menu_labels
      type: char * [${menuSize}]
-     initial_value: '{"Saver","CO2","Temperature","Light settings","Scenic","LED Brightness"}'
+     initial_value: '{"Saver","Thermostat","Day Light","Hygrostat"}'
 
      # Set these to functions of particular menu items
    - id: menu_functions
      type: unsigned char[${menuSize}]
-     initial_value: '{0,1,1,2,3,3}'
+     initial_value: '{0,3,3,3}'
 
      # For submenu items, what are the children?
    - id: menu_child
      type: unsigned char[${menuSize}]
-     initial_value: '{0,0,0,4,0,0}'
+     initial_value: '{0,0,0,0}'
 
      # How many items are there for each submenu? For continuous settings, what is the range?
    - id: menu_length
-     type: unsigned char[${menuSize}]
-     initial_value: '{4,0,0,2,0,50}'
+     type: int [${menuSize}]
+     initial_value: '{4,0,100,0}'
+
+   - id: menu_increment
+     type: float [${menuSize}]
+     initial_value: '{0,0.5,1,2}'
 
 script:
 # What value to display for each menu item
+  - id: menu_maxvals
+    then:
+      - lambda: |-
+          id(menu_length)[1] = (id(thermostat_max_temperature).state-id(thermostat_min_temperature).state)/id(menu_increment)[1];
+          id(menu_length)[3] = (id(hygrostat_max_humidity).state-id(hygrostat_min_humidity).state)/id(menu_increment)[3];
+
   - id: menu_values
     then:
       - lambda: |-
           switch(id(menu_current_node)) {
-            case 1: id(menu_current_value) = id(co2_val).state; break;
-
-            case 2: id(menu_current_value) = id(temp_val).state; break;
-
-            case 4: id(menu_current_value) = id(scenic_light_color_temp).state; break;
-
-            case 5: {
+            case 1:
+              id(menu_current_value) = id(thermostat_target_temperature).state;
+              ESP_LOGD("console", "read temp: %.2f°C, max_rot=%d", id(menu_current_value), id(menu_length)[1]);
+              break;
+            case 2:
               float b;
               id(rgb_leds).current_values_as_brightness(&b);
               id(menu_current_value) = b*100.f;
               ESP_LOGD("console", "read brightness: %f -> menu_current_value: %f", b, id(menu_current_value));
               break;
-            }
+            case 3:
+              id(menu_current_value) = id(hygrostat_target_humidity).state;
+              ESP_LOGD("console", "read hygro: %.0f%%, (%.0f-%.0f) increment=%.2f max_rot=%d", id(menu_current_value), id(hygrostat_min_humidity).state, id(hygrostat_max_humidity).state, id(menu_increment)[3], id(menu_length)[3]);
+              break;
           }
 
 # What value to set rotary encoder to for each menu item setting
@@ -154,13 +165,31 @@ script:
     then:
       - lambda: |-
           switch(id(menu_current_node)) {
-            case 4: id(rotary_dial).set_value(round(id(scenic_light_color_temp).state)); break;
-
-            case 5: {
+            case 1: {
+              float target_temp = id(thermostat_target_temperature).state;
+              double step = 1./id(menu_increment)[1];
+              int rot_val = round(step * target_temp - step * id(thermostat_min_temperature).state);
+              if (id(rotary_dial).state == rot_val)
+                break;
+              id(rotary_dial).set_value(rot_val);
+              ESP_LOGD("console", "read thermostat target temperature: %.2f°C, initialized rotary dial with %.0f", target_temp, id(rotary_dial).state);
+              break;
+            }
+            case 2: {
               float b;
               id(rgb_leds).current_values_as_brightness(&b);
               id(rotary_dial).set_value(b*id(menu_length)[id(menu_current_node)]);
               ESP_LOGD("console", "read brightness: %f, initialized rotary dial with %f", b, id(rotary_dial).state);
+              break;
+            }
+            case 3: {
+              float target_hum = id(hygrostat_target_humidity).state;
+              double step = 1./id(menu_increment)[3];
+              int rot_val = round(step * target_hum - step * id(hygrostat_min_humidity).state);
+              if (id(rotary_dial).state == rot_val)
+                break;
+              id(rotary_dial).set_value(rot_val);
+              ESP_LOGD("console", "read hygrostat target humidity: %.0f%%, initialized rotary dial with %.0f", target_hum, id(rotary_dial).state);
               break;
             }
           }
@@ -171,19 +200,23 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(menu_current_node) == 4;'
+            lambda: 'return id(menu_current_node) == 1;'
           then:
             homeassistant.service:
+              service: climate.set_temperature
               variables:
-                x: 'return id(rotary_dial).state;'
-              service: light.turn_on
+                x: |-
+                  double rot_val = id(rotary_dial).state;
+                  double set_val = id(menu_increment)[1] * rot_val + id(thermostat_min_temperature).state;
+                  ESP_LOGD("console", "rotary val=%.2f -> change temp setpoint to %.2f°C", rot_val, set_val);
+                  return set_val;
               data_template:
-                entity_id: rgb_leds
-                color_temp: '{{ x }}'
+                entity_id: climate.thermostat_air
+                temperature: '{{ x }}'
 
       - if:
           condition:
-            lambda: 'return id(menu_current_node) == 5;'
+            lambda: 'return id(menu_current_node) == 2;'
           then:
             - lambda: |-
                 auto call = id(rgb_leds).make_call();
@@ -193,6 +226,22 @@ script:
                   call = id(rgb_leds).turn_on();
                 call.set_brightness(b/id(menu_length)[id(menu_current_node)]);
                 call.perform();
+
+      - if:
+          condition:
+            lambda: 'return id(menu_current_node) == 3;'
+          then:
+            homeassistant.service:
+              service: climate.set_temperature
+              variables:
+                x: |-
+                  double rot_val = id(rotary_dial).state;
+                  double set_val = id(menu_increment)[3] * rot_val + id(hygrostat_min_humidity).state;
+                  ESP_LOGD("console", "rotary val=%.2f -> change hygro setpoint to %.0f%%", rot_val, set_val);
+                  return set_val;
+              data_template:
+                entity_id: climate.hygrostat
+                temperature: '{{ x }}'
 
 # Action when dial is pressed on screensaver screen
   - id: dial_ss_press
@@ -322,6 +371,51 @@ binary_sensor:
               # Display entities value for each menu item
               - script.execute: menu_values
               - script.execute: ss_timeout
+  - platform: gpio
+    id: button_2
+    pin:
+      number: GPIO34
+      inverted: true
+    on_press:
+      then:
+        # Execute screensaver action
+        - if:
+            condition:
+              and:
+                - lambda: 'return id(menu_current_node) == 0;'
+                - api.connected
+            then:
+              script.execute: button_1_ss_press
+
+        - lambda: |-
+            if(id(menu_set_mode)) {
+
+              id(menu_set_mode) = false;
+              id(rotary_dial).set_value(id(menu_position)[id(menu_level)]);
+            }
+            else {
+
+            if(id(menu_level) > 0) { //if we have anywhere to return
+
+              //set new current node to current parent
+              id(menu_current_node) = id(menu_parent)[id(menu_level)];
+              //return to previous level
+              --id(menu_level);
+              //reset rotary to position for current level
+              id(rotary_dial).set_value(id(menu_position)[id(menu_level)]);
+            } else {
+
+            if(id(menu_level) == 0) { //if we are at level 0, jump to saver
+
+              //set new current node to 0
+              id(menu_current_node) = 0;
+              //reset rotary to 0
+              id(rotary_dial).set_value(0);
+              //reset menu position for current level to 0
+              id(menu_position)[id(menu_level)] = 0;
+            } } }
+
+        - script.execute: ss_timeout
 
   - platform: template
     id: api_connected
@@ -388,6 +482,7 @@ sensor:
                         //set current level position
                         id(menu_position)[id(menu_level)] = x;
                 # Update value
+              - delay: 0.1s
               - script.execute: menu_values
               - script.execute: ss_timeout
   - platform: wifi_signal
@@ -424,40 +519,85 @@ sensor:
     update_interval: 20s
     automatic_baseline_calibration: false
 
-# Sensors from Home Assistant
+# Temperatures from Home Assistant
   - platform: homeassistant
-    name: "HA sensor sensor.pithy_scenic_light_color_temp"
-    entity_id: sensor.pithy_scenic_light_color_temp
-    id: scenic_light_color_temp
+    id: thermostat_target_temperature
+    entity_id: climate.thermostat_air
+    attribute: temperature
     internal: true
     on_value:
       then:
-        # Logic to correctly update menu values
+        - delay: 0.2s
         - script.execute: menu_values
-        - if:
-            condition:
-              lambda: 'return id(menu_set_mode);'
-            then:
-              - script.execute: menu_set_rotary
-        # End of menu values logic
-
+        - delay: 0.3s
+        - script.execute: menu_set_rotary
   - platform: homeassistant
-    name: "HA sensor sensor.pithy_rgb_led_brightness"
-    entity_id: sensor.pithy_rgb_led_brightness
-    id: rgb_led_brightness
+    id: thermostat_current_temperature
+    entity_id: climate.thermostat_air
+    attribute: current_temperature
     internal: true
     on_value:
       then:
-        # Logic to correctly update menu values
         - script.execute: menu_values
-        - if:
-            condition:
-              lambda: 'return id(menu_set_mode);'
-            then:
-              - script.execute: menu_set_rotary
-        # End of menu values logic
-
-
+  - platform: homeassistant
+    id: thermostat_min_temperature
+    entity_id: climate.thermostat_air
+    attribute: min_temp
+    internal: true
+    on_value:
+      then:
+        - script.execute: menu_maxvals
+  - platform: homeassistant
+    id: thermostat_max_temperature
+    entity_id: climate.thermostat_air
+    attribute: max_temp
+    internal: true
+    on_value:
+      then:
+        - script.execute: menu_maxvals
+  - platform: homeassistant
+    id: ground_temperature
+    entity_id: sensor.ground_temperature
+    internal: true
+  - platform: homeassistant
+    id: noumea_temperature
+    entity_id: sensor.temperature_in_france_noumea_182_days_ago
+    internal: true
+  - platform: homeassistant
+    id: hygrostat_target_humidity
+    entity_id: climate.hygrostat
+    attribute: temperature
+    internal: true
+    on_value:
+      then:
+        - delay: 0.2s
+        - script.execute: menu_values
+        - delay: 0.3s
+        - script.execute: menu_set_rotary
+  - platform: homeassistant
+    id: hygrostat_current_humidity
+    entity_id: climate.hygrostat
+    attribute: current_temperature
+    internal: true
+    on_value:
+      then:
+        - script.execute: menu_values
+  - platform: homeassistant
+    id: hygrostat_min_humidity
+    entity_id: climate.hygrostat
+    attribute: min_temp
+    internal: true
+    on_value:
+      then:
+        - script.execute: menu_maxvals
+  - platform: homeassistant
+    id: hygrostat_max_humidity
+    entity_id: climate.hygrostat
+    attribute: max_temp
+    internal: true
+    on_value:
+      then:
+        - script.execute: menu_maxvals
 
   # - platform: custom
   #   lambda: |-
@@ -512,7 +652,7 @@ font:
   - file: "/usr/share/fonts/TTF/OpenSans-Light.ttf"
     id: tiny_font
     size: 19
-    glyphs: ":0123456789Conectig."
+    glyphs: ":0123456789Conectig.pm"
 
 display:
   - platform: st7789v
@@ -547,9 +687,12 @@ display:
       }
       else {
 
-        // Header time
+        // Header Background
         it.filled_rectangle(0,0,240,16,dark_purple);
+        // Header time
         it.strftime(0, 6, id(tiny_font), COLOR_ON, TextAlign::CENTER_LEFT, "%H:%M", id(ha_time).now());
+        // Header CO2
+        it.printf(200, 6, id(tiny_font), COLOR_ON, TextAlign::CENTER_RIGHT, "%.0fppm", id(co2_val).state);
         // Header wifi
         for(int i=0; i<5; i++) if(i<id(wifistep).state) it.filled_rectangle(216+i*5,8-i*2,4,i*2+4); else it.rectangle(216+i*5,8-i*2,4,i*2+4);
         // Header menu level
