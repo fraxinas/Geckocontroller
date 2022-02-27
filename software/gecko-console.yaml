@@ -1,11 +1,29 @@
 esphome:
-  name: geckocontrol
+  name: geckoconsole
   platform: ESP32
   board: nodemcu-32s
-  includes:
-    - custom_components/vcnl4040/vcnl4040.h
-  libraries:
-   - "Adafruit VCNL4040@^1.0.1"
+  # includes:
+  #   - custom_components/vcnl4040/vcnl4040.h
+  # libraries:
+  #  - "Adafruit BusIO@^1.11.1"
+  #  - "Adafruit VCNL4040@^1.0.1"
+  on_boot:
+    priority: 250
+    then:
+      - sensor.rotary_encoder.set_value:
+          id: rotary_dial
+          value: 0
+      - binary_sensor.template.publish:
+          id: api_connected
+          state: OFF
+      - wait_until:
+          api.connected
+      - sensor.rotary_encoder.set_value:
+          id: rotary_dial
+          value: 0
+      - binary_sensor.template.publish:
+          id: api_connected
+          state: ON
 
 wifi:
   ssid: !secret wifi_ssid
@@ -16,81 +34,440 @@ wifi:
     ssid: "Geckocontrol Fallback Hotspot"
     password: !secret fallback_password
 
-captive_portal:
-
 # Enable logging
 logger:
   level: DEBUG
 
 # Enable Home Assistant API
 api:
+  services:
+    - service: play_rtttl
+      variables:
+        song_str: string
+      then:
+        - rtttl.play:
+            rtttl: !lambda 'return song_str;'
+    - service: mhz19_calibrate_zero
+      then:
+        - mhz19.calibrate_zero: co2_sensor
 
 ota:
 
+#####
+#####  CONFIGURATION BLOCK HERE
+#####
+substitutions:
+  friendlyName: Gecko
+
+  # Menu system
+  menuDepth: '2'
+  menuSize: '6'
+
+#####  END OF CONFIGURATION BLOCK
+
+globals:
+# Wait indicator
+   - id: wi
+     type: unsigned char
+     initial_value: '0'
+
+# Blank screen
+   - id: s_blank
+     type: bool
+     initial_value: 'false'
+
+# Menu helpers
+
+   - id: menu_max_level
+     type: unsigned char
+     initial_value: '${menuDepth}'
+
+   - id: menu_level
+     type: unsigned char
+
+   - id: menu_position
+     type: unsigned char[${menuDepth}]
+
+   - id: menu_parent
+     type: unsigned char[${menuDepth}]
+
+   - id: menu_current_node
+     type: unsigned char
+
+   - id: menu_current_label
+     type: char *
+
+   - id: menu_current_value
+     type: float
+
+   - id: menu_set_mode
+     type: bool
+     initial_value: 'false'
+
+#####
+#####  CONFIGURATION BLOCK HERE
+#####
+
+     # Set these to labels you want to display
+   - id: menu_labels
+     type: char * [${menuSize}]
+     initial_value: '{"Saver","CO2","Temperature","Light settings","Scenic","LED Brightness"}'
+
+     # Set these to functions of particular menu items
+   - id: menu_functions
+     type: unsigned char[${menuSize}]
+     initial_value: '{0,1,1,2,3,3}'
+
+     # For submenu items, what are the children?
+   - id: menu_child
+     type: unsigned char[${menuSize}]
+     initial_value: '{0,0,0,4,0,0}'
+
+     # How many items are there for each submenu? For continuous settings, what is the range?
+   - id: menu_length
+     type: unsigned char[${menuSize}]
+     initial_value: '{4,0,0,2,0,50}'
+
+script:
+# What value to display for each menu item
+  - id: menu_values
+    then:
+      - lambda: |-
+          switch(id(menu_current_node)) {
+            case 1: id(menu_current_value) = id(co2_val).state; break;
+
+            case 2: id(menu_current_value) = id(temp_val).state; break;
+
+            case 4: id(menu_current_value) = id(scenic_light_color_temp).state; break;
+
+            case 5: {
+              float b;
+              id(rgb_leds).current_values_as_brightness(&b);
+              id(menu_current_value) = b*100.f;
+              ESP_LOGD("console", "read brightness: %f -> menu_current_value: %f", b, id(menu_current_value));
+              break;
+            }
+          }
+
+# What value to set rotary encoder to for each menu item setting
+  - id: menu_set_rotary
+    then:
+      - lambda: |-
+          switch(id(menu_current_node)) {
+            case 4: id(rotary_dial).set_value(round(id(scenic_light_color_temp).state)); break;
+
+            case 5: {
+              float b;
+              id(rgb_leds).current_values_as_brightness(&b);
+              id(rotary_dial).set_value(b*id(menu_length)[id(menu_current_node)]);
+              ESP_LOGD("console", "read brightness: %f, initialized rotary dial with %f", b, id(rotary_dial).state);
+              break;
+            }
+          }
+
+
+# Actions for each menu item setting
+  - id: menu_actions
+    then:
+      - if:
+          condition:
+            lambda: 'return id(menu_current_node) == 4;'
+          then:
+            homeassistant.service:
+              variables:
+                x: 'return id(rotary_dial).state;'
+              service: light.turn_on
+              data_template:
+                entity_id: rgb_leds
+                color_temp: '{{ x }}'
+
+      - if:
+          condition:
+            lambda: 'return id(menu_current_node) == 5;'
+          then:
+            - lambda: |-
+                auto call = id(rgb_leds).make_call();
+                float b = id(rotary_dial).state;
+                ESP_LOGD("console", "change brightness to %f %%", b);
+                if (b > 0.)
+                  call = id(rgb_leds).turn_on();
+                call.set_brightness(b/id(menu_length)[id(menu_current_node)]);
+                call.perform();
+
+# Action when dial is pressed on screensaver screen
+  - id: dial_ss_press
+    then:
+
+
+
+# Action when button is pressed on screensaver screen
+  - id: button_1_ss_press
+    then:
+
+
+
+#####  END OF CONFIGURATION BLOCK
+
+  - id: ss_timeout
+    mode: restart
+    then:
+      - delay: 1min
+      - lambda: >-
+          id(menu_level) = 0;
+          id(menu_position)[0] = 0;
+          id(menu_parent)[0] = 0;
+          id(menu_current_node) = 0;
+          id(menu_set_mode) = false;
+          id(rotary_dial).set_value(0);
+
+interval:
+# Screen saver logic & wait indicator
+  - interval: 2s
+    then:
+      - lambda: |-
+          id(wi) = ++id(wi) > 15 ? 0 : id(wi); // wait indicator logic
+
 time:
   - platform: homeassistant
-    id: esptime
+    id: ha_time
 
 spi:
   clk_pin: GPIO18
   mosi_pin: GPIO23
 
-#uart:
-  #rx_pin: GPIO15
-  #tx_pin: GPIO13
-  #baud_rate: 9600
+uart:
+  rx_pin: GPIO15
+  tx_pin: GPIO13
+  baud_rate: 9600
 
 i2c:
-  sda: 21
-  scl: 22
+  sda: 25
+  scl: 26
   scan: True
   id: bus_a
 
 binary_sensor:
   - platform: gpio
-    id: button
+    id: rotary_dial_push
     name: "Rotary Button"
     pin:
       number: GPIO16
       inverted: true
+    on_press:
+      then:
+        - if:
+            condition:
+              api.connected
+            then:
+              # Execute screensaver action
+              - if:
+                  condition:
+                    lambda: 'return id(menu_current_node) == 0;'
+                  then:
+                    script.execute: dial_ss_press
+
+              - if:
+                  condition:
+                    # Execute continuous setting with confirmation when returning from set mode
+                    lambda: 'return id(menu_functions)[id(menu_current_node)] == 6 && id(menu_set_mode) == true;'
+                  then:
+                     - script.execute: menu_actions
+
+              - if:
+                  condition:
+                    # Set mode for continuous or binary setting
+                    lambda: 'return (id(menu_functions)[id(menu_current_node)] == 3 || id(menu_functions)[id(menu_current_node)] == 4  || id(menu_functions)[id(menu_current_node)] == 6);'
+                  then:
+                    - lambda: |-
+                        //toggle set mode
+                        if(id(menu_set_mode)) {
+
+                          id(menu_set_mode) = false;
+                          // restore rotary value to position
+                          id(rotary_dial).set_value(id(menu_position)[id(menu_level)]);
+
+                        } else id(menu_set_mode) = true;
+
+              - if:
+                  condition:
+                    # Button action
+                    lambda: 'return id(menu_functions)[id(menu_current_node)] == 5;'
+                  then:
+                     - script.execute: menu_actions
+
+              # If set mode, set rotary
+              - if:
+                  condition:
+                    lambda: 'return id(menu_set_mode);'
+                  then:
+                    - script.execute: menu_set_rotary
+
+              - if:
+                  condition:
+                    # Go to submenu. This needs to be last to prevent setting new item and also executing it
+                    lambda: 'return id(menu_functions)[id(menu_current_node)] == 2;'
+                  then:
+                    - lambda: |-
+                        //raise level up to max level
+                        id(menu_level) = ++id(menu_level) > id(menu_max_level) ? id(menu_max_level) : id(menu_level);
+                        //set parent node for new level
+                        id(menu_parent)[id(menu_level)] = id(menu_current_node);
+                        //set new current node
+                        id(menu_current_node) = id(menu_child)[id(menu_parent)[id(menu_level)]];
+                        //reset rotary to 0
+                        id(rotary_dial).set_value(0);
+                        //reset position in current level to 0
+                        id(menu_position)[id(menu_level)] = 0;
+
+              # Display entities value for each menu item
+              - script.execute: menu_values
+              - script.execute: ss_timeout
+
+  - platform: template
+    id: api_connected
 
 sensor:
   - platform: rotary_encoder
-    id: rotary_enc
+    id: rotary_dial
     name: "Rotary Encoder"
     pin_a: GPIO17
     pin_b: GPIO05
+    filters:
+      - lambda: |-
+          int maxval = 0;
+          if(id(menu_set_mode)) { //if set mode, rotary should go from 0 to according setting
 
-  #- platform: mhz19
-    #id: co2_sensor
-    #co2:
-      #name: "MH-Z19 CO2 Value"
-    #temperature:
-      #name: "MH-Z19 Temperature"
-    #update_interval: 60s
-    #automatic_baseline_calibration: false
+            switch(id(menu_functions)[id(menu_current_node)]){
+              case 3:
+              case 6:
+                maxval = id(menu_length)[id(menu_current_node)] + 1; break; // continuous
+              case 4: maxval = 2; break;  // binary
+            }
 
-  - platform: homeassistant   # Forecast minimal temperature
-    id: weather_tempmin
-    entity_id: sensor.today_min
+          } else { //if not, it should go to level length
 
-  - platform: homeassistant   # Forecast maximal temperature
-    id: weather_tempmax
-    entity_id: sensor.today_max
+            //get current menu length
+            maxval = id(menu_length)[id(menu_parent)[id(menu_level)]];
 
-  - platform: homeassistant   # Forecast precipitation
-    id: weather_precipitation
-    entity_id: sensor.today_rain
-    
-  - platform: custom
+          }
+
+          ESP_LOGD("console", "rotary x=%f maxval=%d", x, maxval);
+
+          //if rotary is over length, set to length
+          if(x >= maxval) {
+
+            id(rotary_dial).set_value(maxval-1);
+            return maxval-1;
+
+          }
+          else return x;
+    resolution: 1
+    min_value: 0
+    on_value:
+      then:
+        - if:
+            condition:
+              api.connected
+            then:
+              - if:
+                  condition:
+                    # Are we setting or browsing?
+                    lambda: 'return id(menu_set_mode);'
+                  then:
+                   # Change setting only if not in continuous + confirm
+                    - if:
+                        condition:
+                          lambda: 'return !(id(menu_functions)[id(menu_current_node)] == 6);'
+                        then:
+                          - script.execute: menu_actions
+                  else:
+                    # Browsing mode, set menu position
+                    - lambda: |-
+                        //set current node to start of current child + rotary position
+                        id(menu_current_node) = id(menu_child)[id(menu_parent)[id(menu_level)]] + x;
+                        //set current level position
+                        id(menu_position)[id(menu_level)] = x;
+                # Update value
+              - script.execute: menu_values
+              - script.execute: ss_timeout
+  - platform: wifi_signal
+    id: wifisignal
+    update_interval: 20s
+
+  - platform: template
+    id: wifistep
+    update_interval: 20s
     lambda: |-
-      auto MyVCNL4040_sensor = new MyVCNL4040();
-      App.register_component(MyVCNL4040_sensor);
-      return {MyVCNL4040_sensor->prox_sensor, MyVCNL4040_sensor->lux_sensor, MyVCNL4040_sensor->rawLight_sensor};
-    sensors:
-    - name: "Proximity sensor"
-    - name: "Lux sensor"
-    - name: "Raw Light sensor"
+      if(isnan(id(wifisignal).state)) return 0;
+      else return round((id(wifisignal).state+100)/10);
+
+  - platform: mhz19
+    id: co2_sensor
+    co2:
+      name: "MH-Z19 CO2 Value"
+      id: co2_val
+      on_value:
+        then:
+          - lambda: |-
+              auto call = id(rgb_leds).make_call();
+              double r=0.0, g=0.0, b=0.0;
+              g = 1.6 - 0.001*x;
+              r = -0.5 + 0.001*x;
+              call.set_rgb(r,g,b);
+              call.perform();
+              if (x > 1800) {
+                id(rtttlplayer).play("GoodBad:d=4,o=5,b=56:32p,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,d#,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,c#6,32a#,32d#6,32a#,32d#6,8a#.,16f#.,32f.,32d#.,c#,32a#,32d#6,32a#,32d#6,8a#.,16g#.,d#,1p,1p,1p,1p,1p,1p");
+              }
+    temperature:
+      name: "MH-Z19 Temperature"
+      id: temp_val
+    update_interval: 20s
+    automatic_baseline_calibration: false
+
+# Sensors from Home Assistant
+  - platform: homeassistant
+    name: "HA sensor sensor.pithy_scenic_light_color_temp"
+    entity_id: sensor.pithy_scenic_light_color_temp
+    id: scenic_light_color_temp
+    internal: true
+    on_value:
+      then:
+        # Logic to correctly update menu values
+        - script.execute: menu_values
+        - if:
+            condition:
+              lambda: 'return id(menu_set_mode);'
+            then:
+              - script.execute: menu_set_rotary
+        # End of menu values logic
+
+  - platform: homeassistant
+    name: "HA sensor sensor.pithy_rgb_led_brightness"
+    entity_id: sensor.pithy_rgb_led_brightness
+    id: rgb_led_brightness
+    internal: true
+    on_value:
+      then:
+        # Logic to correctly update menu values
+        - script.execute: menu_values
+        - if:
+            condition:
+              lambda: 'return id(menu_set_mode);'
+            then:
+              - script.execute: menu_set_rotary
+        # End of menu values logic
+
+
+
+  # - platform: custom
+  #   lambda: |-
+  #     auto MyVCNL4040_sensor = new MyVCNL4040();
+  #     App.register_component(MyVCNL4040_sensor);
+  #     return {MyVCNL4040_sensor->prox_sensor, MyVCNL4040_sensor->lux_sensor, MyVCNL4040_sensor->rawLight_sensor};
+  #   sensors:
+  #   - name: "Proximity sensor"
+  #   - name: "Lux sensor"
+  #   - name: "Raw Light sensor"
 
 output:
   - platform: ledc
@@ -98,17 +475,44 @@ output:
     id: buzzer
 
 light:
-  - platform: monochromatic
-    output: buzzer
-    name: "Buzzer"
+  - platform: fastled_clockless
+    chipset: WS2812B
+    pin: GPIO33
+    num_leds: 6
+    rgb_order: GRB
+    id: rgb_leds
+    name: "RGB LEDs"
+    default_transition_length: 0s
+    color_correct: [50%, 50%, 50%]
+    restore_mode: ALWAYS_ON
+  # - platform: monochromatic
+  #   output: buzzer
+  #   name: "Buzzer"
+
+rtttl:
+  output: buzzer
+  on_finished_playback:
+    - logger.log: 'Song ended!'
+  id: rtttlplayer
 
 status_led:
   pin: GPIO02
 
 font:
-  - file: "/usr/share/fonts/TTF/OpenSans-SemiBoldItalic.ttf"
-    id: font1
-    size: 32
+  - file: "/usr/share/fonts/TTF/OpenSans-Regular.ttf"
+    id: big_font
+    size: 40
+    glyphs: ">-:0123456789."
+
+  - file: "/usr/share/fonts/TTF/OpenSans-Light.ttf"
+    id: small_font
+    size: 26
+    glyphs: ">-:/&!°0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ."
+
+  - file: "/usr/share/fonts/TTF/OpenSans-Light.ttf"
+    id: tiny_font
+    size: 19
+    glyphs: ":0123456789Conectig."
 
 display:
   - platform: st7789v
@@ -116,16 +520,131 @@ display:
     dc_pin: GPIO22
     reset_pin: GPIO21
     backlight_pin: GPIO32
+    cs_pin: GPIO02
     dimensions: 240x240
-    update_interval: 1s
+    update_interval: 0.5s
     lambda: |-
-      it.print(0, 0, id(font1), "Geckocontrol");
-      it.strftime(0, 32, id(font1), TextAlign::TOP_LEFT, "%H:%M:%S", id(esptime).now());
-      if (id(weather_tempmin).has_state() && id(weather_tempmax).has_state())
-      {
-        it.printf(0, 66, id(font1), 0xFFFF, TextAlign::TOP_LEFT, "T: %.1f-%.1f°C", id(weather_tempmin).state, id(weather_tempmax).state);
+      auto dark_purple = Color(50, 0, 128);
+      auto white = Color(255, 255, 255);
+      auto gray = Color(100, 100, 100);
+      auto brown = Color(100, 80, 0);
+
+      if (!id(api_connected).state){
+
+        // Little animation before API is online
+        it.line(56, 32, 56+id(wi), 32);
+
+      } else {
+
+      // Blank screen if PIR off
+      if (id(s_blank)) { it.fill(COLOR_OFF); return; }
+
+      // Screensaver is always node 0
+      if(id(menu_current_node)==0) {
+
+        // time
+        it.strftime(120, 60, id(big_font), TextAlign::TOP_CENTER, "%H:%M", id(ha_time).now());
       }
-      if (id(weather_precipitation).has_state())
-      {
-        it.printf(0, 92, id(font1), 0xFFFF, TextAlign::TOP_LEFT, "prec: %.1fmm", id(weather_precipitation).state);
+      else {
+
+        // Header time
+        it.filled_rectangle(0,0,240,16,dark_purple);
+        it.strftime(0, 6, id(tiny_font), COLOR_ON, TextAlign::CENTER_LEFT, "%H:%M", id(ha_time).now());
+        // Header wifi
+        for(int i=0; i<5; i++) if(i<id(wifistep).state) it.filled_rectangle(216+i*5,8-i*2,4,i*2+4); else it.rectangle(216+i*5,8-i*2,4,i*2+4);
+        // Header menu level
+        if(id(menu_level)>0) {
+
+          // y-ccord start of the level display
+          int b = 64 - (4 * id(menu_level));
+          for(int i=0; i<id(menu_level); i++) {
+
+            // Start of this symbol
+            int itb = b + i*8;
+            // Top line
+            it.line(itb, 2, itb+6, 6);
+            // Bottom line
+            it.line(itb+6, 6, itb, 10);
+
+          };
+        }
+        // Footer menu position
+        // y-coord start of the menu pos display
+        int b = 64 - (2 * id(menu_length)[id(menu_parent)[id(menu_level)]]);
+        for(int i=0; i<id(menu_length)[id(menu_parent)[id(menu_level)]]; i++) {
+
+          // Start of this symbol
+          int itb = b + i*4;
+          if(id(menu_position)[id(menu_level)] == i) it.filled_rectangle(itb, 6, 6, 6);
+          else it.filled_rectangle(itb+2, 8, 2, 2);
+
+        };
+
+
+        // Show label
+        bool s = !id(menu_set_mode) &&
+                (id(menu_functions)[id(menu_current_node)] == 2 ||
+                 id(menu_functions)[id(menu_current_node)] == 3 ||
+                 id(menu_functions)[id(menu_current_node)] == 4 ||
+                 id(menu_functions)[id(menu_current_node)] == 6 );
+        it.printf(120, 24, id(small_font), TextAlign::TOP_CENTER, "%s%s", id(menu_labels)[id(menu_current_node)], s ? " >" : "" );
+
+        // Show value
+        if(id(menu_set_mode)) {
+
+          switch(id(menu_functions)[id(menu_current_node)]){
+
+            case 3:
+            case 6: {
+              // Setting progressbar, outline rectangle
+              it.rectangle(8, 58, 224, 54, gray);
+              // Inner fill
+              int x_pos = round(id(rotary_dial).state / id(menu_length)[id(menu_current_node)] * 220.d);
+              it.filled_rectangle(10, 60, x_pos, 50, brown);
+              // Value
+              it.printf(120, 60, id(big_font), white, TextAlign::TOP_CENTER, "%.2f", id(menu_current_value));
+              break;
+            }
+            case 4:
+              // Labels
+              it.printf(42, 12, id(small_font), TextAlign::TOP_RIGHT, "Off");
+              it.printf(86, 12, id(small_font), TextAlign::TOP_LEFT, "On");
+              // Switch, outline rectangle
+              it.rectangle(52, 20, 24, 12);
+              // Inner toggle
+              it.filled_rectangle(54 + id(rotary_dial).state*10, 22, 10, 8);
+
+          }
+
+        } else {
+
+          // Show value only if Display or Setting
+          switch(id(menu_functions)[id(menu_current_node)]){
+
+            case 1:
+            case 3:
+            case 6:
+              it.printf(120, 60, id(big_font), white, TextAlign::TOP_CENTER, "%.2f", id(menu_current_value));
+              break;
+            case 4:
+            case 7:
+              it.printf(64, 12, id(small_font), TextAlign::TOP_LEFT, "%s", id(menu_current_value) == 0 ? "Off" : "On");
+              break;
+            case 5: // show button
+              it.rectangle(52, 19, 24, 14);
+              if(id(rotary_dial_push).state == 0){
+                // horizontal shades
+                it.line(53, 20, 73, 20);
+                it.line(54, 31, 72, 31);
+                // vertical shades
+                it.line(53, 20, 53, 30);
+                it.line(74, 21, 74, 29);
+
+              }
+              break;
+
+          }
+        }
+      }
+
       }
