@@ -104,6 +104,11 @@ globals:
      type: bool
      initial_value: 'false'
 
+   - id: menu_no_hass_updates
+     type: bool
+     initial_value: 'false'
+
+
 #####
 #####  CONFIGURATION BLOCK HERE
 #####
@@ -193,7 +198,8 @@ script:
               break;
             }
           }
-
+          id(menu_no_hass_updates) = true;
+      - script.execute: menu_hass_updates_timeout
 
 # Actions for each menu item setting
   - id: menu_actions
@@ -243,17 +249,22 @@ script:
                 entity_id: climate.hygrostat
                 temperature: '{{ x }}'
 
+  - id: menu_hass_updates
+    then:
+      - if:
+          condition:
+            lambda: 'return id(menu_no_hass_updates) == true;'
+          then:
+            - script.execute: menu_values
+            - script.execute: menu_set_rotary
+
 # Action when dial is pressed on screensaver screen
   - id: dial_ss_press
     then:
 
-
-
 # Action when button is pressed on screensaver screen
   - id: button_1_ss_press
     then:
-
-
 
 #####  END OF CONFIGURATION BLOCK
 
@@ -268,6 +279,12 @@ script:
           id(menu_current_node) = 0;
           id(menu_set_mode) = false;
           id(rotary_dial).set_value(0);
+  - id: menu_hass_updates_timeout
+    mode: restart
+    then:
+      - delay: 0.5s
+      - lambda: >-
+          id(menu_no_hass_updates) = false;
 
 interval:
 # Screen saver logic & wait indicator
@@ -302,6 +319,7 @@ binary_sensor:
     pin:
       number: GPIO16
       inverted: true
+    internal: true
     on_press:
       then:
         - if:
@@ -376,6 +394,7 @@ binary_sensor:
     pin:
       number: GPIO34
       inverted: true
+    internal: true
     on_press:
       then:
         # Execute screensaver action
@@ -457,6 +476,7 @@ sensor:
           else return x;
     resolution: 1
     min_value: 0
+    internal: true
     on_value:
       then:
         - if:
@@ -527,10 +547,7 @@ sensor:
     internal: true
     on_value:
       then:
-        - delay: 0.2s
-        - script.execute: menu_values
-        - delay: 0.3s
-        - script.execute: menu_set_rotary
+        - script.execute: menu_hass_updates
   - platform: homeassistant
     id: thermostat_current_temperature
     entity_id: climate.thermostat_air
@@ -538,7 +555,7 @@ sensor:
     internal: true
     on_value:
       then:
-        - script.execute: menu_values
+        - script.execute: menu_hass_updates
   - platform: homeassistant
     id: thermostat_min_temperature
     entity_id: climate.thermostat_air
@@ -570,10 +587,7 @@ sensor:
     internal: true
     on_value:
       then:
-        - delay: 0.2s
-        - script.execute: menu_values
-        - delay: 0.3s
-        - script.execute: menu_set_rotary
+        - script.execute: menu_hass_updates
   - platform: homeassistant
     id: hygrostat_current_humidity
     entity_id: climate.hygrostat
@@ -581,7 +595,7 @@ sensor:
     internal: true
     on_value:
       then:
-        - script.execute: menu_values
+        - script.execute: menu_hass_updates
   - platform: homeassistant
     id: hygrostat_min_humidity
     entity_id: climate.hygrostat
