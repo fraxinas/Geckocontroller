@@ -349,7 +349,7 @@ class DisplayBuffer {
   void init_internal_(uint32_t buffer_length);
 
   void do_update_();
- 
+
   DisplayBufferHeapList *buffers_{nullptr};
   DisplayRotation rotation_{DISPLAY_ROTATION_0_DEGREES};
   optional<display_writer_t> writer_{};
@@ -383,7 +383,7 @@ struct Buffer_
   uint8_t *data;
   Buffer_ *next;
 };
-  
+
 class DisplayBufferHeapList {
   protected:
     size_t _size;

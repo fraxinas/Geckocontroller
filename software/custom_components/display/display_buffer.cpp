@@ -80,15 +80,15 @@ bool DisplayBufferHeapList::add(uint8_t *buffer, size_t len) {
 }
 
 uint8_t *DisplayBufferHeapList::get_pixel(size_t index) {
-  int offset = 0;
+  size_t offset = 0;
   Buffer_* current = root;
 
   while (current) {
-    if (offset < current->len) {
+    if (index-offset < current->len) {
       return &(current->data[index-offset]);
     }
-    current = current->next;
     offset += current->len;
+    current = current->next;
   }
   return nullptr;
 }
