@@ -115,7 +115,7 @@ void ST7789V::setup() {
   ESP_LOGD(TAG,"inited display buffer %d DisplayBufferHeapList @ %p number of chunks: %d", this->get_buffer_length_(), this->buffers_, this->buffers_->size());
   if (this->buffers_ == nullptr)
     return;
-  
+
   this->buffers_->clear_pixels();
 }
 
@@ -142,9 +142,9 @@ void ST7789V::loop() {}
 void ST7789V::write_display_data() {
 // 240x240 1.3"
   uint16_t x1 = 0;   // _offsetx
-  uint16_t x2 = 320;  // _offsetx
+  uint16_t x2 = 240;  // _offsetx
   uint16_t y1 = 0;   // _offsety
-  uint16_t y2 = 320;  // _offsety
+  uint16_t y2 = 240;  // _offsety
 /* 135x240 ?!
   uint16_t x1 = 52;   // _offsetx
   uint16_t x2 = 186;  // _offsetx
@@ -282,7 +282,7 @@ void HOT ST7789V::draw_absolute_pixel_internal(int x, int y, Color color) {
 
   auto color565 = display::ColorUtil::color_to_565(color);
 
-  uint16_t pos = (x + y * this->get_width_internal()) * 2;
+  size_t pos = (x + y * this->get_width_internal()) * 2;
   this->buffers_->set_pixel(pos, (color565 >> 8) & 0xff);
   this->buffers_->set_pixel(pos+1, (color565 & 0xff));
 }
