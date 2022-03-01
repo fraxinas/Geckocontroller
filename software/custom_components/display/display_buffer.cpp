@@ -2,6 +2,7 @@
 
 #include <utility>
 #include <inttypes.h>
+#include <math.h>
 #ifdef USE_ESP32
 #include <esp_heap_caps.h>
 #endif
@@ -13,6 +14,8 @@
 
 namespace esphome {
 namespace display {
+
+#define PI 3.14159265
 
 static const char *const TAG = "display";
 
@@ -266,6 +269,33 @@ void DisplayBuffer::filled_circle(int center_x, int center_y, int radius, Color 
       err += ++dx * 2 + 1;
     }
   } while (dx <= 0);
+}
+void HOT DisplayBuffer::gauge(int center_x, int center_y, int radius, float percentage, Color line_color, Color indicator_color) {
+  int dx = 0;
+  int dy = radius;
+  int err = 3 - 2 * radius;
+
+  do {
+    this->draw_pixel_at(center_x + dx, center_y - dy, line_color);
+    this->draw_pixel_at(center_x - dx, center_y - dy, line_color);
+    this->draw_pixel_at(center_x - dy, center_y + dx, line_color);
+    this->draw_pixel_at(center_x + dy, center_y + dx, line_color);
+    this->draw_pixel_at(center_x + dy, center_y - dx, line_color);
+    this->draw_pixel_at(center_x - dy, center_y - dx, line_color);
+    if (err < 0) {
+      err += (4 * dx) + 6;
+    }
+    else {
+      err += (4 * (dx - dy)) + 10;
+      dy -= 1;
+    }
+    dx += 1;
+  } while (dx <= dy);
+
+  double angle = PI*-0.25 - 2*PI*0.75*percentage;
+  dx = radius * sin(angle);
+  dy = radius * cos(angle);
+  this->filled_circle(center_x + dx, center_y + dy, radius/10, indicator_color);
 }
 
 void DisplayBuffer::print(int x, int y, Font *font, Color color, TextAlign align, const char *text) {

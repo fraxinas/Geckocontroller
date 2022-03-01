@@ -134,15 +134,9 @@ class DisplayBuffer {
   /// Fill a circle centered around [center_x,center_y] with the radius radius with the given color.
   void filled_circle(int center_x, int center_y, int radius, Color color = COLOR_ON);
 
-  /** Print `text` with the anchor point at [x,y] with `font`.
-   *
-   * @param x The x coordinate of the text alignment anchor point.
-   * @param y The y coordinate of the text alignment anchor point.
-   * @param font The font to draw the text with.
-   * @param color The color to draw the text with.
-   * @param align The alignment of the text.
-   * @param text The text to draw.
-   */
+  /// Draw 6/8th arc of a circle and an indicator like the climate control in HASS
+  void gauge(int center_x, int center_y, int radius, float percentage, Color line_color = COLOR_ON, Color indicator_color = COLOR_ON);
+
   void print(int x, int y, Font *font, Color color, TextAlign align, const char *text);
 
   /** Print `text` with the top left at [x,y] with `font`.
