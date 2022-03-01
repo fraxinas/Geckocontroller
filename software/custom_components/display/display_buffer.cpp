@@ -326,7 +326,7 @@ void DisplayBuffer::draw_sector_(int sector, double percentage, int center_x, in
   } while (dx <= dy);
 }
 
-void HOT DisplayBuffer::gauge(int center_x, int center_y, int radius, float percentage, Color line_color, Color indicator_color) {
+void HOT DisplayBuffer::gauge(int center_x, int center_y, int radius, float percentage, Color line_color, Color indicator_color, bool set_mode) {
   for (uint8_t sector = 0; sector < 6; sector++) {
     this->draw_sector_(sector, percentage, center_x, center_y, radius, line_color, indicator_color);
     this->draw_sector_(sector, percentage, center_x, center_y, radius-1, line_color, indicator_color);
@@ -335,7 +335,10 @@ void HOT DisplayBuffer::gauge(int center_x, int center_y, int radius, float perc
   double angle = PI*-0.25 - 2*PI*0.75*percentage;
   int dx = round((radius-1) * sin(angle));
   int dy = round((radius-1) * cos(angle));
-  this->filled_circle(center_x + dx, center_y + dy, radius/10, indicator_color);
+  if (set_mode)
+    this->filled_circle(center_x + dx, center_y + dy, radius/10, indicator_color);
+  else
+    this->circle(center_x + dx, center_y + dy, radius/10, line_color);
 }
 
 void DisplayBuffer::print(int x, int y, Font *font, Color color, TextAlign align, const char *text) {
