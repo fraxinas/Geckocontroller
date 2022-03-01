@@ -340,6 +340,8 @@ class DisplayBuffer {
 
   virtual void draw_absolute_pixel_internal(int x, int y, Color color) = 0;
 
+  void draw_sector_(int sector, double percentage, int center_x, int center_y, int radius, Color line_color, Color indicator_color);
+
   void init_internal_(uint32_t buffer_length);
 
   void do_update_();

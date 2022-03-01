@@ -270,18 +270,51 @@ void DisplayBuffer::filled_circle(int center_x, int center_y, int radius, Color 
     }
   } while (dx <= 0);
 }
-void HOT DisplayBuffer::gauge(int center_x, int center_y, int radius, float percentage, Color line_color, Color indicator_color) {
+
+void DisplayBuffer::draw_sector_(int sector, double percentage, int center_x, int center_y, int radius, Color line_color, Color indicator_color) {
   int dx = 0;
   int dy = radius;
   int err = 3 - 2 * radius;
+  Color active_color, inactive_color;
+  int x_t = 0;
+
+  if (percentage > (sector+1)/6.) {
+    active_color = indicator_color;
+  } else if (percentage < sector/6.) {
+    active_color = line_color;
+  } else {
+    /* partially highlighted sector, do trigonometry */
+    if (sector % 2 == 0) {
+        active_color = line_color;
+        inactive_color = indicator_color;
+        percentage = (sector+1)/6.-percentage;
+    } else {
+        active_color = indicator_color;
+        inactive_color = line_color;
+        percentage = percentage-sector/6.;
+    }
+    double threshold_angle = 2*PI*0.75*percentage;
+    x_t = radius * sin(threshold_angle);
+  }
 
   do {
-    this->draw_pixel_at(center_x + dx, center_y - dy, line_color);
-    this->draw_pixel_at(center_x - dx, center_y - dy, line_color);
-    this->draw_pixel_at(center_x - dy, center_y + dx, line_color);
-    this->draw_pixel_at(center_x + dy, center_y + dx, line_color);
-    this->draw_pixel_at(center_x + dy, center_y - dx, line_color);
-    this->draw_pixel_at(center_x - dy, center_y - dx, line_color);
+    if (x_t > 0 && dx > x_t) {
+      active_color = inactive_color;
+    }
+    switch (sector) {
+      case 0:
+        this->draw_pixel_at(center_x - dy, center_y + dx, active_color); break;
+      case 1:
+        this->draw_pixel_at(center_x - dy, center_y - dx, active_color); break;
+      case 2:
+        this->draw_pixel_at(center_x - dx, center_y - dy, active_color); break;
+      case 3:
+        this->draw_pixel_at(center_x + dx, center_y - dy, active_color); break;
+      case 4:
+        this->draw_pixel_at(center_x + dy, center_y - dx, active_color); break;
+      case 5:
+        this->draw_pixel_at(center_x + dy, center_y + dx, active_color); break;
+    }
     if (err < 0) {
       err += (4 * dx) + 6;
     }
@@ -291,10 +324,17 @@ void HOT DisplayBuffer::gauge(int center_x, int center_y, int radius, float perc
     }
     dx += 1;
   } while (dx <= dy);
+}
 
+void HOT DisplayBuffer::gauge(int center_x, int center_y, int radius, float percentage, Color line_color, Color indicator_color) {
+  for (uint8_t sector = 0; sector < 6; sector++) {
+    this->draw_sector_(sector, percentage, center_x, center_y, radius, line_color, indicator_color);
+    this->draw_sector_(sector, percentage, center_x, center_y, radius-1, line_color, indicator_color);
+    this->draw_sector_(sector, percentage, center_x, center_y, radius-2, line_color, indicator_color);
+  }
   double angle = PI*-0.25 - 2*PI*0.75*percentage;
-  dx = radius * sin(angle);
-  dy = radius * cos(angle);
+  int dx = round((radius-1) * sin(angle));
+  int dy = round((radius-1) * cos(angle));
   this->filled_circle(center_x + dx, center_y + dy, radius/10, indicator_color);
 }
 
