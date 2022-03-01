@@ -133,7 +133,7 @@ globals:
      # Set these to functions of particular menu items
    - id: menu_functions
      type: unsigned char[${menuSize}]
-     initial_value: '{0,8,3,3}'
+     initial_value: '{0,8,3,8}'
 
      # For submenu items, what are the children?
    - id: menu_child
@@ -176,8 +176,12 @@ script:
               ESP_LOGD("console", "read brightness: %f -> menu_current_value: %f", b, id(menu_current_value));
               break;
             case 3:
-              id(menu_current_value) = id(hygrostat_target_humidity).state;
-              ESP_LOGD("console", "read hygro: %.0f%%, (%.0f-%.0f) increment=%.2f max_rot=%d", id(menu_current_value), id(hygrostat_min_humidity).state, id(hygrostat_max_humidity).state, id(menu_increment)[3], id(menu_length)[3]);
+              id(menu_current_value) = id(hygrostat_current_humidity).state;
+              id(menu_target_value) = id(hygrostat_target_humidity).state;
+              id(menu_weather_value) = id(weather_humidity).state;
+              id(menu_min_value) = id(hygrostat_min_humidity).state;
+              id(menu_max_value) = id(hygrostat_max_humidity).state;
+              ESP_LOGD("console", "read humiditys current: %.0f°C, target: %.0f°C (max_rot=%d) weather: %.0f°C range: %.0f-%.0f°C", id(menu_current_value), id(menu_target_value), id(menu_length)[1], id(menu_weather_value), id(menu_min_value), id(menu_max_value));
               break;
           }
 
@@ -601,6 +605,9 @@ sensor:
     id: weather_temperature
     entity_id: sensor.temperature_in_france_noumea_182_days_ago
     internal: true
+    on_value:
+      then:
+        - script.execute: menu_hass_updates
   - platform: homeassistant
     id: hygrostat_target_humidity
     entity_id: climate.hygrostat
@@ -633,7 +640,13 @@ sensor:
     on_value:
       then:
         - script.execute: menu_maxvals
-
+  - platform: homeassistant
+    id: weather_humidity
+    entity_id: sensor.humidity_in_france_noumea_182_days_ago
+    internal: true
+    on_value:
+      then:
+        - script.execute: menu_hass_updates
   # - platform: custom
   #   lambda: |-
   #     auto MyVCNL4040_sensor = new MyVCNL4040();
@@ -701,9 +714,9 @@ display:
     lambda: |-
       auto dark_purple = Color(50, 0, 128);
       auto white = Color(255, 255, 255);
-      auto gray = Color(100, 100, 100);
+      auto gray = Color(80, 80, 80);
       auto brown = Color(100, 80, 0);
-      auto green = Color(50, 168, 82);
+      auto green = Color(50, 200, 82);
 
       if (!id(api_connected).state){
 
