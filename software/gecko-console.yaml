@@ -100,6 +100,18 @@ globals:
    - id: menu_current_value
      type: float
 
+   - id: menu_target_value
+     type: float
+
+   - id: menu_weather_value
+     type: float
+
+   - id: menu_min_value
+     type: float
+
+   - id: menu_max_value
+     type: float
+
    - id: menu_set_mode
      type: bool
      initial_value: 'false'
@@ -121,7 +133,7 @@ globals:
      # Set these to functions of particular menu items
    - id: menu_functions
      type: unsigned char[${menuSize}]
-     initial_value: '{0,3,3,3}'
+     initial_value: '{0,8,3,3}'
 
      # For submenu items, what are the children?
    - id: menu_child
@@ -150,8 +162,12 @@ script:
       - lambda: |-
           switch(id(menu_current_node)) {
             case 1:
-              id(menu_current_value) = id(thermostat_target_temperature).state;
-              ESP_LOGD("console", "read temp: %.2f°C, max_rot=%d", id(menu_current_value), id(menu_length)[1]);
+              id(menu_current_value) = id(thermostat_current_temperature).state;
+              id(menu_target_value) = id(thermostat_target_temperature).state;
+              id(menu_weather_value) = id(weather_temperature).state;
+              id(menu_min_value) = id(thermostat_min_temperature).state;
+              id(menu_max_value) = id(thermostat_max_temperature).state;
+              ESP_LOGD("console", "read temperatures current: %.2f°C, target: %.2f°C (max_rot=%d) weather: %.2f°C range: %.2f-%.2f°C", id(menu_current_value), id(menu_target_value), id(menu_length)[1], id(menu_weather_value), id(menu_min_value), id(menu_max_value));
               break;
             case 2:
               float b;
@@ -343,7 +359,11 @@ binary_sensor:
               - if:
                   condition:
                     # Set mode for continuous or binary setting
-                    lambda: 'return (id(menu_functions)[id(menu_current_node)] == 3 || id(menu_functions)[id(menu_current_node)] == 4  || id(menu_functions)[id(menu_current_node)] == 6);'
+                    lambda: |-
+                        return (id(menu_functions)[id(menu_current_node)] == 3 ||
+                                id(menu_functions)[id(menu_current_node)] == 4 ||
+                                id(menu_functions)[id(menu_current_node)] == 6 ||
+                                id(menu_functions)[id(menu_current_node)] == 8);
                   then:
                     - lambda: |-
                         //toggle set mode
@@ -453,6 +473,7 @@ sensor:
             switch(id(menu_functions)[id(menu_current_node)]){
               case 3:
               case 6:
+              case 8:
                 maxval = id(menu_length)[id(menu_current_node)] + 1; break; // continuous
               case 4: maxval = 2; break;  // binary
             }
@@ -577,7 +598,7 @@ sensor:
     entity_id: sensor.ground_temperature
     internal: true
   - platform: homeassistant
-    id: noumea_temperature
+    id: weather_temperature
     entity_id: sensor.temperature_in_france_noumea_182_days_ago
     internal: true
   - platform: homeassistant
@@ -682,6 +703,7 @@ display:
       auto white = Color(255, 255, 255);
       auto gray = Color(100, 100, 100);
       auto brown = Color(100, 80, 0);
+      auto green = Color(50, 168, 82);
 
       if (!id(api_connected).state){
 
@@ -770,7 +792,14 @@ display:
               it.rectangle(52, 20, 24, 12);
               // Inner toggle
               it.filled_rectangle(54 + id(rotary_dial).state*10, 22, 10, 8);
-
+              break;
+            case 8: // Climate control
+              double percentage = id(rotary_dial).state / id(menu_length)[id(menu_current_node)];
+              it.gauge(120, 140, 80, percentage, gray, green);
+              it.printf(120, 90, id(big_font), white, TextAlign::TOP_CENTER, "%.1f", id(menu_current_value));
+              it.printf(120, 132, id(small_font), white, TextAlign::TOP_CENTER, "%.1f", id(menu_target_value));
+              it.printf(230, 200, id(small_font), white, TextAlign::TOP_RIGHT, "%.1f°C", id(menu_weather_value));
+              break;
           }
 
         } else {
@@ -781,6 +810,7 @@ display:
             case 1:
             case 3:
             case 6:
+            case 8:
               it.printf(120, 60, id(big_font), white, TextAlign::TOP_CENTER, "%.2f", id(menu_current_value));
               break;
             case 4:
@@ -796,10 +826,8 @@ display:
                 // vertical shades
                 it.line(53, 20, 53, 30);
                 it.line(74, 21, 74, 29);
-
               }
               break;
-
           }
         }
       }
