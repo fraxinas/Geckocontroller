@@ -60,8 +60,7 @@ substitutions:
   friendlyName: Gecko
 
   # Menu system
-  menuDepth: '2'
-  menuSize: '6'
+  menuSize: '4'
 
 #####  END OF CONFIGURATION BLOCK
 
@@ -77,22 +76,9 @@ globals:
      initial_value: 'false'
 
 # Menu helpers
-
-   - id: menu_max_level
-     type: unsigned char
-     initial_value: '${menuDepth}'
-
-   - id: menu_level
-     type: unsigned char
-
-   - id: menu_position
-     type: unsigned char[${menuDepth}]
-
-   - id: menu_parent
-     type: unsigned char[${menuDepth}]
-
    - id: menu_current_node
      type: unsigned char
+     initial_value: '0'
 
    - id: menu_current_label
      type: char *
@@ -106,15 +92,10 @@ globals:
    - id: menu_weather_value
      type: float
 
-   - id: menu_min_value
-     type: float
-
-   - id: menu_max_value
-     type: float
-
-   - id: menu_set_mode
-     type: bool
-     initial_value: 'false'
+     # 0 = view, 1 = set, 2 = graph
+   - id: menu_subpage
+     type: unsigned char
+     initial_value: '0'
 
    - id: menu_no_hass_updates
      type: bool
@@ -128,22 +109,21 @@ globals:
      # Set these to labels you want to display
    - id: menu_labels
      type: char * [${menuSize}]
-     initial_value: '{"Saver","Thermostat","Day Light","Hygrostat"}'
+     initial_value: '{"Overview","Thermostat","Day Light","Hygrostat"}'
+
+   - id: menu_units
+     type: char * [${menuSize}]
+     initial_value: '{"","°C","","%"}'
 
      # Set these to functions of particular menu items
    - id: menu_functions
      type: unsigned char[${menuSize}]
      initial_value: '{0,8,3,8}'
 
-     # For submenu items, what are the children?
-   - id: menu_child
-     type: unsigned char[${menuSize}]
-     initial_value: '{0,0,0,0}'
-
-     # How many items are there for each submenu? For continuous settings, what is the range?
-   - id: menu_length
+     # The range maximum value
+   - id: menu_rotary_ticks
      type: int [${menuSize}]
-     initial_value: '{4,0,100,0}'
+     initial_value: '{4,0,0,0}'
 
    - id: menu_increment
      type: float [${menuSize}]
@@ -154,8 +134,8 @@ script:
   - id: menu_maxvals
     then:
       - lambda: |-
-          id(menu_length)[1] = (id(thermostat_max_temperature).state-id(thermostat_min_temperature).state)/id(menu_increment)[1];
-          id(menu_length)[3] = (id(hygrostat_max_humidity).state-id(hygrostat_min_humidity).state)/id(menu_increment)[3];
+          id(menu_rotary_ticks)[1] = (id(thermostat_max_temperature).state-id(thermostat_min_temperature).state)/id(menu_increment)[1];
+          id(menu_rotary_ticks)[3] = (id(hygrostat_max_humidity).state-id(hygrostat_min_humidity).state)/id(menu_increment)[3];
 
   - id: menu_values
     then:
@@ -165,9 +145,7 @@ script:
               id(menu_current_value) = id(thermostat_current_temperature).state;
               id(menu_target_value) = id(thermostat_target_temperature).state;
               id(menu_weather_value) = id(weather_temperature).state;
-              id(menu_min_value) = id(thermostat_min_temperature).state;
-              id(menu_max_value) = id(thermostat_max_temperature).state;
-              ESP_LOGD("console", "read temperatures current: %.2f°C, target: %.2f°C (max_rot=%d) weather: %.2f°C range: %.2f-%.2f°C", id(menu_current_value), id(menu_target_value), id(menu_length)[1], id(menu_weather_value), id(menu_min_value), id(menu_max_value));
+              ESP_LOGD("console", "read temperatures current: %.2f°C, target: %.2f°C (max_rot=%d) weather: %.2f°C", id(menu_current_value), id(menu_target_value), id(menu_rotary_ticks)[1], id(menu_weather_value));
               break;
             case 2:
               float b;
@@ -179,9 +157,7 @@ script:
               id(menu_current_value) = id(hygrostat_current_humidity).state;
               id(menu_target_value) = id(hygrostat_target_humidity).state;
               id(menu_weather_value) = id(weather_humidity).state;
-              id(menu_min_value) = id(hygrostat_min_humidity).state;
-              id(menu_max_value) = id(hygrostat_max_humidity).state;
-              ESP_LOGD("console", "read humiditys current: %.0f°C, target: %.0f°C (max_rot=%d) weather: %.0f°C range: %.0f-%.0f°C", id(menu_current_value), id(menu_target_value), id(menu_length)[1], id(menu_weather_value), id(menu_min_value), id(menu_max_value));
+              ESP_LOGD("console", "read humiditys current: %.0f, target: %.0f (max_rot=%d) weather: %.0f", id(menu_current_value), id(menu_target_value), id(menu_rotary_ticks)[3], id(menu_weather_value));
               break;
           }
 
@@ -203,7 +179,7 @@ script:
             case 2: {
               float b;
               id(rgb_leds).current_values_as_brightness(&b);
-              id(rotary_dial).set_value(b*id(menu_length)[id(menu_current_node)]);
+              id(rotary_dial).set_value(b*id(menu_rotary_ticks)[id(menu_current_node)]);
               ESP_LOGD("console", "read brightness: %f, initialized rotary dial with %f", b, id(rotary_dial).state);
               break;
             }
@@ -250,7 +226,7 @@ script:
                 ESP_LOGD("console", "change brightness to %f %%", b);
                 if (b > 0.)
                   call = id(rgb_leds).turn_on();
-                call.set_brightness(b/id(menu_length)[id(menu_current_node)]);
+                call.set_brightness(b/id(menu_rotary_ticks)[id(menu_current_node)]);
                 call.perform();
 
       - if:
@@ -278,26 +254,15 @@ script:
             - script.execute: menu_values
             - script.execute: menu_set_rotary
 
-# Action when dial is pressed on screensaver screen
-  - id: dial_ss_press
-    then:
-
-# Action when button is pressed on screensaver screen
-  - id: button_1_ss_press
-    then:
-
 #####  END OF CONFIGURATION BLOCK
 
-  - id: ss_timeout
+  - id: overview_timeout
     mode: restart
     then:
       - delay: 1min
       - lambda: >-
-          id(menu_level) = 0;
-          id(menu_position)[0] = 0;
-          id(menu_parent)[0] = 0;
           id(menu_current_node) = 0;
-          id(menu_set_mode) = false;
+          id(menu_subpage) = 0;
           id(rotary_dial).set_value(0);
   - id: menu_hass_updates_timeout
     mode: restart
@@ -346,20 +311,6 @@ binary_sensor:
             condition:
               api.connected
             then:
-              # Execute screensaver action
-              - if:
-                  condition:
-                    lambda: 'return id(menu_current_node) == 0;'
-                  then:
-                    script.execute: dial_ss_press
-
-              - if:
-                  condition:
-                    # Execute continuous setting with confirmation when returning from set mode
-                    lambda: 'return id(menu_functions)[id(menu_current_node)] == 6 && id(menu_set_mode) == true;'
-                  then:
-                     - script.execute: menu_actions
-
               - if:
                   condition:
                     # Set mode for continuous or binary setting
@@ -371,13 +322,17 @@ binary_sensor:
                   then:
                     - lambda: |-
                         //toggle set mode
-                        if(id(menu_set_mode)) {
-
-                          id(menu_set_mode) = false;
-                          // restore rotary value to position
-                          id(rotary_dial).set_value(id(menu_position)[id(menu_level)]);
-
-                        } else id(menu_set_mode) = true;
+                        switch (id(menu_subpage)) {
+                          case 0:
+                            id(menu_subpage) = 1;
+                            break;
+                          case 1:
+                            id(menu_subpage) = 0;
+                            break;
+                          case 2:
+                            id(menu_subpage) = 0;
+                            break;
+                        }
 
               - if:
                   condition:
@@ -389,30 +344,13 @@ binary_sensor:
               # If set mode, set rotary
               - if:
                   condition:
-                    lambda: 'return id(menu_set_mode);'
+                    lambda: 'return (id(menu_subpage) == 1);'
                   then:
                     - script.execute: menu_set_rotary
 
-              - if:
-                  condition:
-                    # Go to submenu. This needs to be last to prevent setting new item and also executing it
-                    lambda: 'return id(menu_functions)[id(menu_current_node)] == 2;'
-                  then:
-                    - lambda: |-
-                        //raise level up to max level
-                        id(menu_level) = ++id(menu_level) > id(menu_max_level) ? id(menu_max_level) : id(menu_level);
-                        //set parent node for new level
-                        id(menu_parent)[id(menu_level)] = id(menu_current_node);
-                        //set new current node
-                        id(menu_current_node) = id(menu_child)[id(menu_parent)[id(menu_level)]];
-                        //reset rotary to 0
-                        id(rotary_dial).set_value(0);
-                        //reset position in current level to 0
-                        id(menu_position)[id(menu_level)] = 0;
-
               # Display entities value for each menu item
               - script.execute: menu_values
-              - script.execute: ss_timeout
+              - script.execute: overview_timeout
   - platform: gpio
     id: button_2
     pin:
@@ -421,44 +359,20 @@ binary_sensor:
     internal: true
     on_press:
       then:
-        # Execute screensaver action
-        - if:
-            condition:
-              and:
-                - lambda: 'return id(menu_current_node) == 0;'
-                - api.connected
-            then:
-              script.execute: button_1_ss_press
-
         - lambda: |-
-            if(id(menu_set_mode)) {
-
-              id(menu_set_mode) = false;
-              id(rotary_dial).set_value(id(menu_position)[id(menu_level)]);
+            switch (id(menu_subpage)) {
+              case 0:
+              case 1:
+                id(menu_subpage) = 2;
+                break;
+              case 2:
+                id(menu_subpage) = 0;
+                id(menu_current_node) = 0;
+                //reset rotary to 0
+                id(rotary_dial).set_value(0);
+                break;
             }
-            else {
-
-            if(id(menu_level) > 0) { //if we have anywhere to return
-
-              //set new current node to current parent
-              id(menu_current_node) = id(menu_parent)[id(menu_level)];
-              //return to previous level
-              --id(menu_level);
-              //reset rotary to position for current level
-              id(rotary_dial).set_value(id(menu_position)[id(menu_level)]);
-            } else {
-
-            if(id(menu_level) == 0) { //if we are at level 0, jump to saver
-
-              //set new current node to 0
-              id(menu_current_node) = 0;
-              //reset rotary to 0
-              id(rotary_dial).set_value(0);
-              //reset menu position for current level to 0
-              id(menu_position)[id(menu_level)] = 0;
-            } } }
-
-        - script.execute: ss_timeout
+        - script.execute: overview_timeout
 
   - platform: template
     id: api_connected
@@ -471,37 +385,57 @@ sensor:
     pin_b: GPIO05
     filters:
       - lambda: |-
-          int maxval = 0;
-          if(id(menu_set_mode)) { //if set mode, rotary should go from 0 to according setting
-
+          int maxval = ${menuSize};
+          if(id(menu_subpage) == 1) { //if set mode, rotary should go from 0 to according setting
             switch(id(menu_functions)[id(menu_current_node)]){
               case 3:
               case 6:
-              case 8:
-                maxval = id(menu_length)[id(menu_current_node)] + 1; break; // continuous
+                maxval = id(menu_rotary_ticks)[id(menu_current_node)] + 1; break; // continuous
               case 4: maxval = 2; break;  // binary
+              case 8: break;
             }
-
-          } else { //if not, it should go to level length
-
-            //get current menu length
-            maxval = id(menu_length)[id(menu_parent)[id(menu_level)]];
-
           }
 
           ESP_LOGD("console", "rotary x=%f maxval=%d", x, maxval);
 
           //if rotary is over length, set to length
           if(x >= maxval) {
-
             id(rotary_dial).set_value(maxval-1);
             return maxval-1;
-
+          } else if (x < 0) {
+            return 0;
           }
-          else return x;
+          return x;
     resolution: 1
     min_value: 0
     internal: true
+    on_clockwise:
+      then:
+        - if:
+            condition:
+              lambda: 'return (id(menu_subpage) != 1);'
+            then:
+              - lambda: |-
+                  ESP_LOGD("console", "clockwise current=%d rot=%f", id(menu_current_node), id(rotary_dial).state);
+                  if (id(menu_current_node) < ${menuSize}-1)
+                    id(menu_current_node)++;
+                  else
+                    id(menu_current_node) = 0;
+                  ESP_LOGD("console", "clockwise new=%d", id(menu_current_node));
+    on_anticlockwise:
+      then:
+        - if:
+            condition:
+              lambda: 'return (id(menu_subpage) != 1);'
+            then:
+              - lambda: |-
+                  ESP_LOGD("console", "counter-clockwise current=%d rot=%f", id(menu_current_node), id(rotary_dial).state);
+                  if (id(menu_current_node) >= 1)
+                    id(menu_current_node)--;
+                  else
+                    id(menu_current_node) = ${menuSize}-1;
+                  ESP_LOGD("console", "counter-clockwise new=%d", id(menu_current_node));
+
     on_value:
       then:
         - if:
@@ -509,27 +443,21 @@ sensor:
               api.connected
             then:
               - if:
+                  # Modify values
                   condition:
-                    # Are we setting or browsing?
-                    lambda: 'return id(menu_set_mode);'
+                    lambda: 'return (id(menu_subpage) == 1);'
                   then:
-                   # Change setting only if not in continuous + confirm
-                    - if:
-                        condition:
-                          lambda: 'return !(id(menu_functions)[id(menu_current_node)] == 6);'
-                        then:
-                          - script.execute: menu_actions
-                  else:
-                    # Browsing mode, set menu position
-                    - lambda: |-
-                        //set current node to start of current child + rotary position
-                        id(menu_current_node) = id(menu_child)[id(menu_parent)[id(menu_level)]] + x;
-                        //set current level position
-                        id(menu_position)[id(menu_level)] = x;
+                    - script.execute: menu_actions
                 # Update value
-              - delay: 0.1s
+              - delay: 0.05s
               - script.execute: menu_values
-              - script.execute: ss_timeout
+              - script.execute: overview_timeout
+              - if:
+                  condition:
+                    lambda: 'return (id(menu_functions)[id(menu_current_node)] == 8);'
+                  then:
+                    - script.execute: menu_set_rotary
+
   - platform: wifi_signal
     id: wifisignal
     update_interval: 20s
@@ -647,6 +575,15 @@ sensor:
     on_value:
       then:
         - script.execute: menu_hass_updates
+  - platform: homeassistant
+    id: ceiling_humidity
+    entity_id: sensor.ceiling_humidity
+    internal: true
+  - platform: homeassistant
+    id: ground_humidity
+    entity_id: sensor.ground_humidity
+    internal: true
+
   # - platform: custom
   #   lambda: |-
   #     auto MyVCNL4040_sensor = new MyVCNL4040();
@@ -690,12 +627,12 @@ font:
   - file: "/usr/share/fonts/TTF/OpenSans-Regular.ttf"
     id: big_font
     size: 40
-    glyphs: ">-:0123456789."
+    glyphs: ">-:%°na0123456789C."
 
   - file: "/usr/share/fonts/TTF/OpenSans-Light.ttf"
     id: small_font
     size: 26
-    glyphs: ">-:/&!°0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ."
+    glyphs: ">-:/%&!°0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ."
 
   - file: "/usr/share/fonts/TTF/OpenSans-Light.ttf"
     id: tiny_font
@@ -711,6 +648,7 @@ display:
     cs_pin: GPIO02
     dimensions: 240x240
     update_interval: 0.5s
+    rotation: 0
     lambda: |-
       auto dark_purple = Color(50, 0, 128);
       auto white = Color(255, 255, 255);
@@ -719,22 +657,12 @@ display:
       auto green = Color(50, 200, 82);
 
       if (!id(api_connected).state){
-
         // Little animation before API is online
         it.line(56, 32, 56+id(wi), 32);
 
       } else {
-
-      // Blank screen if PIR off
-      if (id(s_blank)) { it.fill(COLOR_OFF); return; }
-
-      // Screensaver is always node 0
-      if(id(menu_current_node)==0) {
-
-        // time
-        it.strftime(120, 60, id(big_font), TextAlign::TOP_CENTER, "%H:%M", id(ha_time).now());
-      }
-      else {
+        // Blank screen if PIR off
+        if (id(s_blank)) { it.fill(COLOR_OFF); return; }
 
         // Header Background
         it.filled_rectangle(0,0,240,16,dark_purple);
@@ -745,56 +673,59 @@ display:
         // Header wifi
         for(int i=0; i<5; i++) if(i<id(wifistep).state) it.filled_rectangle(216+i*5,8-i*2,4,i*2+4); else it.rectangle(216+i*5,8-i*2,4,i*2+4);
         // Header menu level
-        if(id(menu_level)>0) {
-
-          // y-ccord start of the level display
-          int b = 64 - (4 * id(menu_level));
-          for(int i=0; i<id(menu_level); i++) {
-
-            // Start of this symbol
-            int itb = b + i*8;
-            // Top line
-            it.line(itb, 2, itb+6, 6);
-            // Bottom line
-            it.line(itb+6, 6, itb, 10);
-
-          };
-        }
-        // Footer menu position
         // y-coord start of the menu pos display
-        int b = 64 - (2 * id(menu_length)[id(menu_parent)[id(menu_level)]]);
-        for(int i=0; i<id(menu_length)[id(menu_parent)[id(menu_level)]]; i++) {
-
-          // Start of this symbol
+        int b = 64 - (2 * ${menuSize});
+        for(int i=0; i<${menuSize}; i++) {
           int itb = b + i*4;
-          if(id(menu_position)[id(menu_level)] == i) it.filled_rectangle(itb, 6, 6, 6);
-          else it.filled_rectangle(itb+2, 8, 2, 2);
-
+          if(id(menu_current_node) == i)
+            it.filled_rectangle(itb, 6, 6, 6);
+          else
+            it.filled_rectangle(itb+2, 8, 2, 2);
         };
 
-
         // Show label
-        bool s = !id(menu_set_mode) &&
+        bool s = (id(menu_subpage) == 0) &&
                 (id(menu_functions)[id(menu_current_node)] == 2 ||
-                 id(menu_functions)[id(menu_current_node)] == 3 ||
-                 id(menu_functions)[id(menu_current_node)] == 4 ||
-                 id(menu_functions)[id(menu_current_node)] == 6 );
+                id(menu_functions)[id(menu_current_node)] == 3 ||
+                id(menu_functions)[id(menu_current_node)] == 4 ||
+                id(menu_functions)[id(menu_current_node)] == 6 );
         it.printf(120, 24, id(small_font), TextAlign::TOP_CENTER, "%s%s", id(menu_labels)[id(menu_current_node)], s ? " >" : "" );
 
-        // Show value
-        if(id(menu_set_mode)) {
+        // Overview
+        if(id(menu_current_node) == 0) {
+          float actual_temp = id(thermostat_current_temperature).state;
+          float diff = actual_temp-id(thermostat_target_temperature).state;
+          auto color = Color(0, 200, 0);
+          if (diff > 1)
+            color = Color(255, 0, 0);
+          else if (diff < -1)
+            color = Color(0, 100, 255);
+          it.filled_rectangle(10, 60, 220, 50, color);
 
+          float actual_hum = id(hygrostat_current_humidity).state;
+          diff = actual_hum-id(hygrostat_target_humidity).state;
+          if (diff > 4)
+            color = Color(0, 0, 255);
+          else if (diff < -4)
+            color = Color(255, 0, 0);
+          else
+            color = Color(0, 200, 0);
+          it.filled_rectangle(10, 120, 220, 50, color);
+          it.printf(120, 60, id(big_font), COLOR_OFF, TextAlign::TOP_CENTER, "%.1f°C", actual_temp);
+          it.printf(120, 120, id(big_font), COLOR_OFF, TextAlign::TOP_CENTER, "%.0f%%", actual_hum);
+          return;
+        }
+        else if(id(menu_subpage) <= 1) {
           switch(id(menu_functions)[id(menu_current_node)]){
-
             case 3:
             case 6: {
               // Setting progressbar, outline rectangle
               it.rectangle(8, 58, 224, 54, gray);
               // Inner fill
-              int x_pos = round(id(rotary_dial).state / id(menu_length)[id(menu_current_node)] * 220.d);
+              int x_pos = round(id(rotary_dial).state / id(menu_rotary_ticks)[id(menu_current_node)] * 220.d);
               it.filled_rectangle(10, 60, x_pos, 50, brown);
               // Value
-              it.printf(120, 60, id(big_font), white, TextAlign::TOP_CENTER, "%.2f", id(menu_current_value));
+              it.printf(120, 60, id(big_font), white, TextAlign::TOP_CENTER, "%.2f%s", id(menu_current_value), id(menu_units)[id(menu_current_node)]);
               break;
             }
             case 4:
@@ -807,23 +738,20 @@ display:
               it.filled_rectangle(54 + id(rotary_dial).state*10, 22, 10, 8);
               break;
             case 8: // Climate control
-              double percentage = id(rotary_dial).state / id(menu_length)[id(menu_current_node)];
-              it.gauge(120, 140, 80, percentage, gray, green);
+              double percentage = id(rotary_dial).state / id(menu_rotary_ticks)[id(menu_current_node)];
+              ESP_LOGD("console", "render climate percentage=%f rotary_state=%.0f ticks=%d", percentage, id(rotary_dial).state, id(menu_rotary_ticks)[id(menu_current_node)]);
+              it.gauge(120, 140, 80, percentage, gray, green, id(menu_subpage) == 1);
               it.printf(120, 90, id(big_font), white, TextAlign::TOP_CENTER, "%.1f", id(menu_current_value));
               it.printf(120, 132, id(small_font), white, TextAlign::TOP_CENTER, "%.1f", id(menu_target_value));
-              it.printf(230, 200, id(small_font), white, TextAlign::TOP_RIGHT, "%.1f°C", id(menu_weather_value));
+              it.printf(230, 200, id(small_font), white, TextAlign::TOP_RIGHT, "%.1f%s", id(menu_weather_value), id(menu_units)[id(menu_current_node)]);
               break;
           }
-
         } else {
-
           // Show value only if Display or Setting
           switch(id(menu_functions)[id(menu_current_node)]){
-
             case 1:
             case 3:
             case 6:
-            case 8:
               it.printf(120, 60, id(big_font), white, TextAlign::TOP_CENTER, "%.2f", id(menu_current_value));
               break;
             case 4:
@@ -841,8 +769,74 @@ display:
                 it.line(74, 21, 74, 29);
               }
               break;
+            case 8: {
+              switch(id(menu_current_node)) {
+                case 1:
+                    it.graph(6, 60, id(temperature_graph), gray);
+                    break;
+                case 3:
+                    it.graph(6, 60, id(humidity_graph), gray);
+                    break;
+              }
+            }
           }
         }
       }
 
-      }
+color:
+  - id: my_light_red
+    red: 100%
+    green: 20%
+    blue: 25%
+  - id: my_light_blue
+    red: 20%
+    green: 25%
+    blue: 100%
+  - id: my_light_green
+    red: 22%
+    green: 100%
+    blue: 22%
+  - id: my_light_yellow
+    red: 100%
+    green: 100%
+    blue: 22%
+
+graph:
+  - id: temperature_graph
+    duration: 15min
+    x_grid: 1min
+    y_grid: 1.0     # degC/div
+    width: 228
+    height: 180
+    traces:
+      - sensor: thermostat_current_temperature
+        line_type: SOLID
+        line_thickness: 2
+        color: my_light_red
+      - sensor: weather_temperature
+        line_type: SOLID
+        line_thickness: 2
+        color: my_light_yellow
+  - id: humidity_graph
+    duration: 15min
+    x_grid: 1min
+    y_grid: 1.0     # degC/div
+    width: 228
+    height: 180
+    traces:
+      - sensor: hygrostat_current_humidity
+        line_type: SOLID
+        line_thickness: 2
+        color: my_light_red
+      - sensor: weather_humidity
+        line_type: SOLID
+        line_thickness: 2
+        color: my_light_yellow
+      - sensor: ceiling_humidity
+        line_type: SOLID
+        line_thickness: 1
+        color: my_light_blue
+      - sensor: ground_humidity
+        line_type: SOLID
+        line_thickness: 1
+        color: my_light_green
