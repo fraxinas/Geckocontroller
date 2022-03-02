@@ -53,16 +53,8 @@ api:
 
 ota:
 
-#####
-#####  CONFIGURATION BLOCK HERE
-#####
 substitutions:
-  friendlyName: Gecko
-
-  # Menu system
-  menuSize: '4'
-
-#####  END OF CONFIGURATION BLOCK
+  menuSize: '6'
 
 globals:
 # Wait indicator
@@ -112,25 +104,25 @@ globals:
      # Set these to labels you want to display
    - id: menu_labels
      type: char * [${menuSize}]
-     initial_value: '{"Overview","Thermostat","Day Light","Hygrostat"}'
+     initial_value: '{"Overview","Thermostat","Hygrostat","Day Light","Fogger","Rain"}'
 
    - id: menu_units
      type: char * [${menuSize}]
-     initial_value: '{"","°C","","%"}'
+     initial_value: '{"","°C","%","","\U0000F67E","\U0000F683"}'
 
      # Set these to functions of particular menu items
    - id: menu_functions
      type: unsigned char[${menuSize}]
-     initial_value: '{0,8,3,8}'
+     initial_value: '{0,8,8,3,5,5}'
 
      # The range maximum value
    - id: menu_rotary_ticks
      type: int [${menuSize}]
-     initial_value: '{4,0,50,0}'
+     initial_value: '{4,0,50,0,1,1}'
 
    - id: menu_increment
      type: float [${menuSize}]
-     initial_value: '{0,0.5,2,2}'
+     initial_value: '{0,0.5,2,2,0,0}'
 
 script:
 # What value to display for each menu item
@@ -138,7 +130,7 @@ script:
     then:
       - lambda: |-
           id(menu_rotary_ticks)[1] = (id(thermostat_max_temperature).state-id(thermostat_min_temperature).state)/id(menu_increment)[1];
-          id(menu_rotary_ticks)[3] = (id(hygrostat_max_humidity).state-id(hygrostat_min_humidity).state)/id(menu_increment)[3];
+          id(menu_rotary_ticks)[2] = (id(hygrostat_max_humidity).state-id(hygrostat_min_humidity).state)/id(menu_increment)[2];
 
   - id: menu_values
     then:
@@ -152,18 +144,18 @@ script:
               //ESP_LOGD("console", "read temperatures current: %.2f°C, target: %.2f°C (ticks=%d) weather: %.2f°C, percentage: %.2f%%", id(menu_current_value), id(menu_target_value), id(menu_rotary_ticks)[1], id(menu_weather_value), id(menu_current_percentage));
               break;
             case 2:
-              float b;
-              id(rgb_leds).current_values_as_brightness(&b);
-              id(menu_current_value) = b*100.f;
-              id(menu_current_percentage) = b;
-              //ESP_LOGD("console", "read brightness: %f -> menu_current_value: %f", b, id(menu_current_value));
-              break;
-            case 3:
               id(menu_current_value) = id(hygrostat_current_humidity).state;
               id(menu_target_value) = id(hygrostat_target_humidity).state;
               id(menu_weather_value) = id(weather_humidity).state;
               id(menu_current_percentage) = (id(menu_target_value) - id(hygrostat_min_humidity).state) / (id(hygrostat_max_humidity).state - id(hygrostat_min_humidity).state);
-              //ESP_LOGD("console", "read humidity current: %.0f, target: %.0f (ticks=%d) weather: %.0f, percentage: %.2f%%", id(menu_current_value), id(menu_target_value), id(menu_rotary_ticks)[3], id(menu_weather_value), id(menu_current_percentage));
+              //ESP_LOGD("console", "read humidity current: %.0f, target: %.0f (ticks=%d) weather: %.0f, percentage: %.2f%%", id(menu_current_value), id(menu_target_value), id(menu_rotary_ticks)[2], id(menu_weather_value), id(menu_current_percentage));
+              break;
+            case 3:
+              float b;
+              id(rgb_leds).current_values_as_brightness(&b);
+              id(menu_current_value) = b*100.f;
+              id(menu_current_percentage) = b;
+              //ESP_LOGD("console", "read brightness: %f -> menu_current_value: %.2f / percentage: %.2f", b, id(menu_current_value), id(menu_current_percentage));
               break;
           }
 
@@ -195,10 +187,25 @@ script:
               data_template:
                 entity_id: climate.thermostat_air
                 temperature: '{{ x }}'
-
       - if:
           condition:
             lambda: 'return id(menu_current_node) == 2;'
+          then:
+            homeassistant.service:
+              service: climate.set_temperature
+              variables:
+                x: |-
+                  double rot_val = id(rotary_dial).state;
+                  double set_val = id(menu_increment)[2] * rot_val + id(hygrostat_min_humidity).state;
+                  //ESP_LOGD("console", "rotary val=%.2f -> change hygro setpoint to %.0f%%", rot_val, set_val);
+                  id(hygrostat_target_humidity).state = set_val;
+                  return set_val;
+              data_template:
+                entity_id: climate.hygrostat
+                temperature: '{{ x }}'
+      - if:
+          condition:
+            lambda: 'return id(menu_current_node) == 3;'
           then:
             - lambda: |-
                 auto call = id(rgb_leds).make_call();
@@ -208,23 +215,22 @@ script:
                   call = id(rgb_leds).turn_on();
                 call.set_brightness(b/id(menu_rotary_ticks)[id(menu_current_node)]);
                 call.perform();
-
       - if:
           condition:
-            lambda: 'return id(menu_current_node) == 3;'
+            lambda: 'return id(menu_current_node) == 4;'
           then:
             homeassistant.service:
-              service: climate.set_temperature
-              variables:
-                x: |-
-                  double rot_val = id(rotary_dial).state;
-                  double set_val = id(menu_increment)[3] * rot_val + id(hygrostat_min_humidity).state;
-                  //ESP_LOGD("console", "rotary val=%.2f -> change hygro setpoint to %.0f%%", rot_val, set_val);
-                  id(hygrostat_target_humidity).state = set_val;
-                  return set_val;
-              data_template:
-                entity_id: climate.hygrostat
-                temperature: '{{ x }}'
+              service: button.press
+              data:
+                entity_id: button.sleepy_hollow
+      - if:
+          condition:
+            lambda: 'return id(menu_current_node) == 5;'
+          then:
+            homeassistant.service:
+              service: button.press
+              data:
+                entity_id: button.let_it_rain
 
   - id: menu_hass_updates
     then:
@@ -607,6 +613,14 @@ font:
     size: 19
     glyphs: ":-+0123456789Conectig.pm"
 
+  - file: '../resources/materialdesignicons-webfont.ttf'
+    id: icon_font
+    size: 40
+    glyphs: [
+      "\U0000F67E", # mdi-weather-fog
+      "\U0000F683", # mdi-weather-rain
+      ]
+
 display:
   - platform: st7789v
     id: gecko_display
@@ -667,7 +681,7 @@ display:
               bg_color = color_green;
             it.filled_rectangle(10, 60, 220, 54, bg_color);
             it.printf(120, 60, id(big_font), COLOR_OFF, TextAlign::TOP_CENTER, "%.1f°C", actual_temp);
-            it.printf(220, 82, id(tiny_font), COLOR_OFF, TextAlign::TOP_RIGHT, "%+.1f", diff);
+            it.printf(224, 84, id(tiny_font), COLOR_OFF, TextAlign::TOP_RIGHT, "%+.1f", diff);
           } else {
             it.filled_rectangle(10, 60, 220, 54, color_gray);
             it.printf(120, 70, id(small_font), COLOR_OFF, TextAlign::TOP_CENTER, "no temperature");
@@ -723,11 +737,19 @@ display:
               // Inner toggle
               it.filled_rectangle(54 + id(rotary_dial).state*10, 22, 10, 8);
               break;
+            case 5: // show button
+              if(id(rotary_dial_push).state == 1) {
+                it.filled_rectangle(20, 100, 200, 80, color_gray);
+              } else {
+                it.rectangle(20, 100, 200, 80, color_gray);
+              }
+              it.printf(120, 120, id(icon_font), COLOR_ON, TextAlign::TOP_CENTER, "%s", id(menu_units)[id(menu_current_node)]);
+              break;
             case 8: // Climate control
               it.gauge(120, 140, 80, id(menu_current_percentage), color_gray, color_green, id(menu_subpage) == 1);
               it.printf(120, 90, id(big_font), COLOR_ON, TextAlign::TOP_CENTER, "%.1f", id(menu_current_value));
               it.printf(120, 132, id(small_font), COLOR_ON, TextAlign::TOP_CENTER, "%.1f", id(menu_target_value));
-              it.printf(230, 200, id(small_font), COLOR_ON, TextAlign::TOP_RIGHT, "%.1f%s", id(menu_weather_value), id(menu_units)[id(menu_current_node)]);
+              it.printf(230, 200, id(small_font), COLOR_ON, TextAlign::TOP_RIGHT, "%.0f%s", id(menu_weather_value), id(menu_units)[id(menu_current_node)]);
               break;
           }
         } else {
@@ -742,23 +764,12 @@ display:
             case 7:
               it.printf(64, 12, id(small_font), TextAlign::TOP_LEFT, "%s", id(menu_current_value) == 0 ? "Off" : "On");
               break;
-            case 5: // show button
-              it.rectangle(52, 19, 24, 14);
-              if(id(rotary_dial_push).state == 0){
-                // horizontal shades
-                it.line(53, 20, 73, 20);
-                it.line(54, 31, 72, 31);
-                // vertical shades
-                it.line(53, 20, 53, 30);
-                it.line(74, 21, 74, 29);
-              }
-              break;
             case 8: {
               switch(id(menu_current_node)) {
                 case 1:
                     it.graph(6, 60, id(temperature_graph), color_gray);
                     break;
-                case 3:
+                case 2:
                     it.graph(6, 60, id(humidity_graph), color_gray);
                     break;
               }
