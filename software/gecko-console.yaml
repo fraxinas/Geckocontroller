@@ -595,17 +595,17 @@ font:
   - file: "/usr/share/fonts/TTF/OpenSans-Regular.ttf"
     id: big_font
     size: 40
-    glyphs: ">-:%°na0123456789C."
+    glyphs: ">-+:%°na0123456789Cpm."
 
   - file: "/usr/share/fonts/TTF/OpenSans-Light.ttf"
     id: small_font
     size: 26
-    glyphs: ">-:/%&!°0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ."
+    glyphs: ">-+:/%&!°0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ."
 
   - file: "/usr/share/fonts/TTF/OpenSans-Light.ttf"
     id: tiny_font
     size: 19
-    glyphs: ":0123456789Conectig.pm"
+    glyphs: ":-+0123456789Conectig.pm"
 
 display:
   - platform: st7789v
@@ -618,12 +618,6 @@ display:
     update_interval: 0.5s
     rotation: 0
     lambda: |-
-      auto dark_purple = Color(50, 0, 128);
-      auto white = Color(255, 255, 255);
-      auto gray = Color(80, 80, 80);
-      auto brown = Color(100, 80, 0);
-      auto green = Color(50, 200, 82);
-
       if (!id(api_connected).state){
         // Little animation before API is online
         it.line(56, 32, 56+id(wi), 32);
@@ -633,7 +627,7 @@ display:
         if (id(s_blank)) { it.fill(COLOR_OFF); return; }
 
         // Header Background
-        it.filled_rectangle(0,0,240,16,dark_purple);
+        it.filled_rectangle(0, 0, 240, 16, color_dark_purple);
         // Header time
         it.strftime(0, 6, id(tiny_font), COLOR_ON, TextAlign::CENTER_LEFT, "%H:%M", id(ha_time).now());
         // Header CO2
@@ -661,26 +655,50 @@ display:
 
         // Overview
         if(id(menu_current_node) == 0) {
-          float actual_temp = id(thermostat_current_temperature).state;
-          float diff = actual_temp-id(thermostat_target_temperature).state;
-          auto color = Color(0, 200, 0);
-          if (diff > 1)
-            color = Color(255, 0, 0);
-          else if (diff < -1)
-            color = Color(0, 0, 255);
-          it.filled_rectangle(10, 60, 220, 50, color);
+          auto bg_color = color_gray;
+          if (id(thermostat_current_temperature).has_state()) {
+            float actual_temp = id(thermostat_current_temperature).state;
+            float diff = actual_temp-id(thermostat_target_temperature).state;
+            if (diff > 1)
+              bg_color = color_red;
+            else if (diff < -1)
+              bg_color = color_blue;
+            else
+              bg_color = color_green;
+            it.filled_rectangle(10, 60, 220, 54, bg_color);
+            it.printf(120, 60, id(big_font), COLOR_OFF, TextAlign::TOP_CENTER, "%.1f°C", actual_temp);
+            it.printf(220, 82, id(tiny_font), COLOR_OFF, TextAlign::TOP_RIGHT, "%+.1f", diff);
+          } else {
+            it.filled_rectangle(10, 60, 220, 54, color_gray);
+            it.printf(120, 70, id(small_font), COLOR_OFF, TextAlign::TOP_CENTER, "no temperature");
+          }
 
-          float actual_hum = id(hygrostat_current_humidity).state;
-          diff = actual_hum-id(hygrostat_target_humidity).state;
-          if (diff > 4)
-            color = Color(0, 0, 255);
-          else if (diff < -4)
-            color = Color(255, 0, 0);
-          else
-            color = Color(0, 200, 0);
-          it.filled_rectangle(10, 120, 220, 50, color);
-          it.printf(120, 60, id(big_font), COLOR_OFF, TextAlign::TOP_CENTER, "%.1f°C", actual_temp);
-          it.printf(120, 120, id(big_font), COLOR_OFF, TextAlign::TOP_CENTER, "%.0f%%", actual_hum);
+          if (id(hygrostat_current_humidity).has_state()) {
+            float actual_hum = id(hygrostat_current_humidity).state;
+            float diff = actual_hum-id(hygrostat_target_humidity).state;
+            if (diff > 4)
+              bg_color = color_blue;
+            else if (diff < -4)
+              bg_color = color_red;
+            else
+              bg_color = color_green;
+            it.filled_rectangle(10, 120, 220, 54, bg_color);
+            it.printf(120, 120, id(big_font), COLOR_OFF, TextAlign::TOP_CENTER, "%.0f%%", actual_hum);
+            it.printf(220, 142, id(tiny_font), COLOR_OFF, TextAlign::TOP_RIGHT, "%+.0f", diff);
+          } else {
+            it.filled_rectangle(10, 120, 220, 54, color_gray);
+            it.printf(120, 130, id(small_font), COLOR_OFF, TextAlign::TOP_CENTER, "no humidity");
+          }
+
+          if (id(co2_val).has_state()) {
+            float r, g, b;
+            id(rgb_leds).current_values_as_rgb(&r, &g, &b);
+            it.filled_rectangle(10, 180, 220, 54, Color(r*255., g*255., b*255.));
+            it.printf(120, 180, id(big_font), COLOR_OFF, TextAlign::TOP_CENTER, "%.0fppm", id(co2_val).state);
+          } else {
+            it.filled_rectangle(10, 180, 220, 54, color_gray);
+            it.printf(120, 60, id(small_font), COLOR_OFF, TextAlign::TOP_CENTER, "no CO2 reading");
+          }
           return;
         }
         else if(id(menu_subpage) <= 1) {
@@ -688,12 +706,12 @@ display:
             case 3:
             case 6: {
               // Setting progressbar, outline rectangle
-              it.rectangle(8, 58, 224, 54, gray);
+              it.rectangle(8, 58, 224, 54, color_gray);
               // Inner fill
-              int x_pos = round(id(rotary_dial).state / id(menu_rotary_ticks)[id(menu_current_node)] * 220.d);
-              it.filled_rectangle(10, 60, x_pos, 50, brown);
+              int x_pos = round(id(menu_current_percentage) * 220.d);
+              it.filled_rectangle(10, 60, x_pos, 50, color_brown);
               // Value
-              it.printf(120, 60, id(big_font), white, TextAlign::TOP_CENTER, "%.2f%s", id(menu_current_value), id(menu_units)[id(menu_current_node)]);
+              it.printf(120, 60, id(big_font), COLOR_ON, TextAlign::TOP_CENTER, "%.2f%s", id(menu_current_value), id(menu_units)[id(menu_current_node)]);
               break;
             }
             case 4:
@@ -706,10 +724,10 @@ display:
               it.filled_rectangle(54 + id(rotary_dial).state*10, 22, 10, 8);
               break;
             case 8: // Climate control
-              it.gauge(120, 140, 80, id(menu_current_percentage), gray, green, id(menu_subpage) == 1);
-              it.printf(120, 90, id(big_font), white, TextAlign::TOP_CENTER, "%.1f", id(menu_current_value));
-              it.printf(120, 132, id(small_font), white, TextAlign::TOP_CENTER, "%.1f", id(menu_target_value));
-              it.printf(230, 200, id(small_font), white, TextAlign::TOP_RIGHT, "%.1f%s", id(menu_weather_value), id(menu_units)[id(menu_current_node)]);
+              it.gauge(120, 140, 80, id(menu_current_percentage), color_gray, color_green, id(menu_subpage) == 1);
+              it.printf(120, 90, id(big_font), COLOR_ON, TextAlign::TOP_CENTER, "%.1f", id(menu_current_value));
+              it.printf(120, 132, id(small_font), COLOR_ON, TextAlign::TOP_CENTER, "%.1f", id(menu_target_value));
+              it.printf(230, 200, id(small_font), COLOR_ON, TextAlign::TOP_RIGHT, "%.1f%s", id(menu_weather_value), id(menu_units)[id(menu_current_node)]);
               break;
           }
         } else {
@@ -718,7 +736,7 @@ display:
             case 1:
             case 3:
             case 6:
-              it.printf(120, 60, id(big_font), white, TextAlign::TOP_CENTER, "%.2f", id(menu_current_value));
+              it.printf(120, 60, id(big_font), COLOR_ON, TextAlign::TOP_CENTER, "%.2f", id(menu_current_value));
               break;
             case 4:
             case 7:
@@ -738,10 +756,10 @@ display:
             case 8: {
               switch(id(menu_current_node)) {
                 case 1:
-                    it.graph(6, 60, id(temperature_graph), gray);
+                    it.graph(6, 60, id(temperature_graph), color_gray);
                     break;
                 case 3:
-                    it.graph(6, 60, id(humidity_graph), gray);
+                    it.graph(6, 60, id(humidity_graph), color_gray);
                     break;
               }
             }
@@ -750,22 +768,26 @@ display:
       }
 
 color:
-  - id: my_light_red
+  - id: color_red
     red: 100%
+  - id: color_blue
     green: 20%
-    blue: 25%
-  - id: my_light_blue
-    red: 20%
-    green: 25%
     blue: 100%
-  - id: my_light_green
-    red: 22%
+  - id: color_green
     green: 100%
-    blue: 22%
-  - id: my_light_yellow
+  - id: color_yellow
     red: 100%
     green: 100%
-    blue: 22%
+  - id: color_dark_purple
+    red: 19%
+    blue: 50%
+  - id: color_gray
+    red: 30%
+    green: 30%
+    blue: 30%
+  - id: color_brown
+    red: 40%
+    green: 27%
 
 graph:
   - id: temperature_graph
@@ -778,11 +800,11 @@ graph:
       - sensor: thermostat_current_temperature
         line_type: SOLID
         line_thickness: 2
-        color: my_light_red
+        color: color_red
       - sensor: weather_temperature
         line_type: SOLID
         line_thickness: 2
-        color: my_light_yellow
+        color: color_yellow
   - id: humidity_graph
     duration: 15min
     x_grid: 1min
@@ -793,16 +815,16 @@ graph:
       - sensor: hygrostat_current_humidity
         line_type: SOLID
         line_thickness: 2
-        color: my_light_red
+        color: color_red
       - sensor: weather_humidity
         line_type: SOLID
         line_thickness: 2
-        color: my_light_yellow
+        color: color_yellow
       - sensor: ceiling_humidity
         line_type: SOLID
         line_thickness: 1
-        color: my_light_blue
+        color: color_blue
       - sensor: ground_humidity
         line_type: SOLID
         line_thickness: 1
-        color: my_light_green
+        color: color_green
