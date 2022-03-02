@@ -278,9 +278,9 @@ void DisplayBuffer::draw_sector_(int sector, double percentage, int center_x, in
   Color active_color, inactive_color;
   int x_t = 0;
 
-  if (percentage > (sector+1)/6.) {
+  if (percentage >= (sector+1)/6.) {
     active_color = indicator_color;
-  } else if (percentage < sector/6.) {
+  } else if (percentage <= sector/6.) {
     active_color = line_color;
   } else {
     /* partially highlighted sector, do trigonometry */
