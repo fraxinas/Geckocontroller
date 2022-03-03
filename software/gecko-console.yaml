@@ -281,13 +281,6 @@ script:
       - lambda: >-
           id(menu_no_hass_updates) = false;
 
-interval:
-# Screen saver logic & wait indicator
-  - interval: 2s
-    then:
-      - lambda: |-
-          id(wi) = ++id(wi) > 15 ? 0 : id(wi); // wait indicator logic
-
 time:
   - platform: homeassistant
     id: ha_time
@@ -475,6 +468,8 @@ sensor:
       on_value:
         then:
           - lambda: |-
+              if (!id(api_connected).state)
+                return;
               auto call = id(rgb_leds).make_call();
               double r=0.0, g=0.0, b=0.0;
               g = 1.6 - 0.001*x;
@@ -483,8 +478,11 @@ sensor:
               call.perform();
               id(color_co2) = Color(r*255., g*255., b*255.);
               if (x > 1800) {
+                id(gecko_display).set_update_interval(5000);
                 id(rtttlplayer).play("GoodBad:d=4,o=5,b=56:32p,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,d#,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,c#6,32a#,32d#6,32a#,32d#6,8a#.,16f#.,32f.,32d#.,c#,32a#,32d#6,32a#,32d#6,8a#.,16g#.,d#,1p,1p,1p,1p,1p,1p");
               }
+          - delay: 15s
+          - lambda: 'id(gecko_display).set_update_interval(500);'
     temperature:
       name: "MH-Z19 Temperature"
       id: temp_val
@@ -626,7 +624,7 @@ font:
   - file: "/usr/share/fonts/TTF/OpenSans-Regular.ttf"
     id: big_font
     size: 40
-    glyphs: ">-+:%°na0123456789Cpm."
+    glyphs: ">-+:%°0123456789ACHSaonetigpms. "
 
   - file: "/usr/share/fonts/TTF/OpenSans-Light.ttf"
     id: small_font
@@ -636,7 +634,7 @@ font:
   - file: "/usr/share/fonts/TTF/OpenSans-Light.ttf"
     id: tiny_font
     size: 19
-    glyphs: ":-+0123456789Conectig.pma"
+    glyphs: ":-+0123456789AGCHSonecktrlig.pma "
 
   - file: '../resources/materialdesignicons-webfont.ttf'
     id: icon_font
@@ -658,13 +656,15 @@ display:
     rotation: 0
     lambda: |-
       if (!id(api_connected).state){
+        // Header Background
+        it.filled_rectangle(0, 0, 240, 16, color_dark_purple);
+        it.printf(0, 6, id(tiny_font), COLOR_ON, TextAlign::CENTER_LEFT, "Connecting to HASS");
+        it.image(22, 22, id(gecko_logo));
         // Little animation before API is online
-        it.line(56, 32, 56+id(wi), 32);
-
+        id(wi) = ++id(wi) > 16 ? 0 : id(wi);
+        it.filled_rectangle(200, 4, 2*id(wi), 9);
+        it.printf(120, 198, id(small_font), COLOR_ON, TextAlign::TOP_CENTER, "Geckocontrol V1.0");
       } else {
-        // Blank screen if PIR off
-        if (id(s_blank)) { it.fill(COLOR_OFF); return; }
-
         // Header Background
         it.filled_rectangle(0, 0, 240, 16, color_dark_purple);
         // Header time
@@ -794,6 +794,11 @@ color:
     color: [64, 64, 64]
   - id: color_co2
     color: [64, 64, 64]
+
+image:
+  - file: "custom_components/geckocontrol-logo.png"
+    id: gecko_logo
+    type: RGB24
 
 graph:
   - id: temperature_graph
