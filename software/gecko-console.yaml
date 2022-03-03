@@ -119,7 +119,7 @@ globals:
 
    - id: menu_increment
      type: float [${menuSize}]
-     initial_value: '{0,0.5,2,2,0,0}'
+     initial_value: '{0,0.5,2.,2.,0,0}'
 
    - id: thermostat_diff
      type: float
@@ -132,8 +132,8 @@ script:
   - id: menu_maxvals
     then:
       - lambda: |-
-          id(menu_rotary_ticks)[1] = (id(thermostat_max_temperature).state-id(thermostat_min_temperature).state)/id(menu_increment)[1];
-          id(menu_rotary_ticks)[2] = (id(hygrostat_max_humidity).state-id(hygrostat_min_humidity).state)/id(menu_increment)[2];
+          id(menu_rotary_ticks)[1] = round((id(thermostat_max_temperature).state-id(thermostat_min_temperature).state)/id(menu_increment)[1]);
+          id(menu_rotary_ticks)[2] = round((id(hygrostat_max_humidity).state-id(hygrostat_min_humidity).state)/id(menu_increment)[2]);
 
   - id: menu_values
     then:
@@ -444,6 +444,7 @@ sensor:
                   condition:
                     lambda: 'return (id(menu_subpage) == 1);'
                   then:
+                    - lambda: 'id(menu_no_hass_updates) = true;'
                     - script.execute: menu_actions
                 # Update value
               - script.execute: menu_values
