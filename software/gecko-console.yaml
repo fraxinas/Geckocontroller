@@ -24,6 +24,8 @@ esphome:
       - binary_sensor.template.publish:
           id: api_connected
           state: ON
+  includes:
+    - custom_components/gecko_common.h
 
 wifi:
   ssid: !secret wifi_ssid
@@ -96,11 +98,6 @@ globals:
      type: bool
      initial_value: 'false'
 
-
-#####
-#####  CONFIGURATION BLOCK HERE
-#####
-
      # Set these to labels you want to display
    - id: menu_labels
      type: char * [${menuSize}]
@@ -123,6 +120,12 @@ globals:
    - id: menu_increment
      type: float [${menuSize}]
      initial_value: '{0,0.5,2,2,0,0}'
+
+   - id: thermostat_diff
+     type: float
+
+   - id: hygrostat_diff
+     type: float
 
 script:
 # What value to display for each menu item
@@ -165,7 +168,6 @@ script:
       - lambda: |-
           int rot_val = round(id(menu_current_percentage) * id(menu_rotary_ticks)[id(menu_current_node)]);
           id(rotary_dial).set_value(rot_val);
-          id(menu_no_hass_updates) = true;
       - script.execute: menu_hass_updates_timeout
 
 # Actions for each menu item setting
@@ -232,16 +234,37 @@ script:
               data:
                 entity_id: button.let_it_rain
 
-  - id: menu_hass_updates
+  - id: thermostat_hass_update
     then:
       - if:
           condition:
-            lambda: 'return id(menu_no_hass_updates) == true;'
+            lambda: 'return id(menu_no_hass_updates) == false;'
           then:
             - script.execute: menu_values
             - script.execute: menu_set_rotary
+            - lambda: |-
+                float diff = id(thermostat_current_temperature).state-id(thermostat_target_temperature).state;
+                int r = round(clamp(+85.f*diff, 0.f, 255.f));
+                int g = round(clamp(255-28.f*diff*diff, 0.f, 255.f));
+                int b = round(clamp(-85.f*diff, 0.f, 255.f));
+                id(color_thermostat) = Color(r, g, b);
+                id(thermostat_diff) = diff;
 
-#####  END OF CONFIGURATION BLOCK
+  - id: hygrostat_hass_update
+    then:
+      - if:
+          condition:
+            lambda: 'return id(menu_no_hass_updates) == false;'
+          then:
+            - script.execute: menu_values
+            - script.execute: menu_set_rotary
+            - lambda: |-
+                float diff = id(hygrostat_current_humidity).state-id(hygrostat_target_humidity).state;
+                int r = round(clamp(-36.4f*diff, 0.f, 255.f));
+                int g = round(clamp(255-5.2f*diff*diff, 0.f, 255.f));
+                int b = round(clamp(+36.4f*diff, 0.f, 255.f));
+                id(color_hygrostat) = Color(r, g, b);
+                id(hygrostat_diff) = diff;
 
   - id: overview_timeout
     mode: restart
@@ -333,6 +356,7 @@ binary_sensor:
                   condition:
                     lambda: 'return (id(menu_subpage) == 1);'
                   then:
+                    - lambda: 'id(menu_no_hass_updates) = true;'
                     - script.execute: menu_set_rotary
 
               # Display entities value for each menu item
@@ -457,6 +481,7 @@ sensor:
               r = -0.5 + 0.001*x;
               call.set_rgb(r,g,b);
               call.perform();
+              id(color_co2) = Color(r*255., g*255., b*255.);
               if (x > 1800) {
                 id(rtttlplayer).play("GoodBad:d=4,o=5,b=56:32p,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,d#,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,c#6,32a#,32d#6,32a#,32d#6,8a#.,16f#.,32f.,32d#.,c#,32a#,32d#6,32a#,32d#6,8a#.,16g#.,d#,1p,1p,1p,1p,1p,1p");
               }
@@ -474,7 +499,7 @@ sensor:
     internal: true
     on_value:
       then:
-        - script.execute: menu_hass_updates
+        - script.execute: thermostat_hass_update
   - platform: homeassistant
     id: thermostat_current_temperature
     entity_id: climate.thermostat_air
@@ -482,7 +507,7 @@ sensor:
     internal: true
     on_value:
       then:
-        - script.execute: menu_hass_updates
+        - script.execute: thermostat_hass_update
   - platform: homeassistant
     id: thermostat_min_temperature
     entity_id: climate.thermostat_air
@@ -509,7 +534,7 @@ sensor:
     internal: true
     on_value:
       then:
-        - script.execute: menu_hass_updates
+        - script.execute: menu_values
   - platform: homeassistant
     id: hygrostat_target_humidity
     entity_id: climate.hygrostat
@@ -517,7 +542,7 @@ sensor:
     internal: true
     on_value:
       then:
-        - script.execute: menu_hass_updates
+        - script.execute: hygrostat_hass_update
   - platform: homeassistant
     id: hygrostat_current_humidity
     entity_id: climate.hygrostat
@@ -525,7 +550,7 @@ sensor:
     internal: true
     on_value:
       then:
-        - script.execute: menu_hass_updates
+        - script.execute: hygrostat_hass_update
   - platform: homeassistant
     id: hygrostat_min_humidity
     entity_id: climate.hygrostat
@@ -548,7 +573,7 @@ sensor:
     internal: true
     on_value:
       then:
-        - script.execute: menu_hass_updates
+        - script.execute: menu_values
   - platform: homeassistant
     id: ceiling_humidity
     entity_id: sensor.ceiling_humidity
@@ -611,7 +636,7 @@ font:
   - file: "/usr/share/fonts/TTF/OpenSans-Light.ttf"
     id: tiny_font
     size: 19
-    glyphs: ":-+0123456789Conectig.pm"
+    glyphs: ":-+0123456789Conectig.pma"
 
   - file: '../resources/materialdesignicons-webfont.ttf'
     id: icon_font
@@ -669,49 +694,19 @@ display:
 
         // Overview
         if(id(menu_current_node) == 0) {
-          auto bg_color = color_gray;
+          it.filled_rectangle(10, 60, 220, 54, id(color_thermostat));
           if (id(thermostat_current_temperature).has_state()) {
-            float actual_temp = id(thermostat_current_temperature).state;
-            float diff = actual_temp-id(thermostat_target_temperature).state;
-            if (diff > 1)
-              bg_color = color_red;
-            else if (diff < -1)
-              bg_color = color_blue;
-            else
-              bg_color = color_green;
-            it.filled_rectangle(10, 60, 220, 54, bg_color);
-            it.printf(120, 60, id(big_font), COLOR_OFF, TextAlign::TOP_CENTER, "%.1f°C", actual_temp);
-            it.printf(224, 84, id(tiny_font), COLOR_OFF, TextAlign::TOP_RIGHT, "%+.1f", diff);
-          } else {
-            it.filled_rectangle(10, 60, 220, 54, color_gray);
-            it.printf(120, 70, id(small_font), COLOR_OFF, TextAlign::TOP_CENTER, "no temperature");
+            it.printf(120, 60, id(big_font), COLOR_OFF, TextAlign::TOP_CENTER, "%.1f°C", id(thermostat_current_temperature).state);
+            it.printf(224, 84, id(tiny_font), COLOR_OFF, TextAlign::TOP_RIGHT, "%+.1f", id(thermostat_diff));
           }
-
+          it.filled_rectangle(10, 120, 220, 54, id(color_hygrostat));
           if (id(hygrostat_current_humidity).has_state()) {
-            float actual_hum = id(hygrostat_current_humidity).state;
-            float diff = actual_hum-id(hygrostat_target_humidity).state;
-            if (diff > 4)
-              bg_color = color_blue;
-            else if (diff < -4)
-              bg_color = color_red;
-            else
-              bg_color = color_green;
-            it.filled_rectangle(10, 120, 220, 54, bg_color);
-            it.printf(120, 120, id(big_font), COLOR_OFF, TextAlign::TOP_CENTER, "%.0f%%", actual_hum);
-            it.printf(220, 142, id(tiny_font), COLOR_OFF, TextAlign::TOP_RIGHT, "%+.0f", diff);
-          } else {
-            it.filled_rectangle(10, 120, 220, 54, color_gray);
-            it.printf(120, 130, id(small_font), COLOR_OFF, TextAlign::TOP_CENTER, "no humidity");
+            it.printf(120, 120, id(big_font), COLOR_OFF, TextAlign::TOP_CENTER, "%.0f%%", id(hygrostat_current_humidity).state);
+            it.printf(220, 142, id(tiny_font), COLOR_OFF, TextAlign::TOP_RIGHT, "%+.0f", id(hygrostat_diff));
           }
-
+          it.filled_rectangle(10, 180, 220, 54, id(color_co2));
           if (id(co2_val).has_state()) {
-            float r, g, b;
-            id(rgb_leds).current_values_as_rgb(&r, &g, &b);
-            it.filled_rectangle(10, 180, 220, 54, Color(r*255., g*255., b*255.));
             it.printf(120, 180, id(big_font), COLOR_OFF, TextAlign::TOP_CENTER, "%.0fppm", id(co2_val).state);
-          } else {
-            it.filled_rectangle(10, 180, 220, 54, color_gray);
-            it.printf(120, 60, id(small_font), COLOR_OFF, TextAlign::TOP_CENTER, "no CO2 reading");
           }
           return;
         }
@@ -782,23 +777,23 @@ color:
   - id: color_red
     red: 100%
   - id: color_blue
-    green: 20%
-    blue: 100%
+    color: [0, 50, 255]
   - id: color_green
     green: 100%
   - id: color_yellow
-    red: 100%
-    green: 100%
+    color: [255, 255, 0]
   - id: color_dark_purple
-    red: 19%
-    blue: 50%
+    color: [50, 0, 127]
   - id: color_gray
-    red: 30%
-    green: 30%
-    blue: 30%
+    color: [72, 72, 72]
   - id: color_brown
-    red: 40%
-    green: 27%
+    color: [100, 72, 0]
+  - id: color_thermostat
+    color: [64, 64, 64]
+  - id: color_hygrostat
+    color: [64, 64, 64]
+  - id: color_co2
+    color: [64, 64, 64]
 
 graph:
   - id: temperature_graph
