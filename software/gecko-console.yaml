@@ -144,21 +144,21 @@ script:
               id(menu_target_value) = id(thermostat_target_temperature).state;
               id(menu_weather_value) = id(weather_temperature).state;
               id(menu_current_percentage) = (id(menu_target_value) - id(thermostat_min_temperature).state) / (id(thermostat_max_temperature).state - id(thermostat_min_temperature).state);
-              //ESP_LOGD("console", "read temperatures current: %.2f°C, target: %.2f°C (ticks=%d) weather: %.2f°C, percentage: %.2f%%", id(menu_current_value), id(menu_target_value), id(menu_rotary_ticks)[1], id(menu_weather_value), id(menu_current_percentage));
+              ESP_LOGV(TAG, "read temperatures current: %.2f°C, target: %.2f°C (ticks=%d) weather: %.2f°C, percentage: %.2f%%", id(menu_current_value), id(menu_target_value), id(menu_rotary_ticks)[1], id(menu_weather_value), id(menu_current_percentage)*100.);
               break;
             case 2:
               id(menu_current_value) = id(hygrostat_current_humidity).state;
               id(menu_target_value) = id(hygrostat_target_humidity).state;
               id(menu_weather_value) = id(weather_humidity).state;
               id(menu_current_percentage) = (id(menu_target_value) - id(hygrostat_min_humidity).state) / (id(hygrostat_max_humidity).state - id(hygrostat_min_humidity).state);
-              //ESP_LOGD("console", "read humidity current: %.0f, target: %.0f (ticks=%d) weather: %.0f, percentage: %.2f%%", id(menu_current_value), id(menu_target_value), id(menu_rotary_ticks)[2], id(menu_weather_value), id(menu_current_percentage));
+              ESP_LOGV(TAG, "read humidity current: %.0f, target: %.0f (ticks=%d) weather: %.0f, percentage: %.2f%%", id(menu_current_value), id(menu_target_value), id(menu_rotary_ticks)[2], id(menu_weather_value), id(menu_current_percentage)*100.);
               break;
             case 3:
               float b;
               id(rgb_leds).current_values_as_brightness(&b);
               id(menu_current_value) = b*100.f;
               id(menu_current_percentage) = b;
-              //ESP_LOGD("console", "read brightness: %f -> menu_current_value: %.2f / percentage: %.2f", b, id(menu_current_value), id(menu_current_percentage));
+              ESP_LOGV(TAG, "read brightness: %f -> menu_current_value: %.2f / percentage: %.2f", b, id(menu_current_value), id(menu_current_percentage));
               break;
           }
 
@@ -167,6 +167,7 @@ script:
     then:
       - lambda: |-
           int rot_val = round(id(menu_current_percentage) * id(menu_rotary_ticks)[id(menu_current_node)]);
+          ESP_LOGV(TAG, "menu_set_rotary current_percentage=%.2f%% * ticks[%d]=%d = %d", id(menu_current_percentage)*100., id(menu_current_node), id(menu_rotary_ticks)[id(menu_current_node)], rot_val);
           id(rotary_dial).set_value(rot_val);
       - script.execute: menu_hass_updates_timeout
 
@@ -183,7 +184,7 @@ script:
                 x: |-
                   double rot_val = id(rotary_dial).state;
                   double set_val = id(menu_increment)[1] * rot_val + id(thermostat_min_temperature).state;
-                  //ESP_LOGD("console", "rotary val=%.2f -> change temp setpoint to %.2f°C", rot_val, set_val);
+                  ESP_LOGD(TAG, "rotary val=%.2f -> change temp setpoint to %.2f°C", rot_val, set_val);
                   id(thermostat_target_temperature).state = set_val;
                   return set_val;
               data_template:
@@ -199,7 +200,7 @@ script:
                 x: |-
                   double rot_val = id(rotary_dial).state;
                   double set_val = id(menu_increment)[2] * rot_val + id(hygrostat_min_humidity).state;
-                  //ESP_LOGD("console", "rotary val=%.2f -> change hygro setpoint to %.0f%%", rot_val, set_val);
+                  ESP_LOGD(TAG, "rotary val=%.2f -> change hygro setpoint to %.0f%%", rot_val, set_val);
                   id(hygrostat_target_humidity).state = set_val;
                   return set_val;
               data_template:
@@ -212,7 +213,7 @@ script:
             - lambda: |-
                 auto call = id(rgb_leds).make_call();
                 float b = id(rotary_dial).state;
-                ESP_LOGD("console", "change brightness to %f %%", b);
+                ESP_LOGD(TAG, "change brightness to %f %%", b);
                 if (b > 0.)
                   call = id(rgb_leds).turn_on();
                 call.set_brightness(b/id(menu_rotary_ticks)[id(menu_current_node)]);
@@ -399,7 +400,7 @@ sensor:
               case 4: maxval = 2; break;  // binary
             }
           }
-          //ESP_LOGD("console", "rotary x=%f maxval=%d", x, maxval);
+          ESP_LOGD(TAG, "rotary x=%f maxval=%d", x, maxval);
           //if rotary is over length, set to length
           if(maxval && x >= maxval) {
             id(rotary_dial).set_value(maxval-1);
