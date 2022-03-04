@@ -445,6 +445,17 @@ sensor:
               case 8:
                 maxval = id(menu_rotary_ticks)[id(menu_current_node)] + 1; break; // continuous
               case 4: maxval = 2; break;  // binary
+              case 9: // in color picker hue mode work endlessly
+              {
+                maxval = id(menu_rotary_ticks)[id(menu_current_node)];
+                float res = x;
+                if (x > maxval)
+                  res = std::fmod(x, maxval);
+                else if (x < 0)
+                  res = maxval-std::fmod(-1.*x, maxval);
+                ESP_LOGD(TAG, "color picker rotary x=%f maxval=%d res=%f", x, maxval, res);
+                return res;
+              }
             }
           }
           ESP_LOGD(TAG, "rotary x=%f maxval=%d", x, maxval);
@@ -457,7 +468,7 @@ sensor:
           }
           return x;
     resolution: 1
-    min_value: 0
+    min_value: -48
     internal: true
     on_clockwise:
       then:
