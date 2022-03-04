@@ -661,11 +661,11 @@ display:
         // Header Background
         it.filled_rectangle(0, 0, 240, 16, color_dark_purple);
         it.printf(0, 6, id(tiny_font), COLOR_ON, TextAlign::CENTER_LEFT, "Connecting to HASS");
-        it.image(22, 22, id(gecko_logo));
+        it.image(22, 26, id(gecko_logo));
         // Little animation before API is online
         id(wi) = ++id(wi) > 16 ? 0 : id(wi);
         it.filled_rectangle(200, 4, 2*id(wi), 9);
-        it.printf(120, 198, id(small_font), COLOR_ON, TextAlign::TOP_CENTER, "Geckocontrol V1.0");
+        it.printf(120, 240, id(small_font), COLOR_ON, TextAlign::BASELINE_CENTER, "Geckocontrol V1.0");
       } else {
         // Header Background
         it.filled_rectangle(0, 0, 240, 16, color_dark_purple);
@@ -677,7 +677,7 @@ display:
         for(int i=0; i<5; i++) if(i<id(wifistep).state) it.filled_rectangle(216+i*5,8-i*2,4,i*2+4); else it.rectangle(216+i*5,8-i*2,4,i*2+4);
         // Header menu level
         // y-coord start of the menu pos display
-        int b = 64 - (2 * ${menuSize});
+        int b = 80 - (2 * ${menuSize});
         for(int i=0; i<${menuSize}; i++) {
           int itb = b + i*4;
           if(id(menu_current_node) == i)
