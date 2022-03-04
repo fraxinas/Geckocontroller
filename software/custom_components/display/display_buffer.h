@@ -137,6 +137,9 @@ class DisplayBuffer {
   /// Draw 6/8th arc of a circle and an indicator like the climate control in HASS
   void gauge(int center_x, int center_y, int radius, float percentage, Color line_color = COLOR_ON, Color indicator_color = COLOR_ON, bool set_mode = false);
 
+  // Draw a color picker at [x, y] with given colorpicker ID
+  void color_picker(int x, int y, Image *image, Color color, bool set_mode = false);
+
   void print(int x, int y, Font *font, Color color, TextAlign align, const char *text);
 
   /** Print `text` with the top left at [x,y] with `font`.

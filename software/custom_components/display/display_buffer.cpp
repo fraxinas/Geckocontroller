@@ -341,6 +341,27 @@ void HOT DisplayBuffer::gauge(int center_x, int center_y, int radius, float perc
     this->circle(center_x + dx, center_y + dy, radius/10, line_color);
 }
 
+void HOT DisplayBuffer::color_picker(int x, int y, Image *image, Color color, bool set_mode) {
+  this->image(x, y, image);
+
+  int radius = std::floor(image->get_width()/2.);
+  int center_x = radius + x;
+  int center_y = std::floor(image->get_height()/2.) + y;
+
+  int h;
+  float s, v;
+  esphome::rgb_to_hsv(color.r, color.g, color.b, h, s, v);
+
+  float angle = (2.*h/360.-1)*PI;
+  int dx = radius * s * cos(angle);
+  int dy = radius * s * sin(angle);
+
+  Color circle_color = s < 0.3 ? COLOR_OFF : COLOR_ON;
+  this->circle(center_x - dx, center_y - dy, radius/10., circle_color);
+  if (set_mode)
+    this->line(center_x, center_y, center_x - dx, center_y - dy, COLOR_OFF);
+}
+
 void DisplayBuffer::print(int x, int y, Font *font, Color color, TextAlign align, const char *text) {
   int x_start, y_start;
   int width, height;
