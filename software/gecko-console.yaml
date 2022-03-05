@@ -57,6 +57,12 @@ ota:
 
 substitutions:
   menuSize: '7'
+  colorpicker_h_max: '360.'
+  colorpicker_v_max: '255.'
+  colorpicker_s_max: '100.'
+  colorpicker_h_ticks: '48'
+  colorpicker_v_ticks: '50'
+  colorpicker_s_ticks: '25'
 
 globals:
 # Wait indicator
@@ -115,11 +121,11 @@ globals:
      # The range maximum value
    - id: menu_rotary_ticks
      type: int [${menuSize}]
-     initial_value: '{4,0,50,0,48,1,1}'
+     initial_value: '{4,0,50,0,${colorpicker_v_ticks},1,1}'
 
    - id: menu_increment
      type: float [${menuSize}]
-     initial_value: '{0,0.5,2.,2.,7.5,0,0}'
+     initial_value: '{0,0.5,2.,2.,5.12,0,0}'
 
    - id: thermostat_diff
      type: float
@@ -166,19 +172,36 @@ script:
   - id: menu_set_rotary
     then:
       - lambda: |-
-          if (id(menu_current_node) == 4) {
+          int rot_val = 0;
+          if (id(menu_functions)[id(menu_current_node)] == 9) // colorpicker
+          {
             int h;
             float s, v;
             Color c = id(color_scenic_light);
             rgb_to_hsv(c.r, c.g, c.b, h, s, v);
-            int rot_val = round(h/360. * id(menu_rotary_ticks)[4]);
-            ESP_LOGD(TAG, "menu_set_rotary color_picker h=%.2f%% * ticks[%d]=%d = %d", id(menu_current_percentage)*100., id(menu_current_node), id(menu_rotary_ticks)[4], rot_val);
+            switch (id(menu_subpage)) {
+              case 0: // browse menu
+                return;
+              case 1: // set brightness
+                rot_val = round(v / ${colorpicker_v_max} * ${colorpicker_v_ticks});
+                ESP_LOGD(TAG, "menu_set_rotary colorpicker brightness v=%.2f => %d", v, rot_val);
+                break;
+              case 3: // set hue
+                rot_val = round(h / ${colorpicker_h_max} * ${colorpicker_h_ticks});
+                ESP_LOGD(TAG, "menu_set_rotary colorpicker hue=%d => %d", h, rot_val);
+                break;
+              case 4: // set saturation
+                s *= 100.;
+                rot_val = round(s / ${colorpicker_s_max} * ${colorpicker_s_ticks});
+                ESP_LOGD(TAG, "menu_set_rotary colorpicker saturation=%.2f => %d", s, rot_val);
+                break;
+            }
             id(rotary_dial).set_value(rot_val);
-            return;
+          } else {
+            rot_val = round(id(menu_current_percentage) * id(menu_rotary_ticks)[id(menu_current_node)]);
+            ESP_LOGV(TAG, "menu_set_rotary current_percentage=%.2f%% * ticks[%d]=%d = %d", id(menu_current_percentage)*100., id(menu_current_node), id(menu_rotary_ticks)[id(menu_current_node)], rot_val);
+            id(rotary_dial).set_value(rot_val);
           }
-          int rot_val = round(id(menu_current_percentage) * id(menu_rotary_ticks)[id(menu_current_node)]);
-          ESP_LOGV(TAG, "menu_set_rotary current_percentage=%.2f%% * ticks[%d]=%d = %d", id(menu_current_percentage)*100., id(menu_current_node), id(menu_rotary_ticks)[id(menu_current_node)], rot_val);
-          id(rotary_dial).set_value(rot_val);
       - script.execute: menu_hass_updates_timeout
 
 # Actions for each menu item setting
@@ -230,27 +253,35 @@ script:
                 call.perform();
       - if:
           condition:
-            lambda: 'return id(menu_current_node) == 4;'
+            lambda: 'return (id(menu_functions)[id(menu_current_node)] == 9);'
           then:
-            homeassistant.service:
-              service: light.turn_on
-              variables:
-                b: |-
-                  int h, b;
-                  float s, v;
-                  Color c = id(color_scenic_light);
-                  rgb_to_hsv(c.r, c.g, c.b, h, s, v);
-                  b = round(v);
-                  ESP_LOGD(TAG, "menu_set_rotary color_picker v=%d", b);
-                  return b;
-                hs_color_text: |-
-                  std::string text = HSColorFromEsphomeColor(id(rotary_dial).state, id(menu_rotary_ticks)[4], id(color_scenic_light));
-                  ESP_LOGD(TAG, "menu_set_rotary color_picker hs_color='%s'", text.c_str());
-                  return text;
-              data_template:
-                entity_id: light.scenic_light
-                hs_color: '{{ hs_color_text }}'
-                brightness: '{{ b }}'
+            - if:
+                condition:
+                  lambda: 'return (id(menu_subpage) == 1);'
+                then:
+                  homeassistant.service:
+                    service: light.turn_on
+                    variables:
+                      b: |-
+                        float b = id(rotary_dial).state * ${colorpicker_v_max} / ${colorpicker_v_ticks};
+                        ESP_LOGD(TAG, "menu_actions colorpicker send brightness=%.0f", b);
+                        UpdateBrightnessToEsphomeColor(b, &id(color_scenic_light));
+                        return b;
+                    data_template:
+                      entity_id: light.scenic_light
+                      brightness: '{{ b }}'
+            - if:
+                condition:
+                  lambda: 'return (id(menu_subpage) > 2);'
+                then:
+                  homeassistant.service:
+                    service: light.turn_on
+                    variables:
+                      hs_color_text: |-
+                        return HSColorFromRotary(id(rotary_dial).state, id(menu_subpage), &id(color_scenic_light));
+                    data_template:
+                      entity_id: light.scenic_light
+                      hs_color: '{{ hs_color_text }}'
       - if:
           condition:
             lambda: 'return id(menu_current_node) == 6;'
@@ -366,14 +397,18 @@ binary_sensor:
                             break;
                           case 1: {
                             if (id(menu_functions)[id(menu_current_node)] == 9) {
-                              id(menu_subpage) = 2;
+                              id(menu_subpage) = 3;
                               break;
                             }
                             id(menu_subpage) = 0;
                             break;
                           }
                           case 2:
+                          case 4:
                             id(menu_subpage) = 0;
+                            break;
+                          case 3:
+                            id(menu_subpage) = 4;
                             break;
                         }
 
@@ -395,13 +430,6 @@ binary_sensor:
               # Display entities value for each menu item
               - script.execute: menu_values
               - script.execute: overview_timeout
-    on_release:
-      then:
-        - if:
-            condition:
-              lambda: 'return (id(menu_subpage) == 2 && id(menu_functions)[id(menu_current_node)] == 9);'
-            then:
-              lambda: 'id(menu_subpage) = 1;'
 
   - platform: gpio
     id: button_2
@@ -423,7 +451,14 @@ binary_sensor:
                 //reset rotary to 0
                 id(rotary_dial).set_value(0);
                 break;
+              case 3:
+                id(menu_subpage) = 1;
+                break;
+              case 4:
+                id(menu_subpage)--;
+                break;
             }
+        - script.execute: menu_set_rotary
         - script.execute: overview_timeout
 
   - platform: template
@@ -443,20 +478,21 @@ sensor:
               case 3:
               case 6:
               case 8:
+              case 9:
                 maxval = id(menu_rotary_ticks)[id(menu_current_node)] + 1; break; // continuous
               case 4: maxval = 2; break;  // binary
-              case 9: // in color picker hue mode work endlessly
-              {
-                maxval = id(menu_rotary_ticks)[id(menu_current_node)];
-                float res = x;
-                if (x > maxval)
-                  res = std::fmod(x, maxval);
-                else if (x < 0)
-                  res = maxval-std::fmod(-1.*x, maxval);
-                ESP_LOGD(TAG, "color picker rotary x=%f maxval=%d res=%f", x, maxval, res);
-                return res;
-              }
             }
+          } else if (id(menu_subpage) == 3) { // colorpicker set hue, work endlessly
+            maxval = id(menu_rotary_ticks)[id(menu_current_node)];
+            float res = x;
+            if (x > maxval)
+              res = std::fmod(x, maxval);
+            else if (x < 0)
+              res = maxval-std::fmod(-1.*x, maxval);
+            ESP_LOGD(TAG, "color picker rotary x=%f maxval=%d res=%f", x, maxval, res);
+            return res;
+          } else if (id(menu_subpage) == 4) { // colorpicker set saturation
+            maxval = ${colorpicker_s_ticks} + 1;
           }
           ESP_LOGD(TAG, "rotary x=%f maxval=%d", x, maxval);
           //if rotary is over length, set to length
@@ -464,6 +500,7 @@ sensor:
             id(rotary_dial).set_value(maxval-1);
             return maxval-1;
           } else if (x < 0) {
+            id(rotary_dial).set_value(0);
             return 0;
           }
           return x;
@@ -474,7 +511,7 @@ sensor:
       then:
         - if:
             condition:
-              lambda: 'return (id(menu_subpage) != 1);'
+              lambda: 'return (id(menu_subpage) == 0);'
             then:
               - lambda: |-
                   if (id(menu_current_node) < ${menuSize}-1)
@@ -485,7 +522,7 @@ sensor:
       then:
         - if:
             condition:
-              lambda: 'return (id(menu_subpage) != 1);'
+              lambda: 'return (id(menu_subpage) == 0);'
             then:
               - lambda: |-
                   if (id(menu_current_node) >= 1)
@@ -640,18 +677,32 @@ sensor:
     id: ground_humidity
     entity_id: sensor.ground_humidity
     internal: true
-
-text_sensor:
   - platform: homeassistant
-    id: scenic_light
+    id: scenic_light_b
     entity_id: light.scenic_light
-    attribute: rgb_color
+    attribute: brightness
     internal: true
     on_value:
       then:
         - lambda: |-
-            id(color_scenic_light) = HassColorTextToEsphomeColor(id(scenic_light).state);
-            ESP_LOGD(TAG, "scenic_light updated. Color=%d %d %d", id(color_scenic_light).r, id(color_scenic_light).g, id(color_scenic_light).b);
+            if (id(menu_no_hass_updates))
+              return;
+            UpdateBrightnessToEsphomeColor(id(scenic_light_b).state, &id(color_scenic_light));
+            ESP_LOGD(TAG, "scenic_light brightness updated to %.2f. Color=%d %d %d", id(scenic_light_b).state, id(color_scenic_light).r, id(color_scenic_light).g, id(color_scenic_light).b);
+
+text_sensor:
+  - platform: homeassistant
+    id: scenic_light_hs
+    entity_id: light.scenic_light
+    attribute: hs_color
+    internal: true
+    on_value:
+      then:
+        - lambda: |-
+            if (id(menu_no_hass_updates))
+              return;
+            HassHSColorTextToEsphomeColor(id(scenic_light_hs).state, &id(color_scenic_light));
+            ESP_LOGD(TAG, "scenic_light hs_color ('%s') updated. Color=%d %d %d", id(scenic_light_hs).state.c_str(), id(color_scenic_light).r, id(color_scenic_light).g, id(color_scenic_light).b);
 
 # Climate Controls from Home Assistant
 
@@ -758,14 +809,6 @@ display:
             it.filled_rectangle(itb+2, 8, 2, 2);
         };
 
-        // Show label
-        bool s = (id(menu_subpage) == 0) &&
-                (id(menu_functions)[id(menu_current_node)] == 2 ||
-                id(menu_functions)[id(menu_current_node)] == 3 ||
-                id(menu_functions)[id(menu_current_node)] == 4 ||
-                id(menu_functions)[id(menu_current_node)] == 6 );
-        it.printf(120, 24, id(small_font), TextAlign::TOP_CENTER, "%s%s", id(menu_labels)[id(menu_current_node)], s ? " >" : "" );
-
         // Overview
         if(id(menu_current_node) == 0) {
           it.filled_rectangle(10, 60, 220, 54, id(color_thermostat));
@@ -784,7 +827,20 @@ display:
           }
           return;
         }
-        else if(id(menu_subpage) <= 1) {
+        else if(id(menu_functions)[id(menu_current_node)] == 9) { // color_picker
+          it.color_picker(30, 30, id(color_picker), id(color_scenic_light), id(menu_subpage));
+          return;
+        }
+
+        // Show label
+        bool s = (id(menu_subpage) == 0) &&
+                (id(menu_functions)[id(menu_current_node)] == 2 ||
+                id(menu_functions)[id(menu_current_node)] == 3 ||
+                id(menu_functions)[id(menu_current_node)] == 4 ||
+                id(menu_functions)[id(menu_current_node)] == 6 );
+        it.printf(120, 24, id(small_font), TextAlign::TOP_CENTER, "%s%s", id(menu_labels)[id(menu_current_node)], s ? " >" : "" );
+
+        if(id(menu_subpage) <= 1) {
           switch(id(menu_functions)[id(menu_current_node)]){
             case 3:
             case 6: {
@@ -820,8 +876,6 @@ display:
               it.printf(120, 132, id(small_font), COLOR_ON, TextAlign::TOP_CENTER, "%.1f", id(menu_target_value));
               it.printf(230, 200, id(small_font), COLOR_ON, TextAlign::TOP_RIGHT, "%.0f%s", id(menu_weather_value), id(menu_units)[id(menu_current_node)]);
               break;
-            case 9: // Color picker
-              it.color_picker(30, 30, id(color_picker), id(color_scenic_light), id(menu_subpage) == 1);
           }
         } else {
           // Show value only if Display or Setting
