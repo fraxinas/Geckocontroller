@@ -341,25 +341,66 @@ void HOT DisplayBuffer::gauge(int center_x, int center_y, int radius, float perc
     this->circle(center_x + dx, center_y + dy, radius/10, line_color);
 }
 
-void HOT DisplayBuffer::color_picker(int x, int y, Image *image, Color color, bool set_mode) {
-  this->image(x, y, image);
-
-  int radius = std::floor(image->get_width()/2.);
-  int center_x = radius + x;
-  int center_y = std::floor(image->get_height()/2.) + y;
+void HOT DisplayBuffer::color_picker(int x, int y, Image *image, Color color, unsigned char set_mode) {
+  int width = image->get_width();
+  int radius = std::floor(width/2.);
 
   int h;
   float s, v;
-  esphome::rgb_to_hsv(color.r, color.g, color.b, h, s, v);
+  rgb_to_hsv(color.r, color.g, color.b, h, s, v);
+
+  uint8_t v_x_pos = width, v_height = 10;
+  for (int vx = 0; vx <= width; vx++) {
+    float r, g, b, xv = 255.*vx/float(width);
+    hsv_to_rgb(h, s, xv, r, g, b);
+    Color vc = Color(r, g, b);
+    this->line(x + vx, y, x + vx, y + v_height, vc);
+    if (v_x_pos == width && xv >= v) {
+      v_x_pos = vx;
+    }
+  }
+
+  v_x_pos += x;
+  int y_pos = y+v_height;
+  int triangle_size = 5;
+
+  if (set_mode == 1) {
+    triangle_size = 10;
+    this->rectangle(x, y, width, v_height, COLOR_ON);
+    this->line(v_x_pos-triangle_size, y_pos+triangle_size, v_x_pos+triangle_size, y_pos+triangle_size, COLOR_ON);
+    for (int j = triangle_size; j > 0; j--) {
+      this->line(v_x_pos-j, y_pos+j, v_x_pos+j, y_pos+j, color);
+    }
+  }
+  this->line(v_x_pos, y_pos, v_x_pos-triangle_size, y_pos+triangle_size, COLOR_ON);
+  this->line(v_x_pos, y_pos, v_x_pos+triangle_size, y_pos+triangle_size, COLOR_ON);
+
+  y_pos += 11;
+
+  this->image(x, y_pos, image);
+  int center_x = radius + x;
+  int center_y = std::floor(image->get_height()/2.) + y_pos;
 
   float angle = (2.*h/360.-1)*PI;
   int dx = radius * s * cos(angle);
   int dy = radius * s * sin(angle);
 
-  Color circle_color = s < 0.3 ? COLOR_OFF : COLOR_ON;
-  this->circle(center_x - dx, center_y - dy, radius/10., circle_color);
-  if (set_mode)
+  int indicator_size = radius/20.;
+  if (set_mode > 1) {
+    indicator_size = radius/10.;
     this->line(center_x, center_y, center_x - dx, center_y - dy, COLOR_OFF);
+  }
+
+  if (set_mode != 4) {
+    this->circle(center_x - dx, center_y - dy, indicator_size, COLOR_OFF);
+    if (s > 0.8)
+      this->circle(center_x - dx, center_y - dy, indicator_size+1, COLOR_ON);
+  } else {
+    this->rectangle(center_x - dx - indicator_size, center_y - dy - indicator_size, 2*indicator_size, 2*indicator_size, COLOR_OFF);
+    indicator_size--;
+    this->rectangle(center_x - dx - indicator_size, center_y - dy - indicator_size, 2*indicator_size, 2*indicator_size, COLOR_ON);
+  }
+
 }
 
 void DisplayBuffer::print(int x, int y, Font *font, Color color, TextAlign align, const char *text) {
