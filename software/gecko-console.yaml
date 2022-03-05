@@ -284,7 +284,7 @@ script:
                       hs_color: '{{ hs_color_text }}'
       - if:
           condition:
-            lambda: 'return id(menu_current_node) == 6;'
+            lambda: 'return id(menu_current_node) == 5;'
           then:
             homeassistant.service:
               service: button.press
@@ -292,7 +292,7 @@ script:
                 entity_id: button.sleepy_hollow
       - if:
           condition:
-            lambda: 'return id(menu_current_node) == 7;'
+            lambda: 'return id(menu_current_node) == 6;'
           then:
             homeassistant.service:
               service: button.press
