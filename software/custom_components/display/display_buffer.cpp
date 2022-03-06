@@ -367,10 +367,10 @@ void HOT DisplayBuffer::color_picker(int x, int y, Image *image, Color color, un
   if (set_mode == 1) {
     triangle_size = 10;
     this->rectangle(x, y, width, v_height, COLOR_ON);
-    this->line(v_x_pos-triangle_size, y_pos+triangle_size, v_x_pos+triangle_size, y_pos+triangle_size, COLOR_ON);
-    for (int j = triangle_size; j > 0; j--) {
+    for (int j = triangle_size-1; j > 0; j--) {
       this->line(v_x_pos-j, y_pos+j, v_x_pos+j, y_pos+j, color);
     }
+    this->line(v_x_pos-triangle_size, y_pos+triangle_size, v_x_pos+triangle_size, y_pos+triangle_size, COLOR_ON);
   }
   this->line(v_x_pos, y_pos, v_x_pos-triangle_size, y_pos+triangle_size, COLOR_ON);
   this->line(v_x_pos, y_pos, v_x_pos+triangle_size, y_pos+triangle_size, COLOR_ON);
