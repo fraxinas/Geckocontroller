@@ -6,6 +6,21 @@
 #include "esphome/core/color.h"
 static const char *TAG = "geckoconsole";
 
+#define COLORPICKER_H_MAX   360.
+#define COLORPICKER_V_MAX   255.
+#define COLORPICKER_S_MAX   100.
+#define COLORPICKER_H_TICKS 48
+#define COLORPICKER_V_TICKS 50
+#define COLORPICKER_S_TICKS 25
+
+typedef enum {
+    PAGE_OVERVIEW,
+    PAGE_SET,
+    PAGE_GRAPH,
+    PAGE_SET_HUE,
+    PAGE_SET_SATURATION
+} subpage_t;
+
 using namespace esphome;
 
 float ColorStringToF(const std::string &Text)
@@ -29,7 +44,7 @@ void HassHSColorTextToEsphomeColor(std::string text, Color *color)
     std::string s_str = text.substr(p1+2, p2-p1-2);
 
     h = ColorStringToF(h_str);
-    s = ColorStringToF(s_str) / 100.;
+    s = ColorStringToF(s_str) / COLORPICKER_S_MAX;
     hsv_to_rgb(h, s, v, r, g, b);
 
     *color = Color(uint8_t (round(r)), uint8_t (round(g)), uint8_t (round(b)));
@@ -57,16 +72,16 @@ std::string HSColorFromRotary(float rotary_state, unsigned char subpage, Color *
     ESP_LOGD(TAG, "HSColorFromRotary prev rgb=[%3d,%3d,%3d] hsv=(%3d,%.2f,%3.0f),rot=%.2f,subpage=%d", color->r, color->g, color->b, h, s, v, rotary_state, subpage);
 
     if (subpage == 3) {
-        h = round(rotary_state * 360. / 48.);
+        h = round(rotary_state * COLORPICKER_H_MAX / COLORPICKER_H_TICKS);
     } else if (subpage == 4) {
-        s = rotary_state / 25.;
+        s = rotary_state / COLORPICKER_S_TICKS;
     }
     hsv_to_rgb(h, s, v, r, g, b);
     *color = Color(uint8_t (round(r)), uint8_t (round(g)), uint8_t (round(b)));
 
     std::ostringstream oss;
     oss.precision(0);
-    oss << std::fixed << "(" << h << ", " << s*100. << ")";
+    oss << std::fixed << "(" << h << ", " << s*COLORPICKER_S_MAX << ")";
     std::string out = oss.str();
 
     ESP_LOGD(TAG, "HSColorFromRotary new  rgb=[%3d,%3d,%3d] hsv=(%3d,%.2f,%3.0f) -> '%s'", color->r, color->g, color->b, h, s, v, out.c_str());
