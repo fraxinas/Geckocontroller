@@ -7,7 +7,6 @@
 
 | ![](hardware/Geckocontroller-PCB-front.png) | ![](hardware/Geckocontroller-PCB-back.png) |
 | :------------------------------------------ | :----------------------------------------- |
-| []()                                        | []()                                       |
 
 ## Hardware Features
 ### Relay Output
@@ -68,6 +67,21 @@
 ### Documentation
 * [How-to Setup & Calibrate](software/README.md)
 
+## Console unit
+| ![](hardware/Geckoconsole-PCB-front.png)    | ![](hardware/Geckoconsole-PCB-back.png)    |
+| :------------------------------------------ | :----------------------------------------- |
+* Stand-alone device based on ESP32
+* remote controls the main unit through home assistant via WiFi
+* 240x240 IPS Display
+* Rotary encoder + navigation button
+* MH-Z19 CO<sub>2</sub> Sensor
+* 6x WS2812 addressable RGB LEDs
+* Piezo Buzzer for audio alerts
+* USB-C powered
+* custom esphome components:
+  * controls for thermostat, hygrostat, rain, fogger
+  * HSV color picker for scenic light
+
 ## TODO
 ### Console unit
 - [X] schematic & PCB layout
@@ -75,8 +89,10 @@
 - [X] CO2 sensor
 - [X] WS2812 RGB LEDs
 - [X] buzzer
-- [ ] software for ST7789 display
-- [ ] software for rotary encoder
+- [X] software for ST7789 display
+- [X] software for rotary encoder
+- [ ] VCNL4040 support
+- [ ] photos / documentation
 
 ### Controller unit
 - [x] 3d-printed cases for BME280 sensor and console
@@ -84,6 +100,7 @@
 - [x] ventilation automation
 - [x] moonlight simulation
 - [x] thunderstorm simulation
+- [ ] photos / documentation
 
 ## Project Diary
 | Date       | Version | Milestone                                        |
@@ -96,5 +113,6 @@
 | 2021-05-16 | v1.2    | Assembling of case and first deployment of unit  |
 | 2022-01-02 |         | Added fogger to terrarium                        |
 | 2022-01-09 |         | Base weather simulation on real historic records |
-| 2022-01-28 |         | Order Console PCB at aisler.net & parts at LCSC  |
+| 2022-01-28 | v1.0    | Order Console PCB at aisler.net & parts at LCSC  |
 | 2022-02-18 |         | Assembled Console PCB                            |
+| 2022-03-07 | v2.0    | New Hardware Revision of Console PCB             |
