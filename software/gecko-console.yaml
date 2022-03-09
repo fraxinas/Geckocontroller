@@ -89,33 +89,32 @@ globals:
    - id: menu_weather_value
      type: float
 
-     # 0 = view, 1 = set, 2 = graph
-   - id: menu_subpage
-     type: unsigned char
-     initial_value: '0'
-
    - id: menu_no_hass_updates
      type: bool
      initial_value: 'false'
 
-     # Set these to labels you want to display
+     # subpage_t
+   - id: menu_subpage
+     type: unsigned char
+     initial_value: '0'
+
    - id: menu_labels
      type: char * [${menuSize}]
-     initial_value: '{"Overview","Thermostat","Hygrostat","Day Light","Scenic Light","Fogger","Rain"}'
+     initial_value: '{"Overview","Thermostat","Hygrostat","CO2 LEDs","Scenic Light","Fogger","Rain"}'
 
    - id: menu_units
      type: char * [${menuSize}]
      initial_value: '{"","°C","%","","HSV","\U0000F67E","\U0000F683"}'
 
-     # Set these to functions of particular menu items
+    # function_t
    - id: menu_functions
      type: unsigned char[${menuSize}]
-     initial_value: '{0,8,8,3,9,5,5}'
+     initial_value: '{0,FUNC_CLIMATE,FUNC_CLIMATE,FUNC_SLIDER,FUNC_COLORPICKER,FUNC_BUTTON,FUNC_BUTTON}'
 
      # The range maximum value
    - id: menu_rotary_ticks
      type: int [${menuSize}]
-     initial_value: '{4,0,50,0,COLORPICKER_V_TICKS,1,1}'
+     initial_value: '{4,0,50,50,COLORPICKER_V_TICKS,1,1}'
 
    - id: menu_increment
      type: float [${menuSize}]
@@ -167,14 +166,14 @@ script:
     then:
       - lambda: |-
           int rot_val = 0;
-          if (id(menu_functions)[id(menu_current_node)] == 9) // colorpicker
+          if (id(menu_functions)[id(menu_current_node)] == FUNC_COLORPICKER) // colorpicker
           {
             int h;
             float s, v;
             Color c = id(color_scenic_light);
             rgb_to_hsv(c.r, c.g, c.b, h, s, v);
             switch (id(menu_subpage)) {
-              case PAGE_OVERVIEW: // browse menu
+              case PAGE_VIEW: // browse menu
                 return;
               case PAGE_SET: // set brightness
                 rot_val = round(v / COLORPICKER_V_MAX * COLORPICKER_V_TICKS);
@@ -240,14 +239,14 @@ script:
             - lambda: |-
                 auto call = id(rgb_leds).make_call();
                 float b = id(rotary_dial).state;
-                ESP_LOGD(TAG, "change brightness to %f %%", b);
+                ESP_LOGD(TAG, "change brightness to %.2f", b);
                 if (b > 0.)
                   call = id(rgb_leds).turn_on();
                 call.set_brightness(b/id(menu_rotary_ticks)[id(menu_current_node)]);
                 call.perform();
       - if:
           condition:
-            lambda: 'return (id(menu_functions)[id(menu_current_node)] == 9);'
+            lambda: 'return (id(menu_functions)[id(menu_current_node)] == FUNC_COLORPICKER);'
           then:
             - if:
                 condition:
@@ -331,7 +330,7 @@ script:
       - delay: 1min
       - lambda: >-
           id(menu_current_node) = 0;
-          id(menu_subpage) = PAGE_OVERVIEW;
+          id(menu_subpage) = PAGE_VIEW;
           id(rotary_dial).set_value(0);
   - id: menu_hass_updates_timeout
     mode: restart
@@ -377,11 +376,8 @@ binary_sensor:
                   condition:
                     # Set mode for continuous or binary setting
                     lambda: |-
-                        return (id(menu_functions)[id(menu_current_node)] == 3 ||
-                                id(menu_functions)[id(menu_current_node)] == 4 ||
-                                id(menu_functions)[id(menu_current_node)] == 6 ||
-                                id(menu_functions)[id(menu_current_node)] == 8 ||
-                                id(menu_functions)[id(menu_current_node)] == 9);
+                        return (id(menu_functions)[id(menu_current_node)] != FUNC_OVERVIEW &&
+                                id(menu_functions)[id(menu_current_node)] != FUNC_BUTTON);
                   then:
                     - lambda: |-
                         //toggle subpage
@@ -390,16 +386,16 @@ binary_sensor:
                             id(menu_subpage) = PAGE_SET;
                             break;
                           case 1: {
-                            if (id(menu_functions)[id(menu_current_node)] == 9) {
+                            if (id(menu_functions)[id(menu_current_node)] == FUNC_COLORPICKER) {
                               id(menu_subpage) = PAGE_SET_HUE;
                               break;
                             }
-                            id(menu_subpage) = PAGE_OVERVIEW;
+                            id(menu_subpage) = PAGE_VIEW;
                             break;
                           }
                           case 2:
                           case 4:
-                            id(menu_subpage) = PAGE_OVERVIEW;
+                            id(menu_subpage) = PAGE_VIEW;
                             break;
                           case 3:
                             id(menu_subpage) = PAGE_SET_SATURATION;
@@ -409,7 +405,7 @@ binary_sensor:
               - if:
                   condition:
                     # Button action
-                    lambda: 'return id(menu_functions)[id(menu_current_node)] == 5;'
+                    lambda: 'return id(menu_functions)[id(menu_current_node)] == FUNC_BUTTON;'
                   then:
                      - script.execute: menu_actions
 
@@ -435,20 +431,24 @@ binary_sensor:
       then:
         - lambda: |-
             switch (id(menu_subpage)) {
-              case 0:
-              case 1:
-                id(menu_subpage) = PAGE_GRAPH;
+              case PAGE_VIEW:
+              case PAGE_SET: {
+                if (id(menu_functions)[id(menu_current_node)] == FUNC_COLORPICKER)
+                  id(menu_subpage) = PAGE_VIEW;
+                else
+                  id(menu_subpage) = PAGE_GRAPH;
                 break;
-              case 2:
-                id(menu_subpage) = PAGE_OVERVIEW;
+              }
+              case PAGE_GRAPH:
+                id(menu_subpage) = PAGE_VIEW;
                 id(menu_current_node) = 0;
                 //reset rotary to 0
                 id(rotary_dial).set_value(0);
                 break;
-              case 3:
+              case PAGE_SET_HUE:
                 id(menu_subpage) = PAGE_SET;
                 break;
-              case 4:
+              case PAGE_SET_SATURATION:
                 id(menu_subpage)--;
                 break;
             }
@@ -469,12 +469,11 @@ sensor:
           int maxval = 0;
           if(id(menu_subpage) == PAGE_SET) { //if set mode, rotary should go from 0 to according setting
             switch(id(menu_functions)[id(menu_current_node)]){
-              case 3:
-              case 6:
-              case 8:
-              case 9:
+              case FUNC_SLIDER:
+              case FUNC_CLIMATE:
+              case FUNC_COLORPICKER:
                 maxval = id(menu_rotary_ticks)[id(menu_current_node)] + 1; break; // continuous
-              case 4: maxval = 2; break;  // binary
+              case FUNC_SWITCH: maxval = 2; break;  // binary
             }
           } else if (id(menu_subpage) == PAGE_SET_HUE) { // colorpicker set hue, work endlessly
             maxval = id(menu_rotary_ticks)[id(menu_current_node)];
@@ -505,7 +504,7 @@ sensor:
       then:
         - if:
             condition:
-              lambda: 'return (id(menu_subpage) == PAGE_OVERVIEW);'
+              lambda: 'return (id(menu_subpage) == PAGE_VIEW);'
             then:
               - lambda: |-
                   if (id(menu_current_node) < ${menuSize}-1)
@@ -516,7 +515,7 @@ sensor:
       then:
         - if:
             condition:
-              lambda: 'return (id(menu_subpage) == PAGE_OVERVIEW);'
+              lambda: 'return (id(menu_subpage) == PAGE_VIEW);'
             then:
               - lambda: |-
                   if (id(menu_current_node) >= 1)
@@ -821,23 +820,20 @@ display:
           }
           return;
         }
-        else if(id(menu_functions)[id(menu_current_node)] == 9) { // color_picker
+        else if(id(menu_functions)[id(menu_current_node)] == FUNC_COLORPICKER) { // color_picker
           it.color_picker(30, 30, id(color_picker), id(color_scenic_light), id(menu_subpage));
           return;
         }
 
         // Show label
-        bool s = (id(menu_subpage) == PAGE_OVERVIEW) &&
-                (id(menu_functions)[id(menu_current_node)] == 2 ||
-                id(menu_functions)[id(menu_current_node)] == 3 ||
-                id(menu_functions)[id(menu_current_node)] == 4 ||
-                id(menu_functions)[id(menu_current_node)] == 6 );
+        bool s = (id(menu_subpage) == PAGE_VIEW) &&
+                 (id(menu_functions)[id(menu_current_node)] != FUNC_OVERVIEW &&
+                  id(menu_functions)[id(menu_current_node)] != FUNC_BUTTON);
         it.printf(120, 24, id(small_font), TextAlign::TOP_CENTER, "%s%s", id(menu_labels)[id(menu_current_node)], s ? " >" : "" );
 
         if(id(menu_subpage) <= PAGE_SET) {
           switch(id(menu_functions)[id(menu_current_node)]){
-            case 3:
-            case 6: {
+            case FUNC_SLIDER: {
               // Setting progressbar, outline rectangle
               it.rectangle(8, 58, 224, 54, color_gray);
               // Inner fill
@@ -847,7 +843,7 @@ display:
               it.printf(120, 60, id(big_font), COLOR_ON, TextAlign::TOP_CENTER, "%.2f%s", id(menu_current_value), id(menu_units)[id(menu_current_node)]);
               break;
             }
-            case 4:
+            case FUNC_SWITCH:
               // Labels
               it.printf(42, 12, id(small_font), TextAlign::TOP_RIGHT, "Off");
               it.printf(86, 12, id(small_font), TextAlign::TOP_LEFT, "On");
@@ -856,7 +852,7 @@ display:
               // Inner toggle
               it.filled_rectangle(54 + id(rotary_dial).state*10, 22, 10, 8);
               break;
-            case 5: // show button
+            case FUNC_BUTTON: { // show button
               if(id(rotary_dial_push).state == 1) {
                 it.filled_rectangle(20, 100, 200, 80, color_gray);
               } else {
@@ -864,7 +860,8 @@ display:
               }
               it.printf(120, 120, id(icon_font), COLOR_ON, TextAlign::TOP_CENTER, "%s", id(menu_units)[id(menu_current_node)]);
               break;
-            case 8: // Climate control
+            }
+            case FUNC_CLIMATE: // Climate control
               it.gauge(120, 140, 80, id(menu_current_percentage), color_gray, color_green, id(menu_subpage) == PAGE_SET);
               it.printf(120, 90, id(big_font), COLOR_ON, TextAlign::TOP_CENTER, "%.1f", id(menu_current_value));
               it.printf(120, 132, id(small_font), COLOR_ON, TextAlign::TOP_CENTER, "%.1f", id(menu_target_value));
@@ -874,16 +871,13 @@ display:
         } else {
           // Show value only if Display or Setting
           switch(id(menu_functions)[id(menu_current_node)]){
-            case 1:
-            case 3:
-            case 6:
+            case FUNC_SLIDER:
               it.printf(120, 60, id(big_font), COLOR_ON, TextAlign::TOP_CENTER, "%.2f", id(menu_current_value));
               break;
-            case 4:
-            case 7:
+            case FUNC_SWITCH:
               it.printf(64, 12, id(small_font), TextAlign::TOP_LEFT, "%s", id(menu_current_value) == 0 ? "Off" : "On");
               break;
-            case 8: {
+            case FUNC_CLIMATE: {
               switch(id(menu_current_node)) {
                 case 1:
                     it.graph(6, 60, id(temperature_graph), color_gray);

@@ -14,7 +14,16 @@ static const char *TAG = "geckoconsole";
 #define COLORPICKER_S_TICKS 25
 
 typedef enum {
-    PAGE_OVERVIEW,
+    FUNC_OVERVIEW,
+    FUNC_BUTTON,
+    FUNC_SWITCH,
+    FUNC_SLIDER,
+    FUNC_CLIMATE,
+    FUNC_COLORPICKER
+} function_t;
+
+typedef enum {
+    PAGE_VIEW,
     PAGE_SET,
     PAGE_GRAPH,
     PAGE_SET_HUE,
