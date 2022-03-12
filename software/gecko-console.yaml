@@ -738,6 +738,14 @@ rtttl:
 status_led:
   pin: GPIO02
 
+interval:
+  - interval: 60s
+    then:
+      - lambda: |-
+          if (id(co2_sensor).status_has_warning()) {
+            id(color_co2) = Color(64,64,64);
+          }
+
 font:
   - file: "/usr/share/fonts/TTF/OpenSans-Regular.ttf"
     id: big_font
@@ -815,7 +823,7 @@ display:
             it.printf(220, 142, id(tiny_font), COLOR_OFF, TextAlign::TOP_RIGHT, "%+.0f", id(hygrostat_diff));
           }
           it.filled_rectangle(10, 180, 220, 54, id(color_co2));
-          if (id(co2_val).has_state()) {
+          if (id(co2_val).has_state() && !id(co2_sensor).status_has_warning()) {
             it.printf(120, 180, id(big_font), COLOR_OFF, TextAlign::TOP_CENTER, "%.0fppm", id(co2_val).state);
           }
           return;
