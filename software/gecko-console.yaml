@@ -339,6 +339,19 @@ script:
       - lambda: >-
           id(menu_no_hass_updates) = false;
 
+  - id: co2_warning_action
+    then:
+      - if:
+          condition:
+            lambda: 'return (id(api_connected).state);'
+          then:
+            - lambda: |-
+                id(gecko_display).set_update_interval(5000);
+                id(rtttlplayer).play("GoodBad:d=4,o=5,b=56:32p,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,d#,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,c#6,32a#,32d#6,32a#,32d#6,8a#.,16f#.,32f.,32d#.,c#,32a#,32d#6,32a#,32d#6,8a#.,16g#.,d#,1p,1p,1p,1p,1p,1p");
+            - delay: 15s
+            - lambda: 'id(gecko_display).set_update_interval(500);'
+            - delay: 45s
+
 time:
   - platform: homeassistant
     id: ha_time
@@ -568,11 +581,8 @@ sensor:
               call.perform();
               id(color_co2) = Color(r*255., g*255., 0.);
               if (x > 1800) {
-                id(gecko_display).set_update_interval(5000);
-                id(rtttlplayer).play("GoodBad:d=4,o=5,b=56:32p,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,d#,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,c#6,32a#,32d#6,32a#,32d#6,8a#.,16f#.,32f.,32d#.,c#,32a#,32d#6,32a#,32d#6,8a#.,16g#.,d#,1p,1p,1p,1p,1p,1p");
+                id(co2_warning_action).execute();
               }
-          - delay: 15s
-          - lambda: 'id(gecko_display).set_update_interval(500);'
     temperature:
       name: "MH-Z19 Temperature"
       id: temp_val
