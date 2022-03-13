@@ -632,7 +632,7 @@ sensor:
     internal: true
     on_value:
       then:
-        - script.execute: menu_values
+        - script.execute: thermostat_hass_update
   - platform: homeassistant
     id: hygrostat_target_humidity
     entity_id: climate.hygrostat
@@ -671,7 +671,7 @@ sensor:
     internal: true
     on_value:
       then:
-        - script.execute: menu_values
+        - script.execute: thermostat_hass_update
   - platform: homeassistant
     id: ceiling_humidity
     entity_id: sensor.ceiling_humidity
