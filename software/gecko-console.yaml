@@ -197,7 +197,6 @@ script:
             ESP_LOGV(TAG, "menu_set_rotary current_percentage=%.2f%% * ticks[%d]=%d = %d", id(menu_current_percentage)*100., id(menu_current_node), id(menu_rotary_ticks)[id(menu_current_node)], rot_val);
             id(rotary_dial).set_value(rot_val);
           }
-      - script.execute: menu_hass_updates_timeout
 
 # Actions for each menu item setting
   - id: menu_actions
@@ -309,6 +308,7 @@ script:
                 int b = round(clamp(-85.f*diff, 0.f, 255.f));
                 id(color_thermostat) = Color(r, g, b);
                 id(thermostat_diff) = diff;
+                ESP_LOGD(TAG, "thermostat_hass_update current: %.2f, target: %.2f, diff: %.2f", id(thermostat_current_temperature).state, id(thermostat_target_temperature).state, id(thermostat_diff));
 
   - id: hygrostat_hass_update
     then:
@@ -325,6 +325,7 @@ script:
                 int b = round(clamp(+36.4f*diff, 0.f, 255.f));
                 id(color_hygrostat) = Color(r, g, b);
                 id(hygrostat_diff) = diff;
+                ESP_LOGD(TAG, "hygrostat_hass_update current: %.0f, target: %.0f, diff: %.0f", id(hygrostat_current_humidity).state, id(hygrostat_target_humidity).state, id(hygrostat_diff));
 
   - id: overview_timeout
     mode: restart
@@ -432,6 +433,7 @@ binary_sensor:
                   then:
                     - lambda: 'id(menu_no_hass_updates) = true;'
                     - script.execute: menu_set_rotary
+                    - script.execute: menu_hass_updates_timeout
 
               # Display entities value for each menu item
               - script.execute: menu_values
@@ -469,6 +471,7 @@ binary_sensor:
                 break;
             }
         - script.execute: menu_set_rotary
+        - script.execute: menu_hass_updates_timeout
         - script.execute: overview_timeout
 
   - platform: template
@@ -635,7 +638,7 @@ sensor:
     internal: true
     on_value:
       then:
-        - script.execute: thermostat_hass_update
+        - script.execute: hygrostat_hass_update
   - platform: homeassistant
     id: hygrostat_target_humidity
     entity_id: climate.hygrostat
