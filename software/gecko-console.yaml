@@ -26,6 +26,9 @@ esphome:
       - binary_sensor.template.publish:
           id: api_connected
           state: ON
+      - lambda: |-
+            id(rtttlplayer).play("Turn_on:d=32,o=6,b=150:c,e,g,c7");
+
   includes:
     - custom_components/gecko_console.h
 
@@ -350,10 +353,7 @@ script:
             lambda: 'return (id(api_connected).state);'
           then:
             - lambda: |-
-                id(gecko_display).set_update_interval(5000);
                 id(rtttlplayer).play("GoodBad:d=4,o=5,b=56:32p,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,d#,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,c#6,32a#,32d#6,32a#,32d#6,8a#.,16f#.,32f.,32d#.,c#,32a#,32d#6,32a#,32d#6,8a#.,16g#.,d#,1p,1p,1p,1p,1p,1p");
-            - delay: 15s
-            - lambda: 'id(gecko_display).set_update_interval(500);'
             - delay: 45s
 
 time:
@@ -747,8 +747,12 @@ light:
 
 rtttl:
   output: buzzer
+  on_prepare_playback:
+    - logger.log: 'preparing rtttl playback!'
+    - lambda: 'id(gecko_display).set_update_interval(15000);'
   on_finished_playback:
     - logger.log: 'Song ended!'
+    - lambda: 'id(gecko_display).set_update_interval(LCD_UPDATE_INTERVAL);'
   id: rtttlplayer
 
 status_led:
