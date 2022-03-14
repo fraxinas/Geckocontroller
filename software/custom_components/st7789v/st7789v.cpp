@@ -128,13 +128,6 @@ void ST7789V::dump_config() {
   LOG_UPDATE_INTERVAL(this);
 }
 
-void ST7789V::set_update_interval(uint32_t update_interval) {
-   this->update_interval_ = update_interval;
-   ESP_LOGD(TAG,"update set_update_interval %d", this->update_interval_);
-   this->cancel_interval("update");
-   this->set_interval("update", this->get_update_interval(), [this]() { this->update(); });
-}
-
 float ST7789V::get_setup_priority() const { return setup_priority::PROCESSOR; }
 
 void ST7789V::update() {

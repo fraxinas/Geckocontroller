@@ -123,7 +123,6 @@ class ST7789V : public PollingComponent,
   void setup() override;
   void dump_config() override;
   float get_setup_priority() const override;
-  void set_update_interval(uint32_t update_interval) override;
   void update() override;
   void loop() override;
 
