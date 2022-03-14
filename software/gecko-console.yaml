@@ -13,14 +13,16 @@ esphome:
       - sensor.rotary_encoder.set_value:
           id: rotary_dial
           value: 0
+      - light.turn_on:
+          id: rgb_leds
+          red: 28%
+          green: 28%
+          blue: 28%
       - binary_sensor.template.publish:
           id: api_connected
           state: OFF
       - wait_until:
           api.connected
-      - sensor.rotary_encoder.set_value:
-          id: rotary_dial
-          value: 0
       - binary_sensor.template.publish:
           id: api_connected
           state: ON
@@ -332,6 +334,7 @@ script:
           id(menu_current_node) = 0;
           id(menu_subpage) = PAGE_VIEW;
           id(rotary_dial).set_value(0);
+
   - id: menu_hass_updates_timeout
     mode: restart
     then:
@@ -734,7 +737,7 @@ light:
     name: "RGB LEDs"
     default_transition_length: 0s
     color_correct: [50%, 50%, 50%]
-    restore_mode: ALWAYS_ON
+    restore_mode: RESTORE_DEFAULT_ON
   # - platform: monochromatic
   #   output: buzzer
   #   name: "Buzzer"
