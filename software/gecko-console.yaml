@@ -794,7 +794,7 @@ display:
     backlight_pin: GPIO32
     cs_pin: GPIO02
     dimensions: 240x240
-    update_interval: 0.5s
+    update_interval: 500ms
     rotation: 0
     lambda: |-
       if (!id(api_connected).state){
