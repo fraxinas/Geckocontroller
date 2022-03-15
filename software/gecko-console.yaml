@@ -749,10 +749,10 @@ rtttl:
   output: buzzer
   on_prepare_playback:
     - logger.log: 'preparing rtttl playback!'
-    - lambda: 'id(gecko_display).set_update_interval(15000);'
+    - lambda: 'id(gecko_display).reschedule_update(15000);'
   on_finished_playback:
     - logger.log: 'Song ended!'
-    - lambda: 'id(gecko_display).set_update_interval(LCD_UPDATE_INTERVAL);'
+    - lambda: 'id(gecko_display).reschedule_update(LCD_UPDATE_INTERVAL);'
   id: rtttlplayer
 
 status_led:

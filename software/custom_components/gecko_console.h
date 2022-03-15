@@ -6,6 +6,7 @@
 #include "esphome/core/color.h"
 static const char *TAG = "geckoconsole";
 
+#define LCD_UPDATE_INTERVAL 500
 #define COLORPICKER_H_MAX   360.
 #define COLORPICKER_V_MAX   255.
 #define COLORPICKER_S_MAX   100.
