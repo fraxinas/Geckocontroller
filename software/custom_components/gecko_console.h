@@ -58,7 +58,7 @@ void HassHSColorTextToEsphomeColor(std::string text, Color *color)
     hsv_to_rgb(h, s, v, r, g, b);
 
     *color = Color(uint8_t (round(r)), uint8_t (round(g)), uint8_t (round(b)));
-    ESP_LOGD(TAG, "HassHSColorTextToEsphomeColor h='%s' s='%s' rgb=[%3d,%3d,%3d] hsv=(%3d,%.2f,%3.0f)", h_str.c_str(), s_str.c_str(), color->r, color->g, color->b, h, s, v);
+    ESP_LOGD(TAG, "HassHSColorTextToEsphomeColor h='%s' s='%s' rgb=[%3d,%3d,%3d] hsv=(%3d, %.2f, %3.0f)", h_str.c_str(), s_str.c_str(), color->r, color->g, color->b, h, s, v);
 }
 
 void UpdateBrightnessToEsphomeColor(double brightness, Color *color)
@@ -67,7 +67,7 @@ void UpdateBrightnessToEsphomeColor(double brightness, Color *color)
     float s, v, r, g, b;
     rgb_to_hsv(color->r, color->g, color->b, h, s, v);
 
-    ESP_LOGD(TAG, "UpdateBrightnessToEsphomeColor b=%3.2f prev rgb=[%3d,%3d,%3d] hsv=(%3d,%.2f,%3.0f)", brightness, color->r, color->g, color->b, h, s, v);
+    ESP_LOGD(TAG, "UpdateBrightnessToEsphomeColor b=%3.2f prev rgb=[%3d,%3d,%3d] hsv=(%3d, %.2f, %3.0f)", brightness, color->r, color->g, color->b, h, s, v);
     hsv_to_rgb(h, s, brightness, r, g, b);
     *color = Color(uint8_t (round(r)), uint8_t (round(g)), uint8_t (round(b)));
     ESP_LOGD(TAG, "UpdateBrightnessToEsphomeColor new rgb=[%3d,%3d,%3d] hsv=(%3d,%.2f,%3.0f)", color->r, color->g, color->b, h, s, brightness);
@@ -79,13 +79,17 @@ std::string HSColorFromRotary(float rotary_state, unsigned char subpage, Color *
     float s, v, r, g, b;
     rgb_to_hsv(color->r, color->g, color->b, h, s, v);
 
-    ESP_LOGD(TAG, "HSColorFromRotary prev rgb=[%3d,%3d,%3d] hsv=(%3d,%.2f,%3.0f),rot=%.2f,subpage=%d", color->r, color->g, color->b, h, s, v, rotary_state, subpage);
+    ESP_LOGD(TAG, "HSColorFromRotary prev rgb=[%3d,%3d,%3d] hsv=(%3d, %.2f, %3.0f),rot=%.2f,subpage=%d", color->r, color->g, color->b, h, s, v, rotary_state, subpage);
 
-    if (subpage == 3) {
+    if (subpage == PAGE_SET_HUE) {
         h = round(rotary_state * COLORPICKER_H_MAX / COLORPICKER_H_TICKS);
-    } else if (subpage == 4) {
+        id(previous_hue) = h;
+    } else if (subpage == PAGE_SET_SATURATION) {
+        if (s == 0 && id(previous_hue) != 0)
+            h = id(previous_hue);
         s = rotary_state / COLORPICKER_S_TICKS;
     }
+
     hsv_to_rgb(h, s, v, r, g, b);
     *color = Color(uint8_t (round(r)), uint8_t (round(g)), uint8_t (round(b)));
 
@@ -94,6 +98,6 @@ std::string HSColorFromRotary(float rotary_state, unsigned char subpage, Color *
     oss << std::fixed << "(" << h << ", " << s*COLORPICKER_S_MAX << ")";
     std::string out = oss.str();
 
-    ESP_LOGD(TAG, "HSColorFromRotary new  rgb=[%3d,%3d,%3d] hsv=(%3d,%.2f,%3.0f) -> '%s'", color->r, color->g, color->b, h, s, v, out.c_str());
+    ESP_LOGD(TAG, "HSColorFromRotary new  rgb=[%3d,%3d,%3d] hsv=(%3d, %.2f, %3.0f) -> '%s' (previous_hue=%3d)", color->r, color->g, color->b, h, s, v, out.c_str(), id(previous_hue));
     return out;
 }

@@ -131,6 +131,10 @@ globals:
    - id: hygrostat_diff
      type: float
 
+   - id: previous_hue
+     type: int
+     initial_value: '0'
+
 script:
 # What value to display for each menu item
   - id: menu_maxvals
