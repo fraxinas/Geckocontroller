@@ -316,6 +316,7 @@ script:
                 id(color_thermostat) = Color(r, g, b);
                 id(thermostat_diff) = diff;
                 ESP_LOGD(TAG, "thermostat_hass_update current: %.2f, target: %.2f, diff: %.2f", id(thermostat_current_temperature).state, id(thermostat_target_temperature).state, id(thermostat_diff));
+            - component.update: gecko_display
 
   - id: hygrostat_hass_update
     then:
@@ -333,6 +334,7 @@ script:
                 id(color_hygrostat) = Color(r, g, b);
                 id(hygrostat_diff) = diff;
                 ESP_LOGD(TAG, "hygrostat_hass_update current: %.0f, target: %.0f, diff: %.0f", id(hygrostat_current_humidity).state, id(hygrostat_target_humidity).state, id(hygrostat_diff));
+            - component.update: gecko_display
 
   - id: overview_timeout
     mode: restart
@@ -342,6 +344,7 @@ script:
           id(menu_current_node) = 0;
           id(menu_subpage) = PAGE_VIEW;
           id(rotary_dial).set_value(0);
+      - component.update: gecko_display
 
   - id: menu_hass_updates_timeout
     mode: restart
@@ -442,6 +445,7 @@ binary_sensor:
               # Display entities value for each menu item
               - script.execute: menu_values
               - script.execute: overview_timeout
+              - component.update: gecko_display
 
   - platform: gpio
     id: button_2
@@ -477,6 +481,7 @@ binary_sensor:
         - script.execute: menu_set_rotary
         - script.execute: menu_hass_updates_timeout
         - script.execute: overview_timeout
+        - component.update: gecko_display
 
   - platform: template
     id: api_connected
@@ -561,6 +566,7 @@ sensor:
                 # Update value
               - script.execute: menu_values
               - script.execute: overview_timeout
+              - component.update: gecko_display
 
   - platform: wifi_signal
     id: wifisignal
@@ -593,6 +599,7 @@ sensor:
               if (x > 1800) {
                 id(co2_warning_action).execute();
               }
+          - component.update: gecko_display
     temperature:
       name: "MH-Z19 Temperature"
       id: temp_val
@@ -753,22 +760,29 @@ rtttl:
   output: buzzer
   on_prepare_playback:
     - logger.log: 'preparing rtttl playback!'
-    - lambda: 'id(gecko_display).reschedule_update(15000);'
   on_finished_playback:
     - logger.log: 'Song ended!'
-    - lambda: 'id(gecko_display).reschedule_update(LCD_UPDATE_INTERVAL);'
   id: rtttlplayer
 
 status_led:
   pin: GPIO02
 
 interval:
+  - interval: 0.2s
+    then:
+      - if:
+          condition:
+            lambda: 'return (!id(api_connected).state);'
+          then:
+            - lambda: 'id(wi) = ++id(wi) > 16 ? 0 : id(wi); // connect indicator logic'
+            - component.update: gecko_display
   - interval: 60s
     then:
       - lambda: |-
           if (id(co2_sensor).status_has_warning()) {
             id(color_co2) = Color(64,64,64);
           }
+      - component.update: gecko_display
 
 font:
   - file: "/usr/share/fonts/TTF/OpenSans-Regular.ttf"
@@ -802,7 +816,7 @@ display:
     backlight_pin: GPIO32
     cs_pin: GPIO02
     dimensions: 240x240
-    update_interval: 0.5s
+    update_interval: never
     rotation: 0
     lambda: |-
       if (!id(api_connected).state){
@@ -811,7 +825,6 @@ display:
         it.printf(0, 6, id(tiny_font), COLOR_ON, TextAlign::CENTER_LEFT, "Connecting to HASS");
         it.image(22, 26, id(gecko_logo));
         // Little animation before API is online
-        id(wi) = ++id(wi) > 16 ? 0 : id(wi);
         it.filled_rectangle(200, 4, 2*id(wi), 9);
         it.printf(120, 240, id(small_font), COLOR_ON, TextAlign::BASELINE_CENTER, "Geckocontrol V1.0");
       } else {
