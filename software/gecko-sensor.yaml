@@ -1,0 +1,48 @@
+esphome:
+  name: geckoconsole
+  platform: ESP32
+  board: nodemcu-32s
+  # includes:
+    # - custom_components/vcnl4040/vcnl4040.h
+  libraries:
+   - "Wire"
+   - "SPI"
+   - "Adafruit BusIO@^1.11.1"
+   - "Adafruit VCNL4040@^1.0.1"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Geckocontrol Fallback Hotspot"
+    password: !secret fallback_password
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API
+api:
+
+ota:
+
+sensor:
+  - platform: vcnl4040
+    illuminance:
+      name: "Illuminance"
+      id: vcnl4040_lux
+
+i2c:
+  sda: 25
+  scl: 26
+  scan: True
+  id: bus_a
+
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO23
+
+status_led:
+  pin: GPIO02
