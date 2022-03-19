@@ -18,14 +18,16 @@ void VCNL4040Component::setup() {
 
 void VCNL4040Component::update() {
     uint16_t lux = this->vcnl4040_.getLux();
-
-    ESP_LOGD(TAG, "Update illuminance=%u lux", lux);
+    ESP_LOGV(TAG, "Update illuminance=%u lux", lux);
 
     if (this->lux_sensor_ != nullptr)
       this->lux_sensor_->publish_state(lux);
 
-    // int prox = this->vcnl4040_.getProximity();
-    // prox_sensor->publish_state(prox);
+    uint16_t prox = this->vcnl4040_.getProximity();
+    ESP_LOGV(TAG, "Update proximity=%u", prox);
+
+    if (this->proximity_sensor_ != nullptr)
+        this->proximity_sensor_->publish_state(prox);
 
     // int lux = this->vcnl4040_.getLux();
     // lux_sensor->publish_state(lux);

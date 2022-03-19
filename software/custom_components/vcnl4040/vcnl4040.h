@@ -14,6 +14,7 @@ using namespace esphome;
 class VCNL4040Component : public PollingComponent, public i2c::I2CDevice {
   public:
     void set_lux_sensor(sensor::Sensor *lux_sensor) { lux_sensor_ = lux_sensor; }
+    void set_proximity_sensor(sensor::Sensor *proximity_sensor) { proximity_sensor_ = proximity_sensor; }
 
     float get_setup_priority() const override;
     void setup() override;
@@ -22,6 +23,7 @@ class VCNL4040Component : public PollingComponent, public i2c::I2CDevice {
 
   protected:
     sensor::Sensor *lux_sensor_;
+    sensor::Sensor *proximity_sensor_;
     Adafruit_VCNL4040 vcnl4040_;
 
 };

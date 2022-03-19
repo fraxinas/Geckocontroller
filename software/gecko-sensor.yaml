@@ -33,6 +33,9 @@ sensor:
     illuminance:
       name: "Illuminance"
       id: vcnl4040_lux
+    proximity:
+      name: "Proximity"
+      id: vcnl4040_prox
 
 i2c:
   sda: 25

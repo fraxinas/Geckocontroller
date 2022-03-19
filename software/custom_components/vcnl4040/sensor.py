@@ -9,6 +9,8 @@ from esphome.const import (
     UNIT_LUX,
 )
 
+CONF_PROXIMITY = "proximity"
+
 DEPENDENCIES = ["i2c"]
 
 vcnl4040_ns = cg.esphome_ns.namespace("vcnl4040")
@@ -26,7 +28,12 @@ CONFIG_SCHEMA = (
                 accuracy_decimals=0,
                 device_class=DEVICE_CLASS_ILLUMINANCE,
                 state_class=STATE_CLASS_MEASUREMENT,
+            ),
+            cv.Optional(CONF_PROXIMITY): sensor.sensor_schema(
+                accuracy_decimals=0,
+                state_class=STATE_CLASS_MEASUREMENT,
             )
+
         }
     )
     .extend(cv.polling_component_schema("5s"))
@@ -42,3 +49,8 @@ async def to_code(config):
         conf = config[CONF_ILLUMINANCE]
         sens = await sensor.new_sensor(conf)
         cg.add(var.set_lux_sensor(sens))
+
+    if CONF_PROXIMITY in config:
+        conf = config[CONF_PROXIMITY]
+        sens = await sensor.new_sensor(conf)
+        cg.add(var.set_proximity_sensor(sens))
