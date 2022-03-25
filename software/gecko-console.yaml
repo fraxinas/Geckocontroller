@@ -372,7 +372,7 @@ spi:
   mosi_pin: GPIO23
 
 uart:
-  rx_pin: GPIO15
+  rx_pin: GPIO33
   tx_pin: GPIO13
   baud_rate: 9600
 
@@ -387,7 +387,7 @@ binary_sensor:
     id: rotary_dial_push
     name: "Rotary Button"
     pin:
-      number: GPIO16
+      number: GPIO34
       inverted: true
     internal: true
     on_press:
@@ -450,7 +450,7 @@ binary_sensor:
   - platform: gpio
     id: button_2
     pin:
-      number: GPIO34
+      number: GPIO05
       inverted: true
     internal: true
     on_press:
@@ -490,8 +490,8 @@ sensor:
   - platform: rotary_encoder
     id: rotary_dial
     name: "Rotary Encoder"
-    pin_a: GPIO17
-    pin_b: GPIO05
+    pin_a: GPIO27
+    pin_b: GPIO14
     filters:
       - lambda: |-
           int maxval = 0;
@@ -738,13 +738,13 @@ text_sensor:
 
 output:
   - platform: ledc
-    pin: GPIO04
+    pin: GPIO16
     id: buzzer
 
 light:
   - platform: fastled_clockless
     chipset: WS2812B
-    pin: GPIO33
+    pin: GPIO04
     num_leds: 6
     rgb_order: GRB
     id: rgb_leds
@@ -814,7 +814,6 @@ display:
     dc_pin: GPIO22
     reset_pin: GPIO21
     backlight_pin: GPIO32
-    cs_pin: GPIO02
     dimensions: 240x240
     update_interval: never
     rotation: 0
