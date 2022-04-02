@@ -30,6 +30,7 @@ esphome:
             id(rtttlplayer).play("Turn_on:d=32,o=6,b=150:c,e,g,c7");
 
   includes:
+    - custom_components/gecko_common.h
     - custom_components/gecko_console.h
 
 wifi:
