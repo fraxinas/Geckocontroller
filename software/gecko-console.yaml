@@ -526,7 +526,7 @@ sensor:
             return 0;
           }
           return x;
-    resolution: 1
+    resolution: 2
     min_value: -48
     internal: true
     on_clockwise:
