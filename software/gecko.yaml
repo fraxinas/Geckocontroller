@@ -490,7 +490,7 @@ sun:
   longitude: 9.15
 
   on_sunrise:
-    - elevation: 20°
+    - elevation: 5°
       then:
         - lambda: |-
               auto call = id(scenic_light).turn_on();
@@ -505,7 +505,7 @@ sun:
     - elevation: 44°
       then:
         - lambda: |-
-              auto call = id(day_light).make_call();
+              auto call = id(day_light).make_call();  
               call.set_effect("Sunset Daylight");
               call.perform();
     - elevation: 5°
