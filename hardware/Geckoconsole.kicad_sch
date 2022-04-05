@@ -6118,10 +6118,10 @@
     (property "Reference" "BZ1" (id 0) (at 188.8998 55.8546 90)
       (effects (font (size 1.27 1.27)) (justify right))
     )
-    (property "Value" "Buzzer" (id 1) (at 188.8998 58.166 90)
+    (property "Value" "" (id 1) (at 188.8998 58.166 90)
       (effects (font (size 1.27 1.27)) (justify right))
     )
-    (property "Footprint" "Buzzer_Beeper:Buzzer_Murata_PKMCS0909E4000-R1" (id 2) (at 181.61 57.785 90)
+    (property "Footprint" "" (id 2) (at 181.61 57.785 90)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "~" (id 3) (at 181.61 57.785 90)
@@ -7564,7 +7564,7 @@
       (reference "#U70") (unit 1) (value "VCNL4040M3OE") (footprint "VISHAY_VCNL4040_4X2X1.1")
     )
     (path "/00000000-0000-0000-0000-0000610658bc"
-      (reference "BZ1") (unit 1) (value "Buzzer") (footprint "Buzzer_Beeper:Buzzer_Murata_PKMCS0909E4000-R1")
+      (reference "BZ1") (unit 1) (value "Buzzer") (footprint "Fraxinas:Buzzer_FUET_9650B")
     )
     (path "/00000000-0000-0000-0000-0000626bef05"
       (reference "C1") (unit 1) (value "10µF") (footprint "Capacitor_SMD:C_0805_2012Metric_Pad1.18x1.45mm_HandSolder")
