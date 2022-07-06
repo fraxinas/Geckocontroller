@@ -56,10 +56,12 @@
         }
       ],
       "drc_exclusions": [
-        "courtyards_overlap|82340001|35920001|00000000-0000-0000-0000-000060953690|00000000-0000-0000-0000-00006095394f",
-        "courtyards_overlap|82340001|35920001|00000000-0000-0000-0000-00006095394f|00000000-0000-0000-0000-000060953690",
-        "silk_over_copper|50546000|50030000|6316acb7-63a1-40e7-8695-2822d4a240b5|7273dd21-e834-41d3-b279-d7de727709ca",
-        "silk_over_copper|50546000|59190000|6316acb7-63a1-40e7-8695-2822d4a240b5|a3fab380-991d-404b-95d5-1c209b047b6e"
+        "courtyards_overlap|104438001|95356001|00000000-0000-0000-0000-000060953662|00000000-0000-0000-0000-00006095394f",
+        "courtyards_overlap|78587001|95356001|00000000-0000-0000-0000-0000609536d5|00000000-0000-0000-0000-00006095394f",
+        "items_not_allowed|105588000|101256000|65416058-40cc-416e-a605-898db648b864|00000000-0000-0000-0000-000000000000",
+        "items_not_allowed|105588000|96356000|3f637e6d-bb45-4cd0-944f-98ca302cb3d9|00000000-0000-0000-0000-000000000000",
+        "silk_overlap|90648476|100855952|6d1f5a93-cafc-463b-9d0e-08b0b550a059|81d03114-460e-43ea-aa72-de32cf1352c6",
+        "silk_overlap|92299476|100855952|6d1f5a93-cafc-463b-9d0e-08b0b550a059|81d03114-460e-43ea-aa72-de32cf1352c6"
       ],
       "meta": {
         "filename": "board_design_settings.json",
@@ -91,7 +93,7 @@
         "padstack": "error",
         "pth_inside_courtyard": "ignore",
         "shorting_items": "error",
-        "silk_over_copper": "warning",
+        "silk_over_copper": "ignore",
         "silk_overlap": "warning",
         "skew_out_of_range": "error",
         "through_hole_pad_without_hole": "error",
@@ -440,7 +442,7 @@
       "workbook_filename": ""
     },
     "page_layout_descr_file": "",
-    "plot_directory": "",
+    "plot_directory": "./",
     "spice_adjust_passive_values": false,
     "spice_external_command": "spice \"%I\"",
     "subpart_first_id": 65,
