@@ -743,11 +743,13 @@ output:
     id: buzzer
 
 light:
-  - platform: fastled_clockless
-    chipset: WS2812B
+  - platform: neopixelbus
+    method:
+      type: esp32_i2s
+    variant: WS2812
     pin: GPIO04
     num_leds: 6
-    rgb_order: GRB
+    type: GRB
     id: rgb_leds
     name: "RGB LEDs"
     default_transition_length: 0s
