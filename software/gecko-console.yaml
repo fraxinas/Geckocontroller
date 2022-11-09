@@ -66,75 +66,76 @@ substitutions:
 
 globals:
 # Wait indicator
-   - id: wi
-     type: unsigned char
-     initial_value: '0'
+  - id: wi
+    type: unsigned char
+    initial_value: '0'
 
 # Blank screen
-   - id: s_blank
-     type: bool
-     initial_value: 'false'
+  - id: s_blank
+    type: bool
+    initial_value: 'false'
 
 # Menu helpers
-   - id: menu_current_node
-     type: unsigned char
-     initial_value: '0'
+  - id: menu_current_node
+    type: unsigned char
+    initial_value: '0'
 
-   - id: menu_current_label
-     type: char *
+  - id: menu_current_label
+    type: char *
 
-   - id: menu_current_value
-     type: float
+  - id: menu_current_value
+    type: float
 
-   - id: menu_current_percentage
-     type: float
+  - id: menu_current_percentage
+    type: float
 
-   - id: menu_target_value
-     type: float
+  - id: menu_target_value
+    type: float
 
-   - id: menu_weather_value
-     type: float
+  - id: menu_weather_value
+    type: float
 
-   - id: menu_no_hass_updates
-     type: bool
-     initial_value: 'false'
+  - id: menu_no_hass_updates
+    type: bool
+    initial_value: 'false'
 
-     # subpage_t
-   - id: menu_subpage
-     type: unsigned char
-     initial_value: '0'
+    # subpage_t
+  - id: menu_subpage
+    type: unsigned char
+    initial_value: '0'
 
-   - id: menu_labels
-     type: char * [${menuSize}]
-     initial_value: '{"Overview","Thermostat","Hygrostat","CO2 LEDs","Scenic Light","Fogger","Rain"}'
+  - id: menu_labels
+    type: char * [${menuSize}]
+    initial_value: '{"Overview","Thermostat","Hygrostat","CO2 LEDs","Scenic Light","Fogger","Rain"}'
 
-   - id: menu_units
-     type: char * [${menuSize}]
-     initial_value: '{"","°C","%","","HSV","\U0000F67E","\U0000F683"}'
+  - id: menu_units
+    type: char * [${menuSize}]
+    initial_value: '{"","°C","%","","HSV","\U0000F67E","\U0000F683"}'
 
-    # function_t
-   - id: menu_functions
-     type: unsigned char[${menuSize}]
-     initial_value: '{0,FUNC_CLIMATE,FUNC_CLIMATE,FUNC_SLIDER,FUNC_COLORPICKER,FUNC_BUTTON,FUNC_BUTTON}'
+  # function_t
+  - id: menu_functions
+    type: unsigned char[${menuSize}]
+    initial_value: '{0,FUNC_CLIMATE,FUNC_CLIMATE,FUNC_SLIDER,FUNC_COLORPICKER,FUNC_BUTTON,FUNC_BUTTON}'
 
-     # The range maximum value
-   - id: menu_rotary_ticks
-     type: int [${menuSize}]
-     initial_value: '{4,0,50,50,COLORPICKER_V_TICKS,1,1}'
+    # The range maximum value
+  - id: menu_rotary_ticks
+    type: int [${menuSize}]
+    initial_value: '{4,0,50,50,COLORPICKER_V_TICKS,1,1}'
 
-   - id: menu_increment
-     type: float [${menuSize}]
-     initial_value: '{0,0.5,2.,2.,5.12,0,0}'
+  - id: menu_increment
+    type: float [${menuSize}]
+    initial_value: '{0,0.5,2.,2.,5.12,0,0}'
 
-   - id: thermostat_diff
-     type: float
+  - id: thermostat_diff
+    type: float
 
-   - id: hygrostat_diff
-     type: float
+  - id: hygrostat_diff
+    type: float
 
-   - id: previous_hue
-     type: int
-     initial_value: '0'
+  - id: previous_hue
+    type: int
+    initial_value: '0'
+
 
 script:
 # What value to display for each menu item
