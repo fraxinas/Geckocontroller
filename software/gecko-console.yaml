@@ -136,6 +136,32 @@ globals:
     type: int
     initial_value: '0'
 
+  - id: send_code
+    type: std::string
+    initial_value: ''
+  - id: last_fan_direction
+    type: bool
+    initial_value: 'false'
+  - id: codemap
+    type: std::map<std::string, std::string>
+    initial_value: '{
+      {"stop",    "000001111101"},
+      {"reverse", "000001111011"},
+      {"light",   "000001111110"},
+      {"button_released", "000001111111"}
+      }'
+  - id: speed_codes
+    type: std::array<std::string, 7>
+    initial_value: '{
+      "000001111101", /* stop     */
+      "000001110101", /* speed 1  */
+      "000001110101", /* speed 2  */
+      "000001101111", /* speed 3  */
+      "000001100111", /* speed 4  */
+      "000001011101", /* speed 5  */
+      "000001011111"  /* speed 6  */
+      }'
+
 
 script:
 # What value to display for each menu item
@@ -364,6 +390,20 @@ script:
             - lambda: |-
                 id(rtttlplayer).play("GoodBad:d=4,o=5,b=56:32p,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,d#,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,c#6,32a#,32d#6,32a#,32d#6,8a#.,16f#.,32f.,32d#.,c#,32a#,32d#6,32a#,32d#6,8a#.,16g#.,d#,1p,1p,1p,1p,1p,1p");
             - delay: 45s
+
+  - id: send_came_12bit
+    then:
+      - remote_transmitter.transmit_rc_switch_raw:
+          protocol:
+            pulse_length: 340
+            sync: [36, 1]
+            zero: [1, 2]
+            one: [2, 1]
+            inverted: true
+          code: !lambda 'return id(send_code);'
+          repeat:
+            times: 4
+            wait_time: 0s
 
 time:
   - platform: homeassistant
@@ -743,6 +783,30 @@ output:
     pin: GPIO16
     id: buzzer
 
+  - platform: template
+    id: fan_speed_out
+    type: float
+    write_action:
+      - lambda: |-
+          if (state >= 0.0 && state <= 1.0) {
+            int index = state * 6.5; // add half a step to avoid off-by-one
+            ESP_LOGD("fan_debug", "Setting speed: value: %5.3f, index: %d", state, index);
+            id(send_code) = id(speed_codes)[index].c_str();
+          }
+      - script.execute: send_came_12bit
+  - platform: template
+    id: fan_dir_out
+    type: binary
+    write_action:
+      - delay: 500ms
+      - lambda: |-
+          if (state != id(last_fan_direction)) {
+            id(last_fan_direction) = state;
+            ESP_LOGD("fan_debug", "Reversing");
+            id(send_code) = id(codemap)["reverse"].c_str();
+            id(send_came_12bit).execute();
+          }
+
 light:
   - platform: neopixelbus
     method:
@@ -1010,3 +1074,15 @@ graph:
         line_type: SOLID
         line_thickness: 1
         color: color_green
+
+remote_transmitter:
+  pin: GPIO17
+  carrier_duty_percent: 100%
+
+fan:
+  - platform: speed
+    id: ceiling_fan
+    name: "Deckenventilator"
+    speed_count: 6
+    output: fan_speed_out
+    direction_output: fan_dir_out
