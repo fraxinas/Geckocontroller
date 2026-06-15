@@ -258,8 +258,8 @@ sensor:
   - platform: dallas_temp
     one_wire_id: bus_dallas
     address: !secret DsAddressHeatBed
-    name: "Temperature Vicinity"
-    id: temperature_vicinity
+    name: "Heat Bed Temperature"
+    id: temperature_heatbed
     update_interval: 5min
 
   - platform: dallas_temp
@@ -268,6 +268,17 @@ sensor:
     name: "Temperature Substrate"
     id: temperature_substrate
     update_interval: 5min
+
+  # Vicinity = the room temperature where the terrarium stands, provided by Home Assistant.
+  # In HA, create a Template/helper sensor with this entity_id that mirrors whichever room
+  # temperature sensor you choose; change the source there anytime without reflashing.
+  # No reading exists until HA provides one (the fan's vicinity logic stays idle until then).
+  - platform: homeassistant
+    id: temperature_vicinity
+    name: "Vicinity Temperature"
+    entity_id: sensor.terrarium_vicinity_temperature
+    unit_of_measurement: "°C"
+    device_class: temperature
 
   - platform: bme280_i2c
     temperature:
