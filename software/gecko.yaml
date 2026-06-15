@@ -284,9 +284,9 @@ sensor:
     humidity:
       name: "Ceiling Humidity"
       id: humidity_ceiling
-      filters:
-        - filter_out: 100
-        - filter_out: 0
+      # filters:
+      #   - filter_out: 100
+      #   - filter_out: 0
     address: 0x76
     update_interval: 15s
 
@@ -427,7 +427,15 @@ sensor:
     state_class: "measurement"
     accuracy_decimals: 1
     lambda: |-
-      return (id(humidity_ceiling).state + id(humidity_ground).state) / 2.0;
+      bool have_ceiling = id(humidity_ceiling).has_state() && !std::isnan(id(humidity_ceiling).state);
+      bool have_ground = id(humidity_ground).has_state() && !std::isnan(id(humidity_ground).state);
+      if (have_ceiling && have_ground)
+        return (id(humidity_ceiling).state + id(humidity_ground).state) / 2.0;
+      if (have_ground)  // ceiling humidity missing (e.g. filtered out) -> ground only
+        return id(humidity_ground).state;
+      if (have_ceiling)
+        return id(humidity_ceiling).state;
+      return {};
 
 time:
   - platform: homeassistant
@@ -513,6 +521,7 @@ climate:
   - platform: pid
     id: hygrostat
     name: "Hygrostat"
+    internal: true   # hidden from HA; humidity is exposed as the "Target Humidity" number (%)
     sensor: humidity_combined
     default_target_temperature: 70 °C
     heat_output: rain_pump_float   # humidification is now the rain pump (was fogger)
@@ -525,6 +534,27 @@ climate:
       kp: 0.22
       ki: 0.005
       kd: 6.38
+
+# The hygrostat (a PID climate) is hidden because HA renders a climate setpoint in °C.
+# Expose its humidity setpoint as a proper percentage instead. Current humidity is the
+# "Combined humidity" sensor (%).
+number:
+  - platform: template
+    name: "Target Humidity"
+    id: target_humidity_number
+    icon: mdi:water-percent
+    device_class: humidity
+    unit_of_measurement: "%"
+    mode: slider
+    min_value: 30
+    max_value: 100
+    step: 2
+    lambda: |-
+      return id(hygrostat).target_temperature;
+    set_action:
+      - climate.control:
+          id: hygrostat
+          target_temperature: !lambda 'return x;'
 
 # PID auto-calibration: owns 4 tuned parameter sets (heat/cool/humidify/dehumidify),
 # persists them, and swaps the active set per climate action. See PID_CALIBRATION.md.
