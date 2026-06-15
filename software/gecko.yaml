@@ -283,14 +283,14 @@ sensor:
     id: temperature_substrate
     update_interval: 5min
 
-  # Vicinity = the room temperature where the terrarium stands, provided by Home Assistant.
-  # In HA, create a Template/helper sensor with this entity_id that mirrors whichever room
-  # temperature sensor you choose; change the source there anytime without reflashing.
+  # Vicinity = the room temperature where the terrarium stands, taken from the current
+  # temperature (Ist-Temperatur) of the climate.arbeit entity in Home Assistant.
   # No reading exists until HA provides one (the fan's vicinity logic stays idle until then).
   - platform: homeassistant
     id: temperature_vicinity
     name: "Vicinity Temperature"
-    entity_id: sensor.terrarium_vicinity_temperature
+    entity_id: climate.arbeit
+    attribute: current_temperature
     unit_of_measurement: "°C"
     device_class: temperature
 
