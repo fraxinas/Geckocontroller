@@ -26,6 +26,7 @@ CONF_THERMOSTAT = "thermostat"
 CONF_TWILIGHT_ATTENUATION = "twilight_attenuation"
 CONF_SKYCOND_ATTENUATION = "skycond_attenuation"
 CONF_IS_DAYTIME = "is_daytime"
+CONF_CALIBRATION_TARGET = "calibration_target"
 CONF_SUN_EFFECT_DELAY = "sun_effect_delay"
 CONF_SUN_RISE_MAX = "sun_rise_max"
 
@@ -58,6 +59,7 @@ CONFIG_SCHEMA = cv.Schema(
         # runtime type is RestoringGlobalsComponent (restore_value: yes); the C++ setter
         # takes the concrete RestoringGlobalsComponent<bool>* that get_variable yields.
         cv.Required(CONF_IS_DAYTIME): cv.use_id(globals.GlobalsComponent),
+        cv.Optional(CONF_CALIBRATION_TARGET): cv.use_id(globals.GlobalsComponent),
         cv.Optional(CONF_SUN_EFFECT_DELAY, default=180): cv.uint16_t,
         cv.Optional(CONF_SUN_RISE_MAX, default=0.75): cv.positive_float,
     }
@@ -90,5 +92,7 @@ async def to_code(config):
     cg.add(var.set_twilight_attenuation(await cg.get_variable(config[CONF_TWILIGHT_ATTENUATION])))
     cg.add(var.set_skycond_attenuation(await cg.get_variable(config[CONF_SKYCOND_ATTENUATION])))
     cg.add(var.set_is_daytime(await cg.get_variable(config[CONF_IS_DAYTIME])))
+    if CONF_CALIBRATION_TARGET in config:
+        cg.add(var.set_calibration_target(await cg.get_variable(config[CONF_CALIBRATION_TARGET])))
     cg.add(var.set_sun_effect_delay(config[CONF_SUN_EFFECT_DELAY]))
     cg.add(var.set_sun_rise_max(config[CONF_SUN_RISE_MAX]))

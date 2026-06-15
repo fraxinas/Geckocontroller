@@ -121,6 +121,7 @@ class GeckoLights : public Component, public output::FloatOutput {
   void set_twilight_attenuation(globals::GlobalsComponent<float> *g) { this->twilight_attenuation_ = g; }
   void set_skycond_attenuation(globals::GlobalsComponent<float> *g) { this->skycond_attenuation_ = g; }
   void set_is_daytime(globals::RestoringGlobalsComponent<bool> *g) { this->is_daytime_ = g; }
+  void set_calibration_target(globals::GlobalsComponent<int> *g) { this->calib_target_ = g; }
   void set_sun_effect_delay(uint16_t delay) { this->sun_effect_delay_ = delay; }
   void set_sun_rise_max(float v) { this->sun_rise_max_ = v; }
 
@@ -138,6 +139,7 @@ class GeckoLights : public Component, public output::FloatOutput {
   globals::GlobalsComponent<float> *twilight_attenuation_{nullptr};
   globals::GlobalsComponent<float> *skycond_attenuation_{nullptr};
   globals::RestoringGlobalsComponent<bool> *is_daytime_{nullptr};
+  globals::GlobalsComponent<int> *calib_target_{nullptr};  // 1 == heating calibration
   uint16_t sun_effect_delay_{180};
   float sun_rise_max_{0.75f};
 };

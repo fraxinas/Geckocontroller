@@ -52,6 +52,32 @@ switch:
       - lambda: |-
           id(is_daytime) = false;
 
+  - platform: template
+    name: "PID Calibration"
+    id: pid_calibration_switch
+    icon: mdi:tune-vertical
+    lambda: |-
+      return id(gecko_pid).is_calibrating();
+    turn_on_action:
+      - lambda: 'id(gecko_pid).start_calibration();'
+    turn_off_action:
+      - lambda: 'id(gecko_pid).abort_calibration();'
+
+select:
+  - platform: template
+    name: "Calibration Target"
+    id: calibration_target_select
+    icon: mdi:target
+    optimistic: true
+    options:
+      - "Heating"
+      - "Cooling"
+      - "Humidification"
+      - "Dehumidification"
+    initial_option: "Heating"
+    on_value:
+      - lambda: 'id(gecko_pid).set_selected_target(i + 1);'
+
 button:
   - platform: template
     id: pump_button
@@ -114,12 +140,17 @@ output:
     id: fan_pwm
     frequency: 25000 hz
     channel: 7
+  # Rain pump: serves both historic-weather rain simulation and humidification (hygrostat
+  # heat_output). Duty is arbitrated inside the component (see PID_CALIBRATION.md); internal
+  # caps replace the old max_power. period default 180s.
   - platform: geckorain
     id: rain_pump_float
     pump: rain_pump
     # period: 30min
-    max_power: 0.02
-    # max. 18 seconds of rain per half hour
+    weather: weather_precipitation
+    humidity: humidity_combined
+    hygrostat: hygrostat
+    calibration_target: calibration_target
   - platform: template
     id: daylight_attenuation_output
     type: float
@@ -127,19 +158,6 @@ output:
       - lambda: |-
           id(twilight_attenuation) = state;
           ESP_LOGD("gecko", "wrote twilight_attenuation: %.2f", id(twilight_attenuation));
-  - platform: template
-    id: fogger_humidifier
-    type: float
-    write_action:
-      - lambda: |-
-            climate::ClimateAction action = id(hygrostat).action;
-            if (action == climate::CLIMATE_ACTION_HEATING) {
-              float duty_cycle = state/4.0;
-              ESP_LOGD("gecko", "Hygrostat PID Controller fogger write_action: %.3f / duty cycle: %.0f%%", state, duty_cycle*100);
-              id(fogger_float).set_level(duty_cycle);
-            } else {
-              ESP_LOGD("gecko", "Hygrostat PID Controller turn off fogger");
-            }
 
 # The three lights (heat lamp, daylight lamp, RGB) plus the Sun light effects and the
 # thermostat-driven daylight/heatlamp logic are owned by the geckolights component.
@@ -149,6 +167,7 @@ geckolights:
   twilight_attenuation: twilight_attenuation
   skycond_attenuation: skycond_attenuation
   is_daytime: is_daytime
+  calibration_target: calibration_target
   heat_lamp:
     id: heat_lamp
     output: heat_lamp_pwm
@@ -202,6 +221,7 @@ fan:
       id: thermostat_air
     vicinity: temperature_vicinity
     wind_speed: weather_windspeed
+    calibration_target: calibration_target
 
 i2c:
   sda: 25
@@ -320,12 +340,7 @@ sensor:
   - platform: homeassistant   # actual historic rain intensity (range 0-5)
     id: weather_precipitation
     entity_id: sensor.rain_in_france_noumea_182_days_ago
-    on_value:
-      then:
-        - output.set_level:
-            id: rain_pump_float
-            level: !lambda |-
-                return x/5.0;
+    # consumed directly by the geckorain rain-pump component (rain + humidification arbitration)
 
   - platform: homeassistant   # actual historic rain intensity (range 0-5)
     id: weather_windspeed
@@ -500,7 +515,7 @@ climate:
     name: "Hygrostat"
     sensor: humidity_combined
     default_target_temperature: 70 °C
-    heat_output: fogger_humidifier
+    heat_output: rain_pump_float   # humidification is now the rain pump (was fogger)
     cool_output: multifan
     visual:
       min_temperature: 30
@@ -510,6 +525,15 @@ climate:
       kp: 0.22
       ki: 0.005
       kd: 6.38
+
+# PID auto-calibration: owns 4 tuned parameter sets (heat/cool/humidify/dehumidify),
+# persists them, and swaps the active set per climate action. See PID_CALIBRATION.md.
+geckopid:
+  id: gecko_pid
+  thermostat: thermostat_air
+  hygrostat: hygrostat
+  vicinity: temperature_vicinity
+  calibration_target: calibration_target
 
 globals:
    - id: scenic_light_effect
@@ -531,6 +555,13 @@ globals:
      type: bool
      restore_value: yes
      initial_value: 'false'
+
+   # PID calibration target: 0 none · 1 heat · 2 cool · 3 humidify · 4 dehumidify.
+   # Set by geckopid during calibration; read by the actuators to pass the relay output through.
+   - id: calibration_target
+     type: int
+     restore_value: no
+     initial_value: '0'
 
 status_led:
   pin: GPIO12

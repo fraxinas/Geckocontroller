@@ -1,6 +1,7 @@
 #include "geckolights.h"
 #include "esphome/core/log.h"
 #include "esphome/core/hal.h"
+#include "esphome/core/helpers.h"
 #include "esphome/components/climate/climate.h"
 
 namespace esphome {
@@ -152,6 +153,18 @@ void GeckoLights::dump_config() {
 // Thermostat heat_output target: drives the daylight lamp (daytime) or heat lamp (nighttime),
 // ported from the old gecko.yaml `heater` write_action lambda.
 void GeckoLights::write_state(float state) {
+  // During heating calibration (calibration_target == 1) the PID relay output is routed here;
+  // drive the active heat lamp directly (no attenuation math) so the autotune relay is clean.
+  if (this->calib_target_ != nullptr && globals::id(this->calib_target_) == 1) {
+    float b = clamp(state, 0.0f, 1.0f);
+    auto *lamp = globals::id(this->is_daytime_) ? this->day_light_ : this->heat_lamp_;
+    ESP_LOGD(TAG, "calibration pass-through: heat output %.2f", b);
+    auto call = lamp->make_call();
+    call.set_state(b > 0.0f);
+    call.set_brightness(b > 0.0f ? b : 0.001f);
+    call.perform();
+    return;
+  }
   climate::ClimateMode mode = this->thermostat_->mode;
   if (mode == climate::CLIMATE_MODE_OFF) {
     ESP_LOGD(TAG, "ignored heater write_action because thermostat is off");

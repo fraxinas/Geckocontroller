@@ -52,6 +52,14 @@ void MultiFan::loop() {
 }
 
 void MultiFan::write_state(float state) {
+  // During cooling / dehumidification calibration the PID relay output is routed here as the
+  // climate's cool_output; drive the PWM directly so the autotune relay reaches the fan.
+  if (this->calibrating_fan_()) {
+    float level = clamp(state, 0.0f, 1.0f);
+    ESP_LOGD(TAG, "calibration pass-through: fan output %.2f", level);
+    this->output_->set_level(level);
+    return;
+  }
   ESP_LOGV(TAG, "write_state %.2f (ignored)", state);
 }
 
@@ -142,6 +150,11 @@ void MultiFan::set_thermo(const PidConf &thermo) {
 }
 
 void MultiFan::update_from_pid_(bool hygro_action) {
+  // While the fan is being autotuned its output is driven directly via write_state();
+  // don't let the weighted formula clobber the relay test.
+  if (this->calibrating_fan_()) {
+    return;
+  }
   if (this->enable_auto_mode_) {
     set_weighted_fan_value();
   }

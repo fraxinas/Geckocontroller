@@ -5,9 +5,16 @@
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/fan/fan.h"
 #include "esphome/components/pid/pid_climate.h"
+#include "esphome/components/globals/globals_component.h"
 
 namespace esphome {
 namespace geckofan {
+
+// calibration_target global values (see PID_CALIBRATION.md). The fan is the actuator for
+// cooling (2) and dehumidification (4); during those calibrations it passes the raw PID
+// relay output straight through to the PWM instead of using the weighted formula.
+static const int CAL_COOL = 2;
+static const int CAL_DEHUMID = 4;
 
 struct PidConf {
   pid::PIDClimate *component;
@@ -46,6 +53,7 @@ class MultiFan : public Component, public sensor::Sensor, public output::FloatOu
   void set_thermo(const PidConf &thermo);
   void set_vicinity(sensor::Sensor *vicinity) { vicinity_sens_ = vicinity; }
   void set_windspeed(sensor::Sensor *windspeed) { windspeed_sens_ = windspeed; }
+  void set_calibration_target(globals::GlobalsComponent<int> *g) { calib_target_ = g; }
 
  protected:
   void set_weighted_fan_value();
@@ -60,8 +68,15 @@ class MultiFan : public Component, public sensor::Sensor, public output::FloatOu
   PidConf thermo_{NULL};
   sensor::Sensor *vicinity_sens_{NULL};
   sensor::Sensor *windspeed_sens_{NULL};
+  globals::GlobalsComponent<int> *calib_target_{nullptr};
   bool next_update_{true};
   bool enable_auto_mode_{true};
+
+  int calibration_target_() { return this->calib_target_ ? globals::id(this->calib_target_) : 0; }
+  bool calibrating_fan_() {
+    int t = this->calibration_target_();
+    return t == CAL_COOL || t == CAL_DEHUMID;
+  }
 };
 
 }  // namespace geckofan
