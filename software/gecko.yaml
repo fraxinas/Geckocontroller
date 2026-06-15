@@ -53,6 +53,19 @@ switch:
           id(is_daytime) = false;
 
   - platform: template
+    name: "Multifan Auto"
+    id: multifan_auto_switch
+    icon: mdi:fan-auto
+    lambda: |-
+      return id(multifan_auto);
+    turn_on_action:
+      - lambda: |-
+          id(multifan_auto) = true;
+    turn_off_action:
+      - lambda: |-
+          id(multifan_auto) = false;
+
+  - platform: template
     name: "PID Calibration"
     id: pid_calibration_switch
     icon: mdi:tune-vertical
@@ -222,6 +235,7 @@ fan:
     vicinity: temperature_vicinity
     wind_speed: weather_windspeed
     calibration_target: calibration_target
+    auto_mode: multifan_auto
 
 i2c:
   sda: 25
@@ -596,6 +610,12 @@ globals:
      type: bool
      restore_value: yes
      initial_value: 'false'
+
+   # Multifan auto mode: true = PID drives the fan, false = HA slider drives it.
+   - id: multifan_auto
+     type: bool
+     restore_value: yes
+     initial_value: 'true'
 
    # PID calibration target: 0 none · 1 heat · 2 cool · 3 humidify · 4 dehumidify.
    # Set by geckopid during calibration; read by the actuators to pass the relay output through.

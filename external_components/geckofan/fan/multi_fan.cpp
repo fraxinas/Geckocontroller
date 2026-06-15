@@ -37,7 +37,7 @@ void MultiFan::loop() {
   }
   this->next_update_ = false;
 
-  bool enable = this->fan_->oscillating;
+  bool enable = this->auto_mode_();
   if (enable != this->enable_auto_mode_) {
     this->enable_auto_mode_ = enable;
     ESP_LOGD(TAG, "Setting auto mode: %s", ONOFF(enable));
@@ -155,7 +155,8 @@ void MultiFan::update_from_pid_(bool hygro_action) {
   if (this->calibrating_fan_()) {
     return;
   }
-  if (this->enable_auto_mode_) {
+  // Auto mode: the PID drives the fan. Manual mode: the HA slider drives it, so leave it alone.
+  if (this->auto_mode_()) {
     set_weighted_fan_value();
   }
 }

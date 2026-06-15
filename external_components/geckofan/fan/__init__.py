@@ -28,6 +28,7 @@ CONF_HYGRO = 'hygrostat'
 CONF_THERMO = 'thermostat'
 CONF_VICINITY = 'vicinity'
 CONF_CALIBRATION_TARGET = 'calibration_target'
+CONF_AUTO_MODE = 'auto_mode'
 
 PidConf = geckofan_ns.struct("PidConf")
 
@@ -51,6 +52,7 @@ CONFIG_SCHEMA = cv.ENTITY_BASE_SCHEMA.extend(
         cv.Optional(CONF_VICINITY): cv.use_id(sensor.Sensor),
         cv.Optional(CONF_WIND_SPEED): cv.use_id(sensor.Sensor),
         cv.Optional(CONF_CALIBRATION_TARGET): cv.use_id(globals.GlobalsComponent),
+        cv.Optional(CONF_AUTO_MODE): cv.use_id(globals.GlobalsComponent),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -90,6 +92,7 @@ async def to_code(config):
         (CONF_VICINITY, var.set_vicinity),
         (CONF_WIND_SPEED, var.set_windspeed),
         (CONF_CALIBRATION_TARGET, var.set_calibration_target),
+        (CONF_AUTO_MODE, var.set_auto),
     ]:
         if item in config:
             item = await cg.get_variable(config[item])

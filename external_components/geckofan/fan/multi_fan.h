@@ -22,17 +22,16 @@ struct PidConf {
 };
 
 // Concrete fan entity that the user toggles in Home Assistant. MultiFan reads its
-// state/speed/oscillating and drives the actual PWM output accordingly.
+// state/speed and drives the actual PWM output accordingly. Auto/manual is a separate
+// switch (the multifan_auto global), not the fan's oscillation flag.
 class StatusFan : public fan::Fan {
  public:
-  fan::FanTraits get_traits() override { return fan::FanTraits(true, true, false, 100); }
+  fan::FanTraits get_traits() override { return fan::FanTraits(false, true, false, 100); }
 
  protected:
   void control(const fan::FanCall &call) override {
     if (call.get_state().has_value())
       this->state = *call.get_state();
-    if (call.get_oscillating().has_value())
-      this->oscillating = *call.get_oscillating();
     if (call.get_speed().has_value())
       this->speed = *call.get_speed();
     this->publish_state();
@@ -54,6 +53,7 @@ class MultiFan : public Component, public sensor::Sensor, public output::FloatOu
   void set_vicinity(sensor::Sensor *vicinity) { vicinity_sens_ = vicinity; }
   void set_windspeed(sensor::Sensor *windspeed) { windspeed_sens_ = windspeed; }
   void set_calibration_target(globals::GlobalsComponent<int> *g) { calib_target_ = g; }
+  void set_auto(globals::RestoringGlobalsComponent<bool> *g) { auto_global_ = g; }
 
  protected:
   void set_weighted_fan_value();
@@ -69,6 +69,7 @@ class MultiFan : public Component, public sensor::Sensor, public output::FloatOu
   sensor::Sensor *vicinity_sens_{NULL};
   sensor::Sensor *windspeed_sens_{NULL};
   globals::GlobalsComponent<int> *calib_target_{nullptr};
+  globals::RestoringGlobalsComponent<bool> *auto_global_{nullptr};
   bool next_update_{true};
   bool enable_auto_mode_{true};
 
@@ -77,6 +78,8 @@ class MultiFan : public Component, public sensor::Sensor, public output::FloatOu
     int t = this->calibration_target_();
     return t == CAL_COOL || t == CAL_DEHUMID;
   }
+  // Auto mode (PID drives the fan) vs manual (HA slider drives the fan); defaults to auto.
+  bool auto_mode_() { return this->auto_global_ ? globals::id(this->auto_global_) : true; }
 };
 
 }  // namespace geckofan
