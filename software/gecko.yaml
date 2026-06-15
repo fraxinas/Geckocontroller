@@ -1,14 +1,15 @@
 esphome:
   name: geckocontrol
-  platform: ESP32
+
+esp32:
   board: nodemcu-32s
-  includes:
-    - gecko_custom.h
+  framework:
+    type: arduino
 
 external_components:
   - source:
       type: local
-      path: custom_components
+      path: ../external_components
 
 wifi:
   ssid: !secret wifi_ssid
@@ -36,13 +37,7 @@ api:
             id: daylight_attenuation_output
             level: !lambda 'return level / 100.0;'
 ota:
-
-custom_component:
-- lambda: |-
-    auto gecko_custom = new GeckoCustomComponent();
-    return {gecko_custom};
-  components:
-    - id: gecko
+  - platform: esphome
 
 switch:
   - platform: template
@@ -119,90 +114,54 @@ output:
     id: fan_pwm
     frequency: 25000 hz
     channel: 7
-  - platform: custom
-    type: float
-    lambda: |-
-      auto rain_pump_output_c = new RainPumpOutput();
-      App.register_component(rain_pump_output_c);
-      return {rain_pump_output_c};
-    outputs:
-      id: rain_pump_float
-      #period: 30min
-      max_power: 0.02
-      # max. 18 seconds of rain per half hour
+  - platform: geckorain
+    id: rain_pump_float
+    pump: rain_pump
+    # period: 30min
+    max_power: 0.02
+    # max. 18 seconds of rain per half hour
   - platform: template
     id: daylight_attenuation_output
     type: float
     write_action:
       - lambda: |-
           id(twilight_attenuation) = state;
-          ESP_LOGD(TAG, "wrote twilight_attenuation: %.2f", id(twilight_attenuation));
+          ESP_LOGD("gecko", "wrote twilight_attenuation: %.2f", id(twilight_attenuation));
   - platform: template
     id: fogger_humidifier
     type: float
     write_action:
       - lambda: |-
-            ClimateAction action = id(hygrostat).action;
-            if (action == CLIMATE_ACTION_HEATING) {
+            climate::ClimateAction action = id(hygrostat).action;
+            if (action == climate::CLIMATE_ACTION_HEATING) {
               float duty_cycle = state/4.0;
-              ESP_LOGD(TAG, "Hygrostat PID Controller fogger write_action: %.3f / duty cycle: %.0f%%", state, duty_cycle*100);
+              ESP_LOGD("gecko", "Hygrostat PID Controller fogger write_action: %.3f / duty cycle: %.0f%%", state, duty_cycle*100);
               id(fogger_float).set_level(duty_cycle);
             } else {
-              ESP_LOGD(TAG, "Hygrostat PID Controller turn off fogger");
-            }
-  - platform: template
-    id: heater
-    type: float
-    write_action:
-      - lambda: |-
-            ClimateMode mode = id(thermostat_air).mode;
-            if (mode == CLIMATE_MODE_OFF) {
-                ESP_LOGD(TAG, "ignored heater write_action because thermostat is off");
-            } else if (id(is_daytime) == true) {
-              auto therm = id(thermostat_air).make_call();
-              float set_val = id(thermostat_air)->get_output_value();
-              float att_max = id(twilight_attenuation)*id(skycond_attenuation);
-              float att_min = att_max/10.0;
-              ESP_LOGD(TAG, "Thermostat PID Controller daylight write_action: %.3f, set_val: %.3f, att_max: %.3f", state, set_val, att_max);
-              float brightness = state;
-              if (state > att_max) {
-                float max_ratio = (set_val-1.0)*0.1;
-                float att_ratio = (1.0-max_ratio)*att_max;
-                brightness = (att_ratio + max_ratio)*id(twilight_attenuation);
-                ESP_LOGD(TAG, "state>att_max. (%.2f%+.2f)*%.2f => brightness: %.2f", att_ratio, max_ratio, id(twilight_attenuation), brightness);
-              }
-              else if (state < att_min) {
-                brightness = att_min;
-                ESP_LOGD(TAG, "state<att_min (%.2f) => brightness: %.2f", att_min, brightness);
-              }
-              auto daylight = id(day_light).make_call();
-              daylight.set_transition_length(30000);
-              daylight.set_brightness(brightness);
-              daylight.perform();
-            } else {
-              ESP_LOGD(TAG, "Thermostat PID Controller nighttime heatlamp write_action: %.3f", state);
-              auto heatlamp = id(heat_lamp).make_call();
-              heatlamp.set_state(!!state);
-              heatlamp.set_brightness(state ? state : 0.001);
-              heatlamp.perform();
+              ESP_LOGD("gecko", "Hygrostat PID Controller turn off fogger");
             }
 
-light:
-  - platform: monochromatic
+# The three lights (heat lamp, daylight lamp, RGB) plus the Sun light effects and the
+# thermostat-driven daylight/heatlamp logic are owned by the geckolights component.
+geckolights:
+  id: gecko_lights
+  thermostat: thermostat_air
+  twilight_attenuation: twilight_attenuation
+  skycond_attenuation: skycond_attenuation
+  is_daytime: is_daytime
+  heat_lamp:
+    id: heat_lamp
+    output: heat_lamp_pwm
+    name: "Heat Lamp"
+  day_light:
     id: day_light
     output: dimmer1
     name: "Dimmer Daylight"
     gamma_correct: 1.0
     default_transition_length: 0s
-
-  - platform: monochromatic
-    id: heat_lamp
-    output: heat_lamp_pwm
-    name: "Heat Lamp"
-
-  - platform: rgb
-    name: "Scenic Light"
+  scenic_light:
     id: scenic_light
+    name: "Scenic Light"
     red: component_red
     green: component_green
     blue: component_blue
@@ -232,7 +191,7 @@ light:
             }
 
 fan:
-  - platform: multi
+  - platform: geckofan
     id: multifan
     name: "Gecko Multifan"
     output: fan_pwm
@@ -250,9 +209,10 @@ i2c:
   scan: True
   id: bus_a
 
-dallas:
-  - pin: 22
-    update_interval: 5min
+one_wire:
+  - platform: gpio
+    id: bus_dallas
+    pin: 22
 
 sensor:
   - platform: hx711
@@ -275,19 +235,21 @@ sensor:
               return 0.0;
             return x;
 
-  - platform: dallas
+  - platform: dallas_temp
+    one_wire_id: bus_dallas
     address: !secret DsAddressHeatBed
     name: "Temperature Vicinity"
-    unit_of_measurement: "°C"
     id: temperature_vicinity
+    update_interval: 5min
 
-  - platform: dallas
+  - platform: dallas_temp
+    one_wire_id: bus_dallas
     address: !secret DsAddressSubstrate
     name: "Temperature Substrate"
-    unit_of_measurement: "°C"
     id: temperature_substrate
+    update_interval: 5min
 
-  - platform: bme280
+  - platform: bme280_i2c
     temperature:
       name: "Ceiling Temperature"
       oversampling: 16x
@@ -379,7 +341,7 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            ESP_LOGD(TAG, "sky value changed to: %.0f", x);
+            ESP_LOGD("gecko", "sky value changed to: %.0f", x);
             auto sceniclight = id(scenic_light).make_call();
             if (x == 30) {
               auto daylight = id(day_light).make_call();
@@ -405,17 +367,17 @@ sensor:
 
               id(scenic_light).current_values_as_brightness(&scenic_b);
               id(day_light).current_values_as_brightness(&day_b);
-              ESP_LOGD(TAG, "previous attenuated brightness scenic: %.3f, daylight: %.3f, old skycond_attenuation: %.3f", scenic_b, day_b, id(skycond_attenuation));
+              ESP_LOGD("gecko", "previous attenuated brightness scenic: %.3f, daylight: %.3f, old skycond_attenuation: %.3f", scenic_b, day_b, id(skycond_attenuation));
 
               scenic_b /= id(skycond_attenuation);
               day_b /= (id(skycond_attenuation)*id(twilight_attenuation));
 
               id(skycond_attenuation) = (24-x)/24;
-              ESP_LOGD(TAG, "previous normalized brightness scenic: %.3f, daylight: %.3f, new skycond_attenuation: %.3f", scenic_b, day_b, id(skycond_attenuation));
+              ESP_LOGD("gecko", "previous normalized brightness scenic: %.3f, daylight: %.3f, new skycond_attenuation: %.3f", scenic_b, day_b, id(skycond_attenuation));
 
               scenic_b *= id(skycond_attenuation);
               day_b *= (id(skycond_attenuation)*id(twilight_attenuation));
-              ESP_LOGD(TAG, "target_brightness: scenic: %.3f, daylight: %.3f", scenic_b, day_b);
+              ESP_LOGD("gecko", "target_brightness: scenic: %.3f, daylight: %.3f", scenic_b, day_b);
 
               sceniclight.set_transition_length(60*1000);
               sceniclight.set_brightness(scenic_b);
@@ -455,14 +417,15 @@ sensor:
 time:
   - platform: homeassistant
     id: esptime
+    timezone: "Europe/Berlin"
     on_time_sync:
       then:
         - lambda: |-
               auto ts = id(esptime).now();
-              ESPTime remote_ts = time::ESPTime::from_epoch_utc(ts.timestamp - 182*24*60*60);
+              ESPTime remote_ts = ESPTime::from_epoch_utc(ts.timestamp - 182*24*60*60);
               char datetimestr[21];
               remote_ts.strftime(datetimestr, 20, "%Y-%m-%d %H:%M:%S");
-              ESP_LOGD(TAG, "offset timestamp: %s", datetimestr);
+              ESP_LOGD("gecko", "offset timestamp: %s", datetimestr);
               id(remote_time).set_epoch_time(ts.timestamp - 182*24*60*60);
 
   - platform: homeassistant
@@ -473,10 +436,10 @@ time:
         - logger.log: "Synchronized remote_time"
         - lambda: |-
               auto ts = id(remote_time).now();
-              ESPTime remote_ts = time::ESPTime::from_epoch_utc(ts.timestamp);
+              ESPTime remote_ts = ESPTime::from_epoch_utc(ts.timestamp);
               char datetimestr[21];
               remote_ts.strftime(datetimestr, 20, "%Y-%m-%d %H:%M:%S");
-              ESP_LOGD(TAG, "remote_time timestamp = %s", datetimestr);
+              ESP_LOGD("gecko", "remote_time timestamp = %s", datetimestr);
 
 sun:
   id: remote_sun
@@ -522,7 +485,7 @@ climate:
     name: "Thermostat Air"
     sensor: temperature_ceiling
     default_target_temperature: 22 °C
-    heat_output: heater
+    heat_output: gecko_lights
     cool_output: multifan
     visual:
       min_temperature: 12

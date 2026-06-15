@@ -10,23 +10,25 @@ from esphome.const import (
     CONF_OUTPUT,
     CONF_WEIGHT,
     CONF_WIND_SPEED,
-    CONF_ID
+    CONF_ID,
+    CONF_RESTORE_MODE
 )
-from .. import multi_ns
+from .. import geckofan_ns
 
 DEPENDENCIES = ["fan", "climate"]
 
 CODEOWNERS = ["@fraxinas"]
 _LOGGER = logging.getLogger(__name__)
 
-MultiFan = multi_ns.class_("MultiFan", sensor.Sensor, cg.Component, output.FloatOutput)
+MultiFan = geckofan_ns.class_("MultiFan", sensor.Sensor, cg.Component, output.FloatOutput)
+StatusFan = geckofan_ns.class_("StatusFan", fan.Fan)
 
 CONF_FAN_ID = 'fan_id'
 CONF_HYGRO = 'hygrostat'
 CONF_THERMO = 'thermostat'
 CONF_VICINITY = 'vicinity'
 
-PidConf = multi_ns.struct("PidConf")
+PidConf = geckofan_ns.struct("PidConf")
 
 def get_item_schema(item_type):
     return cv.Schema({
@@ -40,7 +42,7 @@ ITEM_SCHEMA = cv.Schema({
 
 CONFIG_SCHEMA = cv.ENTITY_BASE_SCHEMA.extend(
     {
-        cv.GenerateID(CONF_FAN_ID): cv.declare_id(fan.FanState),
+        cv.GenerateID(CONF_FAN_ID): cv.declare_id(StatusFan),
         cv.GenerateID(CONF_ID): cv.declare_id(MultiFan),
         cv.Required(CONF_OUTPUT): cv.use_id(output.FloatOutput),
         cv.Required(CONF_HYGRO): cv.ensure_list(ITEM_SCHEMA),
@@ -56,7 +58,8 @@ async def to_code(config):
     fan_config = {
         CONF_ID: config[CONF_FAN_ID],
         CONF_NAME: config[CONF_NAME]+' Status',
-        CONF_DISABLED_BY_DEFAULT: config[CONF_DISABLED_BY_DEFAULT]
+        CONF_DISABLED_BY_DEFAULT: config[CONF_DISABLED_BY_DEFAULT],
+        CONF_RESTORE_MODE: fan.FanRestoreMode.RESTORE_DEFAULT_OFF
     }
 
     fan_state = cg.new_Pvariable(fan_config[CONF_ID])
