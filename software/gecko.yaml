@@ -281,6 +281,10 @@ sensor:
     name: "Heat Bed Temperature"
     id: temperature_heatbed
     update_interval: 5min
+    filters: &ds18b20_reject_errors
+      # DS18B20 power-on/error default (85.0) and disconnected (-127.0) are not real readings.
+      - filter_out: 85.0
+      - filter_out: -127.0
 
   - platform: dallas_temp
     one_wire_id: bus_dallas
@@ -288,6 +292,7 @@ sensor:
     name: "Temperature Substrate"
     id: temperature_substrate
     update_interval: 5min
+    filters: *ds18b20_reject_errors
 
   # Vicinity = the room temperature where the terrarium stands, taken from the current
   # temperature (Ist-Temperatur) of the climate.arbeit entity in Home Assistant.
