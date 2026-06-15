@@ -39,6 +39,12 @@ api:
 ota:
   - platform: esphome
 
+# Restore values (multifan_auto, is_daytime, calibration sets) are only flushed to flash
+# every flash_write_interval; the 60s default loses recent changes across a reboot/power-cut.
+# These settings change rarely, so commit them promptly.
+preferences:
+  flash_write_interval: 15s
+
 switch:
   - platform: template
     name: "Nighttime / Daytime"
