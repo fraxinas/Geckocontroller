@@ -1,4 +1,5 @@
 #include <float.h>
+#include <cmath>
 #include "multi_fan.h"
 #include "esphome/core/log.h"
 #include "esphome/components/climate/climate.h"
@@ -155,10 +156,27 @@ void MultiFan::update_from_pid_(bool hygro_action) {
   if (this->calibrating_fan_()) {
     return;
   }
-  // Auto mode: the PID drives the fan. Manual mode: the HA slider drives it, so leave it alone.
-  if (this->auto_mode_()) {
-    set_weighted_fan_value();
+  // Manual mode: the HA slider drives the fan, so leave it alone.
+  if (!this->auto_mode_()) {
+    return;
   }
+
+  // The PID callbacks fire on every sensor update; only recompute the fan value once a minute,
+  // or sooner if a control value changed meaningfully. Avoids churning the fan every few seconds.
+  float hum = this->hygro_.component->get_output_value() * -1.0f;
+  float therm = this->thermo_.component->get_output_value() * -1.0f;
+  uint32_t now = millis();
+  bool due = !this->have_last_ || (now - this->last_compute_ms_) >= RECOMPUTE_INTERVAL_MS;
+  bool changed = !this->have_last_ || std::fabs(hum - this->last_hum_ctrl_) >= RECOMPUTE_THRESHOLD ||
+                 std::fabs(therm - this->last_therm_ctrl_) >= RECOMPUTE_THRESHOLD;
+  if (!due && !changed) {
+    return;
+  }
+  this->have_last_ = true;
+  this->last_compute_ms_ = now;
+  this->last_hum_ctrl_ = hum;
+  this->last_therm_ctrl_ = therm;
+  set_weighted_fan_value();
 }
 
 float MultiFan::get_setup_priority() const { return setup_priority::PROCESSOR; }

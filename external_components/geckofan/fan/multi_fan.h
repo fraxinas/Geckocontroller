@@ -73,6 +73,15 @@ class MultiFan : public Component, public sensor::Sensor, public output::FloatOu
   bool next_update_{true};
   bool enable_auto_mode_{true};
 
+  // Rate-limit the weighted recompute: at most once per minute unless a PID control value
+  // moved meaningfully. The PID callbacks fire on every sensor update (~15 s) otherwise.
+  static constexpr uint32_t RECOMPUTE_INTERVAL_MS = 60000;
+  static constexpr float RECOMPUTE_THRESHOLD = 0.02f;
+  uint32_t last_compute_ms_{0};
+  float last_hum_ctrl_{0};
+  float last_therm_ctrl_{0};
+  bool have_last_{false};
+
   int calibration_target_() { return this->calib_target_ ? globals::id(this->calib_target_) : 0; }
   bool calibrating_fan_() {
     int t = this->calibration_target_();
