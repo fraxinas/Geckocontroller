@@ -2,3 +2,6 @@
 *-cache.lib
 fp-info-cache
 gerber*.zip
+production/
+*.stl
+.history/
