@@ -383,19 +383,77 @@
         "microvia_drill": 0.1,
         "name": "Default",
         "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "priority": 2147483647,
         "schematic_color": "rgba(0, 0, 0, 0.000)",
         "track_width": 0.25,
+        "tuning_profile": "",
         "via_diameter": 0.8,
         "via_drill": 0.4,
         "wire_width": 6
+      },
+      {
+        "name": "mains",
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "priority": 0,
+        "schematic_color": "rgb(255, 129, 0)",
+        "tuning_profile": ""
       }
     ],
     "meta": {
-      "version": 3
+      "version": 5
     },
     "net_colors": null,
     "netclass_assignments": null,
-    "netclass_patterns": []
+    "netclass_patterns": [
+      {
+        "netclass": "mains",
+        "pattern": "/N"
+      },
+      {
+        "netclass": "mains",
+        "pattern": "/L"
+      },
+      {
+        "netclass": "mains",
+        "pattern": "/N*"
+      },
+      {
+        "netclass": "mains",
+        "pattern": "/L?'"
+      },
+      {
+        "netclass": "mains",
+        "pattern": "/L_Dimmer"
+      },
+      {
+        "netclass": "mains",
+        "pattern": "/L_"
+      },
+      {
+        "netclass": "mains",
+        "pattern": "/ZX'*"
+      },
+      {
+        "netclass": "mains",
+        "pattern": "unconnected-(U81-*)"
+      },
+      {
+        "netclass": "mains",
+        "pattern": "Net-(Q81-G)"
+      },
+      {
+        "netclass": "mains",
+        "pattern": "Net-(R88-Pad2)"
+      },
+      {
+        "netclass": "mains",
+        "pattern": "unconnected-(U82-NC-Pad5)"
+      },
+      {
+        "netclass": "mains",
+        "pattern": "Net-(C80-Pad1)"
+      }
+    ]
   },
   "pcbnew": {
     "last_paths": {

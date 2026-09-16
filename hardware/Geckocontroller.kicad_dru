@@ -1,0 +1,4 @@
+(version 1)
+(rule "mains_to_selv"
+  (constraint clearance (min 6.4mm))
+  (condition "A.NetClass == 'mains' && B.NetClass != 'mains'"))
