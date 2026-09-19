@@ -77,7 +77,52 @@
           "width": 0.0
         }
       ],
-      "drc_exclusions": [],
+      "drc_exclusions": [
+        [
+          "courtyards_overlap|33203000|53078000|00000000-0000-0000-0000-00006022f3de|00000000-0000-0000-0000-00006022f3f3",
+          ""
+        ],
+        [
+          "courtyards_overlap|33203000|55618000|00000000-0000-0000-0000-00006022f3c9|00000000-0000-0000-0000-00006022f3de",
+          ""
+        ],
+        [
+          "courtyards_overlap|34655000|50703000|00000000-0000-0000-0000-00006022f3f3|00000000-0000-0000-0000-00006022f50a",
+          ""
+        ],
+        [
+          "courtyards_overlap|34655000|58055000|00000000-0000-0000-0000-00006022f3c9|00000000-0000-0000-0000-00006022f4e8",
+          ""
+        ],
+        [
+          "courtyards_overlap|74511000|18514000|00000000-0000-0000-0000-000060293c07|00000000-0000-0000-0000-00006074777a",
+          ""
+        ],
+        [
+          "courtyards_overlap|74511000|22471000|00000000-0000-0000-0000-000060293c07|00000000-0000-0000-0000-000060747765",
+          ""
+        ],
+        [
+          "starved_thermal|24995000|72075000|d9002682-22b7-407b-a5af-7b64d9367733|bcebc42f-16c4-4cb3-ae7d-0790e2874040|F.Cu",
+          ""
+        ],
+        [
+          "starved_thermal|57660000|115060000|3ff2c861-3b3e-47f1-bb29-f169fbeabc5c|cab0d0a9-e089-4f0b-8483-22b4e0addcae|B.Cu",
+          ""
+        ],
+        [
+          "starved_thermal|57660000|115060000|d9002682-22b7-407b-a5af-7b64d9367733|cab0d0a9-e089-4f0b-8483-22b4e0addcae|F.Cu",
+          ""
+        ],
+        [
+          "starved_thermal|57660000|116460000|d9002682-22b7-407b-a5af-7b64d9367733|59246647-4e57-4b5f-9f1e-b0cc1fb90bb2|F.Cu",
+          ""
+        ],
+        [
+          "starved_thermal|96735000|79000000|d9002682-22b7-407b-a5af-7b64d9367733|0247338f-38de-4bcb-8a93-86484351c5f5|F.Cu",
+          ""
+        ]
+      ],
       "meta": {
         "filename": "board_design_settings.json",
         "version": 2
@@ -85,37 +130,63 @@
       "rule_severities": {
         "annular_width": "error",
         "clearance": "error",
+        "connection_width": "warning",
         "copper_edge_clearance": "error",
+        "copper_sliver": "warning",
         "courtyards_overlap": "error",
+        "creepage": "error",
         "diff_pair_gap_out_of_range": "error",
         "diff_pair_uncoupled_length_too_long": "error",
         "drill_out_of_range": "error",
         "duplicate_footprints": "warning",
         "extra_footprint": "warning",
+        "footprint": "error",
+        "footprint_filters_mismatch": "ignore",
+        "footprint_symbol_field_mismatch": "warning",
+        "footprint_symbol_mismatch": "warning",
         "footprint_type_mismatch": "error",
         "hole_clearance": "error",
         "hole_near_hole": "error",
+        "hole_to_hole": "error",
+        "holes_co_located": "warning",
         "invalid_outline": "error",
+        "isolated_copper": "warning",
         "item_on_disabled_layer": "error",
         "items_not_allowed": "error",
         "length_out_of_range": "error",
+        "lib_footprint_issues": "warning",
+        "lib_footprint_mismatch": "warning",
         "malformed_courtyard": "error",
         "microvia_drill_out_of_range": "error",
+        "mirrored_text_on_front_layer": "warning",
         "missing_courtyard": "ignore",
         "missing_footprint": "warning",
+        "missing_tuning_profile": "warning",
         "net_conflict": "warning",
+        "nonmirrored_text_on_back_layer": "warning",
         "npth_inside_courtyard": "ignore",
         "padstack": "error",
         "pth_inside_courtyard": "ignore",
         "shorting_items": "error",
-        "silk_over_copper": "warning",
-        "silk_overlap": "warning",
+        "silk_edge_clearance": "ignore",
+        "silk_over_copper": "ignore",
+        "silk_overlap": "ignore",
         "skew_out_of_range": "error",
+        "solder_mask_bridge": "error",
+        "starved_thermal": "error",
+        "text_height": "warning",
+        "text_on_edge_cuts": "error",
+        "text_thickness": "warning",
         "through_hole_pad_without_hole": "error",
         "too_many_vias": "error",
+        "track_angle": "error",
         "track_dangling": "warning",
+        "track_not_centered_on_via": "ignore",
+        "track_on_post_machined_layer": "error",
+        "track_segment_length": "error",
         "track_width": "error",
         "tracks_crossing": "error",
+        "tuning_profile_track_geometries": "ignore",
         "unconnected_items": "error",
         "unresolved_variable": "error",
         "via_dangling": "warning",
@@ -604,8 +675,11 @@
       "gencad": "",
       "idf": "",
       "netlist": "",
+      "plot": "",
+      "pos_files": "",
       "specctra_dsn": "",
-      "step": "",
+      "step": "Geckocontroller.stl",
+      "svg": "",
       "vrml": ""
     },
     "page_layout_descr_file": ""
