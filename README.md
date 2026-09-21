@@ -1,6 +1,6 @@
 # Geckocontroller
 
-(CC) 2021-2022 by Andreas Frisch <github@fraxinas.dev>
+(CC) 2021-2026 by Andreas Frisch <github@fraxinas.dev>
 
 ## OwO what's this?
 **`geckocontroller` is an ESP32-based all-in-one solution for terrarium automation.**
@@ -10,18 +10,23 @@
 
 ## Hardware Features
 ### Relay Output
-* 3 solid state relays with zero-cross switching
-* individual load 1A each
-* for HeatBed (/Fogger), HeatLamp and Pump
+* 3 mechanical DPST relays (TE Schrack RT444012), switching line and neutral
+* individual load 8A each
+* for Grow Light, Heat Lamp and Rain Pump
 
 ### Dimmer Output
 * opto-coupler zero cross detection
-* random cross solid state relay
+* discrete triac phase-angle stage
 * phase controller modulator
+* fused mains entry
 
 ### RGB LED Output
 * PWM driver
 * for 12V RGB LED stripes
+
+### White LED Output
+* high-current PWM controller (gate driver + power MOSFET)
+* screw terminals for an arbitrary constant voltage (e.g. 24V) white LED module
 
 ### FAN Output
 * for an ATX type PC fan
@@ -36,11 +41,12 @@
 * SHT-3xD Thermo/Hygro sensor (ground)
 
 ### Load Cell Input
-* HX711-based load cell amplifier/ADC
+* NAU7802-based load cell amplifier/ADC on I²C
 * for weighing / occupancy detection
 
 ### USB-C Port
 * USB-to-serial programming port
+* upright through-hole receptacle with CH343G bridge
 
 ### WiFi
 * ESP32 wifi client
@@ -50,6 +56,29 @@
 
 ### Documentation
 * [Circuit Calculations](hardware/calculations/README.md)
+
+## Hardware Revisions
+
+| Revision | Date    | Milestone                                              |
+| :------- | :------ | :----------------------------------------------------- |
+| v1.0     | 2021-02 | First prototype PCB                                     |
+| v1.1     | 2021-03 | Bodged prototype, hardware issues fixed                 |
+| v1.2     | 2021-04 | Second revision PCB, in service since 2021-05           |
+| v2.0     | 2026-09 | Mains section rebuilt, white channel added              |
+
+### What changed in HW Rev 2.0
+
+| Function       | v1.2                                              | v2.0                                                                            |
+| :------------- | :------------------------------------------------ | :------------------------------------------------------------------------------ |
+| Relay outputs  | 3 solid state relays, 1A, zero-cross, line only   | 3 mechanical DPST relays, 8A, switching line **and** neutral, freewheeling diodes |
+| Dimmer         | random cross solid state relay                    | discrete triac stage: BT138S-800E, FOD4208SD driver, 6N139 zero-cross, RC snubber |
+| Mains entry    | unfused                                           | TR5 holder + 5A 250V T fuse, dedicated `mains` net class with 6.4 mm clearance    |
+| White light    | —                                                 | high-current PWM channel (MCP1416 gate driver + AOD442)                          |
+| Load cell ADC  | HX711                                             | NAU7802 (I²C)                                                                    |
+| USB / serial   | SMD receptacle + CP2102                           | upright through-hole receptacle + CH343G                                          |
+| Sensor ports   | mixed JST PH and WAGO terminals                   | JST PH / XH throughout, DS18B20 moved to JST PH 3-pin                            |
+| Module         | ESP32-WROOM-32                                    | ESP32-WROOM-32E-N4                                                               |
+| Board          | 114.3 x 96.5 mm                                   | 126.0 x 110.5 mm                                                                  |
 
 ## Software
 
@@ -116,3 +145,4 @@
 | 2022-01-28 | v1.0    | Order Console PCB at aisler.net & parts at LCSC  |
 | 2022-02-18 |         | Assembled Console PCB                            |
 | 2022-03-07 | v2.0    | New Hardware Revision of Console PCB             |
+| 2026-09-21 | v2.0    | New Hardware Revision of Controller PCB          |
