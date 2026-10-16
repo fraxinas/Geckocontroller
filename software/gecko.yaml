@@ -221,7 +221,8 @@ output:
     method: leading
     min_power: 15%
     zero_cross_pin:
-      number: 17
+      # 6N139 open collector, pulled up externally by R81 (GPIO34 is input-only, no internal pulls)
+      number: 34
       mode: INPUT
       inverted: no
   - platform: slow_pwm
@@ -235,19 +236,25 @@ output:
     pin: 2
     id: growlight
   - platform: ledc
-    pin: 32
+    pin: 33
     id: component_red
     channel: 0
   - platform: ledc
-    pin: 33
+    pin: 14
     id: component_green
     channel: 2
   - platform: ledc
-    pin: 27
+    pin: 32
     id: component_blue
     channel: 4
+  # HW Rev 2.0 high-current white channel (MCP1416 gate driver + AOD442). Channel 1 shares
+  # LEDC timer 0 with red at the same default frequency; 6 would collide with the 25 kHz fan timer.
   - platform: ledc
-    pin: GPIO14
+    pin: 27
+    id: component_white
+    channel: 1
+  - platform: ledc
+    pin: 17
     id: fan_pwm
     frequency: 25000 hz
     channel: 7
@@ -407,6 +414,13 @@ geckolights:
     green: component_green
     blue: component_blue
 
+# HW Rev 2.0 white channel, not yet part of the geckolights scheme -- exposed for manual use.
+light:
+  - platform: monochromatic
+    id: white_light
+    name: "White Light"
+    output: component_white
+
 fan:
   - platform: geckofan
     id: multifan
@@ -438,15 +452,20 @@ one_wire:
     pin: 22
 
 sensor:
-  - platform: hx711
+  # HW Rev 2.0: NAU7802 on the I2C bus (0x2A) replaces the HX711. AVDD comes from the internal
+  # LDO (DVDD via JP61), so ldo_voltage must stay below 3V3 - 0.3 V.
+  - platform: nau7802
     name: "Scale"
-    dout_pin: 34
-    clk_pin: 13
+    i2c_id: bus_a
+    address: 0x2A
+    ldo_voltage: "3.0V"
     gain: 128
+    samples_per_second: 10
     update_interval: 15s
     accuracy_decimals: 1
     unit_of_measurement: g
     filters:
+      # TODO: points were measured with the HX711 on HW Rev 1.2 -- re-calibrate on the NAU7802.
       - calibrate_linear:
           - 212500 -> 0
           - 234000 -> 10
