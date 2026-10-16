@@ -1,14 +1,29 @@
 esphome:
   name: geckocontrol
-  platform: ESP32
+  # Every boot/reflash comes up with all automations ENABLED. The PID climates (heating + humidity)
+  # restore their last mode from flash, so a manual OFF would persist -- force them back to HEAT_COOL
+  # here. The rain/light/fan enables are globals with restore_value:no (initial true) further down;
+  # their template switches carry restore_mode: DISABLED so they mirror the global instead of
+  # driving it off during setup().
+  on_boot:
+    priority: -100
+    then:
+      - climate.control:
+          id: thermostat_air
+          mode: HEAT_COOL
+      - climate.control:
+          id: hygrostat
+          mode: HEAT_COOL
+
+esp32:
   board: nodemcu-32s
-  includes:
-    - gecko_custom.h
+  framework:
+    type: arduino
 
 external_components:
   - source:
       type: local
-      path: custom_components
+      path: ./external_components
 
 wifi:
   ssid: !secret wifi_ssid
@@ -36,18 +51,21 @@ api:
             id: daylight_attenuation_output
             level: !lambda 'return level / 100.0;'
 ota:
+  - platform: esphome
 
-custom_component:
-- lambda: |-
-    auto gecko_custom = new GeckoCustomComponent();
-    return {gecko_custom};
-  components:
-    - id: gecko
+# Restore values (multifan_auto, is_daytime, calibration sets) are only flushed to flash
+# every flash_write_interval; the 60s default loses recent changes across a reboot/power-cut.
+# These settings change rarely, so commit them promptly.
+preferences:
+  flash_write_interval: 15s
 
 switch:
   - platform: template
     name: "Nighttime / Daytime"
     icon: mdi:theme-light-dark
+    # The global is the source of truth; the switch only mirrors it. Without DISABLED the
+    # template default (ALWAYS_OFF) fires turn_off_action at boot and clobbers the global.
+    restore_mode: DISABLED
     lambda: |-
       return id(is_daytime);
     turn_on_action:
@@ -56,6 +74,133 @@ switch:
     turn_off_action:
       - lambda: |-
           id(is_daytime) = false;
+
+  - platform: template
+    name: "Multifan Auto"
+    id: multifan_auto_switch
+    icon: mdi:fan-auto
+    restore_mode: DISABLED      # mirrors id(multifan_auto); must not drive it at boot
+    lambda: |-
+      return id(multifan_auto);
+    turn_on_action:
+      - lambda: |-
+          id(multifan_auto) = true;
+    turn_off_action:
+      - lambda: |-
+          id(multifan_auto) = false;
+          // Handing over to the "Fan Manual Speed" slider: re-read the fan so it shows the speed
+          // the automation left behind instead of a stale value for up to one poll interval.
+          id(fan_manual_speed).update();
+
+  # Master enable for the light automation. Off freezes the lamps/RGB in their current state:
+  # no sunrise/sunset cycles, no daylight/sky/moon/lightning effects. Heating is unaffected
+  # (disable it via the thermostat). Default on.
+  - platform: template
+    name: "Light Automation"
+    id: lights_enabled_switch
+    icon: mdi:weather-sunny
+    restore_mode: DISABLED      # mirrors id(lights_enabled); must not drive it at boot
+    lambda: |-
+      return id(lights_enabled);
+    turn_on_action:
+      - lambda: |-
+          id(lights_enabled) = true;
+          // Resume immediately instead of waiting for the next sun/moon/weather event. The day/night
+          // flip is frozen while automation is off, so re-sync is_daytime to the sun's current
+          // position, then re-apply: at night turn the daylight lamp off and re-run the moon handler
+          // for the scenic moonlight; by day the PID relights the daylight lamp on its next cycle.
+          // Cloud dimming and the weather effect were skipped while frozen; re-run the matrix for
+          // the code in force so the lamps match the weather right away.
+          id(gecko_weather).reapply();
+          if (!id(esptime).now().is_valid()) return;
+          bool day = id(remote_sun).elevation() > 0.0f;
+          id(is_daytime) = day;
+          id(twilight_attenuation) = 1.0f;
+          if (!day) {
+            auto off = id(day_light).turn_off();
+            off.set_transition_length(2000);
+            off.perform();
+            if (id(moon).has_state())
+              id(moon).publish_state(id(moon).state);   // re-runs the moon handler -> scenic moonlight
+          }
+    turn_off_action:
+      - lambda: |-
+          id(lights_enabled) = false;
+
+  # Master enable for the rain/humidification automation. Off stops all automatic pump activity;
+  # the "Let it rain" button still works. Default on.
+  - platform: template
+    name: "Rain Automation"
+    id: rain_enabled_switch
+    icon: mdi:weather-pouring
+    restore_mode: DISABLED      # mirrors id(rain_enabled); must not drive it at boot
+    lambda: |-
+      return id(rain_enabled);
+    turn_on_action:
+      - lambda: |-
+          id(rain_enabled) = true;
+    turn_off_action:
+      - lambda: |-
+          id(rain_enabled) = false;
+
+  - platform: template
+    name: "PID Calibration"
+    id: pid_calibration_switch
+    icon: mdi:tune-vertical
+    restore_mode: DISABLED      # mirrors geckopid; a boot turn_off_action would abort_calibration()
+    lambda: |-
+      return id(gecko_pid).is_calibrating();
+    turn_on_action:
+      - lambda: 'id(gecko_pid).start_calibration();'
+    turn_off_action:
+      - lambda: 'id(gecko_pid).abort_calibration();'
+
+select:
+  - platform: template
+    name: "Calibration Target"
+    id: calibration_target_select
+    icon: mdi:target
+    optimistic: true
+    # Order maps to geckopid targets via i+1: 1 heat_day · 2 heat_night · 3 cool · 4 humidify · 5 dehumidify.
+    options:
+      - "Heating (Daylight)"
+      - "Heating (Heat lamp)"
+      - "Cooling"
+      - "Humidification"
+      - "Dehumidification"
+    initial_option: "Heating (Daylight)"
+    on_value:
+      - lambda: 'id(gecko_pid).set_selected_target(i + 1);'
+
+  # Testing aid: pick a weather condition and the geckolights matrix immediately drives the
+  # terrarium (illumination + rain + effect). "(live)" releases back to the historic weather_code
+  # feed. Shower codes put the growlight into its gusty passing-clouds cycle.
+  # The labels' WMO codes are listed in `codes[]` below (index-aligned to the options).
+  - platform: template
+    name: "Weather Override (test)"
+    id: weather_override_select
+    icon: mdi:weather-partly-cloudy
+    optimistic: true
+    options:
+      - "(live)"
+      - "Clear"
+      - "Partly cloudy"
+      - "Overcast"
+      - "Fog"
+      - "Drizzle"
+      - "Light rain"
+      - "Rain"
+      - "Heavy rain"
+      - "Snow"
+      - "Rain showers"
+      - "Thunderstorm"
+      - "Severe thunderstorm"
+    initial_option: "(live)"
+    on_value:
+      - lambda: |-
+          static const int codes[] = {-1, 0, 2, 3, 45, 53, 61, 63, 65, 73, 81, 95, 99};
+          if (i == 0) { id(gecko_weather).clear_override(); return; }
+          id(gecko_weather).set_weather_code(codes[i], true);
 
 button:
   - platform: template
@@ -69,26 +214,15 @@ button:
       - output.turn_off:
           id: rain_pump
 
-  - platform: template
-    id: fog_button
-    name: "Sleepy hollow"
-    icon: "mdi:weather-fog"
-    on_press:
-      - output.set_level:
-            id: fogger_float
-            level: 1.0
-      - delay: 30s
-      - output.set_level:
-            id: fogger_float
-            level: 0.0
-
 output:
   - platform: ac_dimmer
     id: dimmer1
     gate_pin: 16
+    method: leading
     min_power: 15%
     zero_cross_pin:
-      number: 17
+      # 6N139 open collector, pulled up externally by R81 (GPIO34 is input-only, no internal pulls)
+      number: 34
       mode: INPUT
       inverted: no
   - platform: slow_pwm
@@ -98,151 +232,213 @@ output:
   - platform: gpio
     pin: 4
     id: rain_pump
-  - platform: slow_pwm
+  - platform: gpio
     pin: 2
-    id: fogger_float
-    period: 60s
+    id: growlight
   - platform: ledc
-    pin: 32
+    pin: 33
     id: component_red
     channel: 0
   - platform: ledc
-    pin: 33
+    pin: 14
     id: component_green
     channel: 2
   - platform: ledc
-    pin: 27
+    pin: 32
     id: component_blue
     channel: 4
+  # HW Rev 2.0 high-current white channel (MCP1416 gate driver + AOD442). Channel 1 shares
+  # LEDC timer 0 with red at the same default frequency; 6 would collide with the 25 kHz fan timer.
   - platform: ledc
-    pin: GPIO14
+    pin: 27
+    id: component_white
+    channel: 1
+  - platform: ledc
+    pin: 17
     id: fan_pwm
     frequency: 25000 hz
     channel: 7
-  - platform: custom
-    type: float
-    lambda: |-
-      auto rain_pump_output_c = new RainPumpOutput();
-      App.register_component(rain_pump_output_c);
-      return {rain_pump_output_c};
-    outputs:
-      id: rain_pump_float
-      #period: 30min
-      max_power: 0.02
-      # max. 18 seconds of rain per half hour
+  # Rain pump: serves both historic-weather rain simulation and humidification (hygrostat
+  # heat_output). Duty is arbitrated inside the component (see PID_CALIBRATION.md); internal
+  # caps replace the old max_power. period default 180s.
+  - platform: geckorain
+    id: rain_pump_float
+    pump: rain_pump
+    # period: 30min
+    weather: weather_precipitation
+    humidity: humidity_combined
+    hygrostat: hygrostat
+    calibration_target: calibration_target
+    enabled: rain_enabled
   - platform: template
     id: daylight_attenuation_output
     type: float
     write_action:
       - lambda: |-
           id(twilight_attenuation) = state;
-          ESP_LOGD(TAG, "wrote twilight_attenuation: %.2f", id(twilight_attenuation));
-  - platform: template
-    id: fogger_humidifier
-    type: float
-    write_action:
-      - lambda: |-
-            ClimateAction action = id(hygrostat).action;
-            if (action == CLIMATE_ACTION_HEATING) {
-              float duty_cycle = state/4.0;
-              ESP_LOGD(TAG, "Hygrostat PID Controller fogger write_action: %.3f / duty cycle: %.0f%%", state, duty_cycle*100);
-              id(fogger_float).set_level(duty_cycle);
-            } else {
-              ESP_LOGD(TAG, "Hygrostat PID Controller turn off fogger");
-            }
-  - platform: template
-    id: heater
-    type: float
-    write_action:
-      - lambda: |-
-            ClimateMode mode = id(thermostat_air).mode;
-            if (mode == CLIMATE_MODE_OFF) {
-                ESP_LOGD(TAG, "ignored heater write_action because thermostat is off");
-            } else if (id(is_daytime) == true) {
-              auto therm = id(thermostat_air).make_call();
-              float set_val = id(thermostat_air)->get_output_value();
-              float att_max = id(twilight_attenuation)*id(skycond_attenuation);
-              float att_min = att_max/10.0;
-              ESP_LOGD(TAG, "Thermostat PID Controller daylight write_action: %.3f, set_val: %.3f, att_max: %.3f", state, set_val, att_max);
-              float brightness = state;
-              if (state > att_max) {
-                float max_ratio = (set_val-1.0)*0.1;
-                float att_ratio = (1.0-max_ratio)*att_max;
-                brightness = (att_ratio + max_ratio)*id(twilight_attenuation);
-                ESP_LOGD(TAG, "state>att_max. (%.2f%+.2f)*%.2f => brightness: %.2f", att_ratio, max_ratio, id(twilight_attenuation), brightness);
-              }
-              else if (state < att_min) {
-                brightness = att_min;
-                ESP_LOGD(TAG, "state<att_min (%.2f) => brightness: %.2f", att_min, brightness);
-              }
-              auto daylight = id(day_light).make_call();
-              daylight.set_transition_length(30000);
-              daylight.set_brightness(brightness);
-              daylight.perform();
-            } else {
-              ESP_LOGD(TAG, "Thermostat PID Controller nighttime heatlamp write_action: %.3f", state);
-              auto heatlamp = id(heat_lamp).make_call();
-              heatlamp.set_state(!!state);
-              heatlamp.set_brightness(state ? state : 0.001);
-              heatlamp.perform();
-            }
+          ESP_LOGD("gecko", "wrote twilight_attenuation: %.2f", id(twilight_attenuation));
 
-light:
-  - platform: monochromatic
+# The WMO weather matrix and the resolved weather state, owned separately from the lights: it is
+# the single answer to "what is the weather doing right now", and its consumers are unrelated to
+# each other -- the rain pump reads the precipitation sensor, the illumination controller reads the
+# attenuation global, and geckolights subscribes for the light effect. None of that belongs to a
+# lights component.
+geckoweather:
+  id: gecko_weather
+  code_sensor: weather_code
+  precipitation: weather_precipitation
+  attenuation: skycond_attenuation
+  # WMO weather-code matrix: maps each Open-Meteo weather_code to cloud cover in oktas, rain
+  # intensity (0..5, published to weather_precipitation for the pump) and an optional light effect.
+  #
+  # oktas (0 = clear .. 8 = overcast) is the single sky-attenuation input: the device turns it into
+  # a brightness factor as 1 - oktas/9, i.e. 0 -> 100%, 1 -> 89%, 2 -> 78%, 3 -> 67%, 4 -> 56%,
+  # 5 -> 44%, 6 -> 33%, 7 -> 22%, 8 -> 11%. That factor is what the terrarium *looks* like: it
+  # drives the growlight/scenic pair by day and the moonlight by night, and nothing else. The
+  # daylight lamp is not weather-dimmed any more -- it is the daytime heater and belongs to the PID.
+  # So these are illumination figures, not heater figures: overcast is a dull day (3 oktas / 67%),
+  # not the near-dark the old heater-facing scale used.
+  #
+  # Effects: "Lightning" (scenic RGB flicker) and "Daylight Swell", which now means "this weather
+  # has clouds drifting through it" -- the growlight's cycle gusts instead of holding a steady duty.
+  # Edit freely.
+  default: { oktas: 0, rain: 0 }               # unmapped code -> clear
+  rules:
+    - codes: [0]                                # clear
+      oktas: 0
+    - codes: [1]                                # mainly clear
+      oktas: 1
+    - codes: [2]                                # partly cloudy
+      oktas: 2
+    - codes: [3]                                # overcast
+      oktas: 3
+    - codes: [45, 48]                           # fog / rime fog
+      oktas: 5
+    - codes: [51, 56]                           # light drizzle
+      oktas: 4
+      rain: 1
+    - codes: [53, 57]                           # drizzle
+      oktas: 5
+      rain: 2
+    - codes: [55]                               # heavy drizzle
+      oktas: 6
+      rain: 3
+    - codes: [61]                               # light rain
+      oktas: 5
+      rain: 4
+    - codes: [63, 66]                           # rain
+      oktas: 6
+      rain: 5
+    - codes: [65, 67]                           # heavy rain
+      oktas: 7
+      rain: 6
+    - codes: [71, 77]                           # light snow / grains
+      oktas: 4
+      rain: 1
+    - codes: [73]                               # snow
+      oktas: 6
+      rain: 4
+    - codes: [75]                               # heavy snow
+      oktas: 7
+      rain: 5
+    - codes: [80, 85]                           # light rain / snow showers
+      oktas: 4
+      rain: 2
+      effect: "Daylight Swell"
+    - codes: [81, 86]                           # rain / snow showers
+      oktas: 5
+      rain: 3
+      effect: "Daylight Swell"
+    - codes: [82]                               # violent rain showers
+      oktas: 7
+      rain: 5
+      effect: "Daylight Swell"
+    - codes: [95, 96, 99]                       # thunderstorms
+      oktas: 8
+      rain: 4
+      effect: "Lightning"
+
+# The three lights (heat lamp, daylight lamp, RGB) plus the Sun light effects and the
+# thermostat-driven daylight/heatlamp logic are owned by the geckolights component.
+geckolights:
+  id: gecko_lights
+  thermostat: thermostat_air
+  twilight_attenuation: twilight_attenuation
+  skycond_attenuation: skycond_attenuation
+  is_daytime: is_daytime
+  calibration_target: calibration_target
+  enabled: lights_enabled
+  moon: moon
+  weather: gecko_weather
+  # Visible illumination: what the terrarium *looks* like, which since the daylight lamp became a
+  # pure heater (it follows the PID demand down to zero) is no longer the daylight lamp's job. The
+  # setpoint is the weather matrix's illumination factor scaled by the sun's current elevation.
+  # Below `split` the scenic RGB carries it alone as a white fill; above it the growlight strip
+  # takes over, slow-PWM'd over `period` with the scenic white filling the off phases.
+  # `full_elevation` is the sun elevation counted as full daylight -- 45 deg so local midday
+  # reaches 100% year round (noon peaks at ~44 deg at the winter solstice for this latitude).
+  # The strip is switched today; point `growlight` at a dimmable output (ledc) and set
+  # `dimmable: true` to drive it as a level instead -- the antiphase scheme becomes a plain
+  # crossfade and nothing else changes.
+  # Human sleeping hours: from 23:30 local until the night ends at sunrise, halve the scenic
+  # moonlight so it stops glowing into the room. Local clock on purpose -- the weather feed runs on
+  # Noumea time, but whoever is trying to sleep is here.
+  quiet_hours:
+    time: esptime
+    start: "23:30:00"
+    factor: 50%
+  illumination:
+    sun: remote_sun
+    growlight: growlight
+    dimmable: false
+    period: 5min
+    split: 50%
+    full_elevation: 45
+    sensor: illumination_setpoint
+  heat_lamp:
+    id: heat_lamp
+    output: heat_lamp_pwm
+    name: "Heat Lamp"
+  day_light:
     id: day_light
     output: dimmer1
     name: "Dimmer Daylight"
     gamma_correct: 1.0
     default_transition_length: 0s
-
-  - platform: monochromatic
-    id: heat_lamp
-    output: heat_lamp_pwm
-    name: "Heat Lamp"
-
-  - platform: rgb
-    name: "Scenic Light"
+  # The Sunrise/Sunset and Lightning effects are registered in C++ by the geckolights component.
+  # (Passing clouds are no longer an effect here -- see the illumination controller above.)
+  scenic_light:
     id: scenic_light
+    name: "Scenic Light"
     red: component_red
     green: component_green
     blue: component_blue
-    effects:
-      - lambda:
-          name: Lightning
-          update_interval: 50ms
-          lambda: |-
-            static bool flashing = true;
-            static uint8_t r = 0;
-            auto call = id(scenic_light).make_call();
-            if (r == 0) {
-              call.set_rgb(1.,1.,1.);
-              call.perform();
-            }
-            r = random(1,100);
-            if (r > 95) {
-              call.set_transition_length(5);
-              call.set_brightness(1.0);
-              call.perform();
-              flashing = true;
-            } else if (flashing) {
-              call.set_transition_length(300);
-              call.set_brightness(0.01);
-              call.perform();
-              flashing = false;
-            }
+
+# HW Rev 2.0 white channel, not yet part of the geckolights scheme -- exposed for manual use.
+light:
+  - platform: monochromatic
+    id: white_light
+    name: "White Light"
+    output: component_white
 
 fan:
-  - platform: multi
+  - platform: geckofan
     id: multifan
+    # The HA-facing fan entity ("Gecko Multifan Status"). Its speed is written by the combined PID
+    # formula in auto mode and by the "Fan Manual Speed" number in manual mode; either way the
+    # component mirrors it onto fan_pwm.
+    fan_id: multifan_status
     name: "Gecko Multifan"
     output: fan_pwm
     hygrostat:
       id: hygrostat
-      weight: 4.0
     thermostat:
       id: thermostat_air
     vicinity: temperature_vicinity
+    tacho: fan_tacho
     wind_speed: weather_windspeed
+    calibration_target: calibration_target
+    auto_mode: multifan_auto
 
 i2c:
   sda: 25
@@ -250,23 +446,32 @@ i2c:
   scan: True
   id: bus_a
 
-dallas:
-  - pin: 22
-    update_interval: 5min
+one_wire:
+  - platform: gpio
+    id: bus_dallas
+    pin: 22
 
 sensor:
-  - platform: hx711
+  # HW Rev 2.0: NAU7802 on the I2C bus (0x2A) replaces the HX711. AVDD comes from the internal
+  # LDO (DVDD via JP61), so ldo_voltage must stay below 3V3 - 0.3 V.
+  - platform: nau7802
     name: "Scale"
-    dout_pin: 34
-    clk_pin: 13
+    i2c_id: bus_a
+    address: 0x2A
+    ldo_voltage: "3.0V"
     gain: 128
+    samples_per_second: 10
     update_interval: 15s
-    accuracy_decimals: 2
+    accuracy_decimals: 1
     unit_of_measurement: g
     filters:
+      # TODO: points were measured with the HX711 on HW Rev 1.2 -- re-calibrate on the NAU7802.
       - calibrate_linear:
-          - 242000 -> 0
-          - 456666 -> 100
+          - 212500 -> 0
+          - 234000 -> 10
+          - 253900 -> 20
+          - 316700 -> 50
+          - 419000 -> 100
       - delta: 0.5
       - lambda: |-
             if (x < 0)
@@ -275,26 +480,39 @@ sensor:
               return 0.0;
             return x;
 
-  - platform: dallas
-    address: !secret DsAddressHeatBed
-    name: "Temperature Vicinity"
-    unit_of_measurement: "°C"
-    id: temperature_vicinity
-
-  - platform: dallas
+  - platform: dallas_temp
+    one_wire_id: bus_dallas
     address: !secret DsAddressSubstrate
     name: "Temperature Substrate"
-    unit_of_measurement: "°C"
     id: temperature_substrate
+    update_interval: 10s
+    accuracy_decimals: 1
+    filters:
+      # DS18B20 power-on/error default (85.0) and disconnected (-127.0) are not real readings.
+      # Anchored per entry so other DS18B20 sensors can reuse them and still add their own.
+      - filter_out: 85.0
+      - filter_out: -127.0
+      - delta: 0.5
 
-  - platform: bme280
+  # Vicinity = the room temperature where the terrarium stands, taken from the current
+  # temperature (Ist-Temperatur) of the climate.arbeit entity in Home Assistant.
+  # No reading exists until HA provides one (the fan's vicinity logic stays idle until then).
+  - platform: homeassistant
+    id: temperature_vicinity
+    name: "Vicinity Temperature"
+    entity_id: climate.arbeit
+    attribute: current_temperature
+    unit_of_measurement: "°C"
+    device_class: temperature
+
+  - platform: bme280_i2c
     temperature:
       name: "Ceiling Temperature"
       oversampling: 16x
       id: temperature_ceiling
       filters:
         - lambda: |-
-            if (x > 0 && x < 60)
+            if (x < 60)
               return x;
             return {};
     pressure:
@@ -302,13 +520,32 @@ sensor:
     humidity:
       name: "Ceiling Humidity"
       id: humidity_ceiling
-      filters:
-        - filter_out: 100
-        - filter_out: 0
+      # filters:
+      #   - filter_out: 100
+      #   - filter_out: 0
+      accuracy_decimals: 0
     address: 0x76
     update_interval: 15s
 
-  - platform: sht3xd
+  # - platform: sht3x
+  #   temperature:
+  #     name: "Ground Temperature"
+  #     id: temperature_ground
+  #     filters:
+  #       - lambda: |-
+  #           if (x > 0 && x < 60)
+  #             return x;
+  #           return {};
+  #       - calibrate_linear:
+  #           - 0.7 -> -6.6
+  #           - 30.4 -> 25.12
+  #   humidity:
+  #     name: "Ground Humidity"
+  #     id: humidity_ground
+  #   address: 0x44
+  #   update_interval: 20s
+
+  - platform: sht4x
     temperature:
       name: "Ground Temperature"
       id: temperature_ground
@@ -317,19 +554,26 @@ sensor:
             if (x > 0 && x < 60)
               return x;
             return {};
+        - calibrate_linear:
+            - 0.7 -> -6.6
+            - 30.4 -> 25.12
     humidity:
       name: "Ground Humidity"
       id: humidity_ground
+      accuracy_decimals: 0
     address: 0x44
     update_interval: 20s
 
   - platform: pulse_counter
     name: "Fan Tacho"
+    id: fan_tacho
     pin: 35
     unit_of_measurement: rpm
-    update_interval: 60s
+    update_interval: 10s
+    accuracy_decimals: 0
     filters:
-      multiply: 0.5
+      - multiply: 0.5
+      - delta: 5.0
 
   - platform: sun
     name: Sun Elevation
@@ -355,91 +599,38 @@ sensor:
               target_temperature: !lambda |-
                 return x;
 
-  - platform: homeassistant   # actual historic rain intensity (range 0-5)
+  # Visible-illumination setpoint (0-100%) published by the geckolights illumination controller:
+  # the weather matrix's illumination factor scaled by the sun's elevation. Read-only readout --
+  # useful for seeing why the growlight is cycling the way it is.
+  - platform: template
+    id: illumination_setpoint
+    name: "Illumination"
+    unit_of_measurement: "%"
+    icon: mdi:brightness-5
+    accuracy_decimals: 0
+
+  # Rain intensity (0-5) is now derived from the WMO weather code by the geckolights weather
+  # matrix and published here; the geckorain rain-pump component consumes it as before.
+  - platform: template
     id: weather_precipitation
-    entity_id: sensor.rain_in_france_noumea_182_days_ago
-    on_value:
-      then:
-        - output.set_level:
-            id: rain_pump_float
-            level: !lambda |-
-                return x/5.0;
+    name: "Rain intensity"
+    accuracy_decimals: 0
 
   - platform: homeassistant   # actual historic rain intensity (range 0-5)
     id: weather_windspeed
     entity_id: sensor.windspeed_in_france_noumea_182_days_ago
 
-  # actual historic sky conditions
-  # a numeric value in the range of (0-22) which indicates increasing sky covering
-  # we're going to interpret it as a correction factor for the daylight intensitiy,
-  # the higher the value, the more daylight will be dimmed down
+  # Raw WMO weather interpretation code (Open-Meteo weather_code) from the HA historic-weather
+  # plugin. Single source of truth: the geckolights weather matrix maps it to cloud-cover dimming,
+  # rain intensity and a light effect. (Replaces the old back-converted 0..22 "sky" sensor.)
   - platform: homeassistant
-    id: weather_sky
-    entity_id: sensor.sky_in_france_noumea_182_days_ago
-    on_value:
-      then:
-        - lambda: |-
-            ESP_LOGD(TAG, "sky value changed to: %.0f", x);
-            auto sceniclight = id(scenic_light).make_call();
-            if (x == 30) {
-              auto daylight = id(day_light).make_call();
-              daylight.set_brightness(0.01);
-              daylight.set_state(false);
-              daylight.perform();
-              sceniclight.set_state(true);
-              sceniclight.set_effect("Lightning");
-              sceniclight.perform();
-              return;
-            } else if (id(scenic_light)->get_effect_name() == "Lightning") {
-              sceniclight.set_effect("None");
-              if (id(is_daytime)) {
-                auto daylight = id(day_light).make_call();
-                daylight.set_state(true);
-                daylight.perform();
-              }
-            }
-            if (id(is_daytime)) {
-              float scenic_b, day_b, dim_factor;
-              auto sceniclight = id(scenic_light).make_call();
-              auto daylight = id(day_light).make_call();
+    id: weather_code
+    entity_id: sensor.weather_code_in_france_noumea_182_days_ago
 
-              id(scenic_light).current_values_as_brightness(&scenic_b);
-              id(day_light).current_values_as_brightness(&day_b);
-              ESP_LOGD(TAG, "previous attenuated brightness scenic: %.3f, daylight: %.3f, old skycond_attenuation: %.3f", scenic_b, day_b, id(skycond_attenuation));
-
-              scenic_b /= id(skycond_attenuation);
-              day_b /= (id(skycond_attenuation)*id(twilight_attenuation));
-
-              id(skycond_attenuation) = (24-x)/24;
-              ESP_LOGD(TAG, "previous normalized brightness scenic: %.3f, daylight: %.3f, new skycond_attenuation: %.3f", scenic_b, day_b, id(skycond_attenuation));
-
-              scenic_b *= id(skycond_attenuation);
-              day_b *= (id(skycond_attenuation)*id(twilight_attenuation));
-              ESP_LOGD(TAG, "target_brightness: scenic: %.3f, daylight: %.3f", scenic_b, day_b);
-
-              sceniclight.set_transition_length(60*1000);
-              sceniclight.set_brightness(scenic_b);
-              sceniclight.perform();
-
-              daylight.set_transition_length(60*1000);
-              daylight.set_brightness(day_b);
-              daylight.perform();
-            }
-
+  # Consumed by the geckolights component (moon -> scenic moonlight at night).
   - platform: homeassistant
     id: moon
     entity_id: sensor.moon_in_france_noumea_182_days_ago
-    on_value:
-      then:
-        - lambda: |-
-            std::string effect = id(scenic_light)->get_effect_name();
-            if (id(is_daytime) == false && effect == "None") {
-              auto call = id(scenic_light).make_call();
-              float attenuated_moonlight = (x/2.0 + x/2.0*(id(skycond_attenuation)))/100.0 + 0.01;
-              call.set_brightness(attenuated_moonlight);
-              call.set_state(x > 0.0 ? true : false);
-              call.perform();
-            }
 
   - platform: template
     name: "Combined humidity"
@@ -450,20 +641,49 @@ sensor:
     state_class: "measurement"
     accuracy_decimals: 1
     lambda: |-
-      return (id(humidity_ceiling).state + id(humidity_ground).state) / 2.0;
+      bool have_ceiling = id(humidity_ceiling).has_state() && !std::isnan(id(humidity_ceiling).state);
+      bool have_ground = id(humidity_ground).has_state() && !std::isnan(id(humidity_ground).state);
+      if (have_ceiling && have_ground)
+        return (id(humidity_ceiling).state + id(humidity_ground).state) / 2.0;
+      if (have_ground)  // ceiling humidity missing (e.g. filtered out) -> ground only
+        return id(humidity_ground).state;
+      if (have_ceiling)
+        return id(humidity_ceiling).state;
+      return {};
 
 time:
   - platform: homeassistant
     id: esptime
+    timezone: "Europe/Berlin"
     on_time_sync:
       then:
         - lambda: |-
               auto ts = id(esptime).now();
-              ESPTime remote_ts = time::ESPTime::from_epoch_utc(ts.timestamp - 182*24*60*60);
+              ESPTime remote_ts = ESPTime::from_epoch_utc(ts.timestamp - 182*24*60*60);
               char datetimestr[21];
               remote_ts.strftime(datetimestr, 20, "%Y-%m-%d %H:%M:%S");
-              ESP_LOGD(TAG, "offset timestamp: %s", datetimestr);
+              ESP_LOGD("gecko", "offset timestamp: %s", datetimestr);
               id(remote_time).set_epoch_time(ts.timestamp - 182*24*60*60);
+        - lambda: |-
+              // Boot/resync reconcile: a sunrise/sunset edge missed during a reboot (e.g. the device
+              // booted after sunset) must not strand is_daytime. Align it to the sun's current
+              // position as soon as local time is valid. A cosmetic ramp, if animating, owns the flip.
+              if (!id(lights_enabled)) return;
+              std::string eff = id(day_light).get_effect_name();
+              if (eff == "Sunrise Daylight" || eff == "Sunset Daylight") return;
+              bool day = id(remote_sun).elevation() > 0.0f;
+              if (day && !id(is_daytime)) {
+                ESP_LOGI("gecko", "time sync reconcile -> DAY (sun above horizon)");
+                id(is_daytime) = true;
+                id(twilight_attenuation) = 1.0f;
+              } else if (!day && id(is_daytime)) {
+                ESP_LOGI("gecko", "time sync reconcile -> NIGHT (sun below horizon)");
+                id(is_daytime) = false;
+                id(twilight_attenuation) = 1.0f;
+                auto call = id(day_light).turn_off();
+                call.set_transition_length(60000);
+                call.perform();
+              }
 
   - platform: homeassistant
     id: remote_time
@@ -473,19 +693,24 @@ time:
         - logger.log: "Synchronized remote_time"
         - lambda: |-
               auto ts = id(remote_time).now();
-              ESPTime remote_ts = time::ESPTime::from_epoch_utc(ts.timestamp);
+              ESPTime remote_ts = ESPTime::from_epoch_utc(ts.timestamp);
               char datetimestr[21];
               remote_ts.strftime(datetimestr, 20, "%Y-%m-%d %H:%M:%S");
-              ESP_LOGD(TAG, "remote_time timestamp = %s", datetimestr);
+              ESP_LOGD("gecko", "remote_time timestamp = %s", datetimestr);
 
 sun:
   id: remote_sun
-  time_id: remote_time
+  # Sun ephemeris uses LOCAL time (esptime), NOT the -182-day weather offset (remote_time).
+  # The terrarium stands in the northern hemisphere, so its day/night cycle and seasons must be
+  # local: summer solstice ~June 20, sun high, long summer days. Only the *weather* feed is taken
+  # from Noumea 182 days ago (southern summer) via the historic HA sensors. Feeding remote_time
+  # here inverted the season -- it simulated northern winter (December) in June, dropping the noon
+  # sun to ~44° so the on_sunset @44° ramp (which flips is_daytime) silently never fired.
+  time_id: esptime
   #latitude: -22.6
   #longitude: 167.5
-  # Take original Noumea / Nouvelle-Calédonie latitude
-  # but mirror it to the northern hemisphere
-  # and use actual local longitude
+  # Original Noumea latitude (22.6°S) mirrored to the northern hemisphere, i.e. kept near the
+  # equator for a tropical day length, paired with the actual local installation longitude.
   latitude: 22.6
   longitude: 9.15
 
@@ -493,10 +718,16 @@ sun:
     - elevation: 5°
       then:
         - lambda: |-
+              if (!id(lights_enabled)) return;  // light automation disabled -> no day/night cycle
               auto call = id(scenic_light).turn_on();
               call.set_effect("Sunrise Color");
               call.perform();
               auto call2 = id(day_light).turn_on();
+              // The ramp is only the envelope now, so start the day dark and let the thermostat
+              // raise the lamp: turn_on() alone would restore last night's remembered brightness
+              // and flash it at full until the PID's next cycle (15 s). 0.001 instead of 0 because
+              // set_brightness(0) resets the light's stored brightness to 1.0.
+              call2.set_brightness(0.001f);
               call2.set_effect("Sunrise Daylight");
               call2.perform();
         - logger.log: Good morning, Gecko.
@@ -505,15 +736,33 @@ sun:
     - elevation: 44°
       then:
         - lambda: |-
-              auto call = id(day_light).make_call();  
+              if (!id(lights_enabled)) return;  // light automation disabled -> no day/night cycle
+              auto call = id(day_light).make_call();
               call.set_effect("Sunset Daylight");
               call.perform();
     - elevation: 5°
       then:
         - logger.log: Good night, Gecko.
         - lambda: |-
+              if (!id(lights_enabled)) return;  // light automation disabled -> no day/night cycle
               auto call = id(scenic_light).turn_on();
               call.set_effect("Sunset Color");
+              call.perform();
+    # Reliable daily night flip: the sun crosses the horizon every day, all year, so this can never
+    # be skipped the way the cosmetic on_sunset @44° ramp is near the winter solstice (sun peaks at
+    # ~44° and never descends through it). In summer that ramp is usually still animating here and
+    # owns the flip, so defer to it; otherwise (winter, or the ramp already done) force night now.
+    - elevation: 0°
+      then:
+        - lambda: |-
+              if (!id(lights_enabled)) return;  // light automation disabled -> no day/night cycle
+              if (id(day_light).get_effect_name() == "Sunset Daylight") return;  // ramp owns the flip
+              if (!id(is_daytime)) return;                                       // already night
+              ESP_LOGI("gecko", "sunset @ horizon: forcing NIGHT");
+              id(is_daytime) = false;
+              id(twilight_attenuation) = 1.0f;        // reset day baseline for next sunrise
+              auto call = id(day_light).turn_off();
+              call.set_transition_length(60000);      // gentle fade, not a snap-off
               call.perform();
 
 climate:
@@ -522,7 +771,7 @@ climate:
     name: "Thermostat Air"
     sensor: temperature_ceiling
     default_target_temperature: 22 °C
-    heat_output: heater
+    heat_output: gecko_lights
     cool_output: multifan
     visual:
       min_temperature: 12
@@ -535,9 +784,10 @@ climate:
   - platform: pid
     id: hygrostat
     name: "Hygrostat"
+    internal: true   # hidden from HA; humidity is exposed as the "Target Humidity" number (%)
     sensor: humidity_combined
     default_target_temperature: 70 °C
-    heat_output: fogger_humidifier
+    heat_output: rain_pump_float   # humidification is now the rain pump (was fogger)
     cool_output: multifan
     visual:
       min_temperature: 30
@@ -548,12 +798,84 @@ climate:
       ki: 0.005
       kd: 6.38
 
+# The hygrostat (a PID climate) is hidden because HA renders a climate setpoint in °C.
+# Expose its humidity setpoint as a proper percentage instead. Current humidity is the
+# "Combined humidity" sensor (%).
+number:
+  - platform: template
+    name: "Target Humidity"
+    id: target_humidity_number
+    icon: mdi:water-percent
+    device_class: humidity
+    unit_of_measurement: "%"
+    mode: slider
+    min_value: 30
+    max_value: 100
+    step: 2
+    lambda: |-
+      return id(hygrostat).target_temperature;
+    set_action:
+      - climate.control:
+          id: hygrostat
+          target_temperature: !lambda 'return x;'
+
+  # Manual fan control (speed in %, 0 = off). Only effective while the "Multifan Auto"
+  # switch is off: in auto mode the combined PID formula owns the fan, so a manual set is refused
+  # and the slider snaps back. Refused during cool/dehumidify PID calibration too, where the
+  # autotune relay drives the PWM directly. The value always tracks the real fan speed, so it also
+  # shows what the automation is currently running at.
+  - platform: template
+    name: "Fan Manual Speed"
+    id: fan_manual_speed
+    icon: mdi:fan
+    unit_of_measurement: "%"
+    mode: slider
+    min_value: 0
+    max_value: 100
+    step: 5
+    update_interval: 15s
+    lambda: |-
+      return (float) (id(multifan_status).state ? id(multifan_status).speed : 0);
+    set_action:
+      - lambda: |-
+          auto current = [] { return (float) (id(multifan_status).state ? id(multifan_status).speed : 0); };
+          if (id(multifan_auto)) {
+            ESP_LOGW("gecko", "manual fan speed %.0f%% ignored: Multifan Auto is on", x);
+            id(fan_manual_speed).publish_state(current());
+            return;
+          }
+          int cal = id(calibration_target);
+          if (cal == 3 || cal == 5) {   // CAL_COOL / CAL_DEHUMID: the autotune relay owns the fan
+            ESP_LOGW("gecko", "manual fan speed %.0f%% ignored: PID calibration in progress", x);
+            id(fan_manual_speed).publish_state(current());
+            return;
+          }
+          ESP_LOGI("gecko", "manual fan speed: %.0f%%", x);
+          auto call = id(multifan_status).make_call();
+          call.set_state(x > 0.0f);
+          call.set_speed((int) x);
+          call.perform();
+
+# PID auto-calibration: owns 5 tuned parameter sets (heat_day/heat_night/cool/humidify/dehumidify),
+# persists them, and swaps the active set per climate action. The thermostat's heating set is
+# additionally swapped on the day<->night transition (daylight lamp vs heat lamp). See PID_CALIBRATION.md.
+geckopid:
+  id: gecko_pid
+  thermostat: thermostat_air
+  hygrostat: hygrostat
+  vicinity: temperature_vicinity
+  calibration_target: calibration_target
+  is_daytime: is_daytime
+
 globals:
    - id: scenic_light_effect
      type: uint8_t
      restore_value: no
      initial_value: '0'
 
+   # The one sky-attenuation figure (0..1, from the weather matrix's oktas): how bright the
+   # terrarium looks under the current weather. Scales the growlight/scenic pair by day and the
+   # moonlight by night. Not the daylight lamp -- that one is the daytime heater, driven by the PID.
    - id: skycond_attenuation
      type: float
      restore_value: no
@@ -568,6 +890,33 @@ globals:
      type: bool
      restore_value: yes
      initial_value: 'false'
+
+   # Multifan auto mode: true = PID drives the fan, false = HA slider drives it.
+   - id: multifan_auto
+     type: bool
+     restore_value: no          # always ENABLED on power-on (see esphome.on_boot comment)
+     initial_value: 'true'
+
+   # Light automation enable: true = sun-driven day/night cycles + daylight/RGB effects run,
+   # false = lights freeze in their current state (heating still gated by the thermostat).
+   - id: lights_enabled
+     type: bool
+     restore_value: no          # always ENABLED on power-on (see esphome.on_boot comment)
+     initial_value: 'true'
+
+   # Rain automation enable: true = weather/humidity arbitration drives the pump,
+   # false = no automatic rain/humidification (the "Let it rain" button still works).
+   - id: rain_enabled
+     type: bool
+     restore_value: no          # always ENABLED on power-on (see esphome.on_boot comment)
+     initial_value: 'true'
+
+   # PID calibration target: 0 none · 1 heat_day · 2 heat_night · 3 cool · 4 humidify · 5 dehumidify.
+   # Set by geckopid during calibration; read by the actuators to pass the relay output through.
+   - id: calibration_target
+     type: int
+     restore_value: no
+     initial_value: '0'
 
 status_led:
   pin: GPIO12
