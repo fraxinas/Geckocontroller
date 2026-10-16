@@ -9,7 +9,7 @@ namespace esphome {
 namespace geckopid {
 
 static const char *const TAG = "geckopid";
-static const uint32_t CALIB_MAGIC = 0xCA11B003;
+static const uint32_t CALIB_MAGIC = 0xCA11B004;  // bumped: CalibData layout changed (heat -> heat_day/heat_night)
 static const uint32_t PREF_HASH = 0x6743'5044;  // "gPID"
 
 void GeckoPid::setup() {
@@ -20,8 +20,10 @@ void GeckoPid::setup() {
     ESP_LOGI(TAG, "No stored calibration; keeping YAML PID defaults");
   }
   // Apply any valid stored sets so tuned values are active from boot; the runtime swap takes
-  // over once each climate reports a heating/cooling action.
-  this->apply_set_(this->thermostat_, this->data_.heat);
+  // over once each climate reports a heating/cooling action. The thermostat's heating set
+  // depends on whether the daylight lamp (day) or the heat lamp (night) is the active heater.
+  this->last_daytime_ = (this->is_daytime_ != nullptr) ? globals::id(this->is_daytime_) : true;
+  this->apply_set_(this->thermostat_, this->last_daytime_ ? this->data_.heat_day : this->data_.heat_night);
   this->apply_set_(this->hygrostat_, this->data_.humid);
 }
 
@@ -38,12 +40,14 @@ void GeckoPid::apply_set_(pid::PIDClimate *c, const PidSet &s) {
 PidSet *GeckoPid::set_for_(int target) {
   switch (target) {
     case 1:
-      return &this->data_.heat;
+      return &this->data_.heat_day;
     case 2:
-      return &this->data_.cool;
+      return &this->data_.heat_night;
     case 3:
-      return &this->data_.humid;
+      return &this->data_.cool;
     case 4:
+      return &this->data_.humid;
+    case 5:
       return &this->data_.dehumid;
     default:
       return nullptr;
@@ -51,7 +55,7 @@ PidSet *GeckoPid::set_for_(int target) {
 }
 
 pid::PIDClimate *GeckoPid::climate_for_(int target) {
-  return (target == 1 || target == 2) ? this->thermostat_ : this->hygrostat_;
+  return (target == 1 || target == 2 || target == 3) ? this->thermostat_ : this->hygrostat_;
 }
 
 void GeckoPid::loop() {
@@ -86,12 +90,17 @@ void GeckoPid::loop() {
 void GeckoPid::runtime_swap_() {
   if (this->thermostat_ != nullptr) {
     climate::ClimateAction a = this->thermostat_->action;
-    if (a != this->last_therm_) {
+    bool day = (this->is_daytime_ != nullptr) ? globals::id(this->is_daytime_) : true;
+    // Re-apply on an action change, or while heating when day<->night flips (the active heater
+    // switches between the daylight lamp and the heat lamp, which have different dynamics).
+    bool daytime_flip = (a == climate::CLIMATE_ACTION_HEATING) && (day != this->last_daytime_);
+    if (a != this->last_therm_ || daytime_flip) {
       if (a == climate::CLIMATE_ACTION_HEATING)
-        this->apply_set_(this->thermostat_, this->data_.heat);
+        this->apply_set_(this->thermostat_, day ? this->data_.heat_day : this->data_.heat_night);
       else if (a == climate::CLIMATE_ACTION_COOLING)
         this->apply_set_(this->thermostat_, this->data_.cool);
       this->last_therm_ = a;
+      this->last_daytime_ = day;
     }
   }
   if (this->hygrostat_ != nullptr) {
@@ -129,7 +138,7 @@ void GeckoPid::start_calibration() {
   mode_call.perform();
 
   // Restrict the relay to a single direction so a heat_cool climate yields one direction's params.
-  bool heat_dir = (t == 1 || t == 3);  // heating or humidification
+  bool heat_dir = (t == 1 || t == 2 || t == 4);  // heat_day / heat_night / humidification
   auto tuner = make_unique<pid::PIDAutotuner>();
   tuner->set_noiseband(this->noiseband_);
   tuner->set_output_positive(heat_dir ? 1.0f : 0.0f);
@@ -138,7 +147,7 @@ void GeckoPid::start_calibration() {
   this->baseline_kp_ = c->get_kp();
   this->start_ms_ = millis();
   // Humidity responds slowly (coarse slow-PWM rain pump) -> allow much longer.
-  this->timeout_ms_ = (t == 3 || t == 4) ? 3600000UL : 1800000UL;
+  this->timeout_ms_ = (t == 4 || t == 5) ? 3600000UL : 1800000UL;
 
   c->start_autotune(std::move(tuner));
   ESP_LOGI(TAG, "Started calibration target %d (%s)", t, heat_dir ? "heat/humidify" : "cool/dehumidify");

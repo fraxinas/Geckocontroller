@@ -10,7 +10,7 @@
 namespace esphome {
 namespace geckorain {
 
-static const int CAL_HUMIDIFY = 3;  // calibration_target value for humidification
+static const int CAL_HUMIDIFY = 4;  // calibration_target value for humidification
 
 // Slow-PWM style float output that drives a binary pump over a fixed period, and acts as the
 // hygrostat's humidify actuator. The effective duty cycle is arbitrated between historic-weather
@@ -26,6 +26,13 @@ class RainPumpOutput : public output::FloatOutput, public Component {
   void set_humidity_sensor(sensor::Sensor *s) { this->humidity_sens_ = s; }
   void set_hygrostat(pid::PIDClimate *c) { this->hygrostat_ = c; }
   void set_calibration_target(globals::GlobalsComponent<int> *g) { this->calib_target_ = g; }
+  // Master enable: when false, no automatic rain/humidification (the manual "Let it rain" button
+  // still drives the pump directly). Defaults to enabled when not configured.
+  // Bound to a `globals:` bool of either flavour: the codegen emits GlobalsComponent<bool> for
+  // restore_value: no and the unrelated RestoringGlobalsComponent<bool> for yes. Both own their
+  // bool for the life of the app, so store its address and stay agnostic to the choice.
+  void set_enabled(globals::GlobalsComponent<bool> *g) { this->enabled_ = &globals::id(g); }
+  void set_enabled(globals::RestoringGlobalsComponent<bool> *g) { this->enabled_ = &globals::id(g); }
 
   void setup() override;
   void dump_config() override;
@@ -41,10 +48,12 @@ class RainPumpOutput : public output::FloatOutput, public Component {
   sensor::Sensor *humidity_sens_{nullptr};
   pid::PIDClimate *hygrostat_{nullptr};
   globals::GlobalsComponent<int> *calib_target_{nullptr};
+  bool *enabled_{nullptr};
 
   float humidify_demand_{0};  // latest hygrostat humidify demand from write_state
   float duty_{0};             // current effective duty cycle (0..1) for the slow-PWM
   bool current_state_{false};
+  bool was_enabled_{false};   // tracks the master-enable edge so a re-enable restarts the period
   uint32_t period_start_time_{0};
   uint32_t period_{180 * 1000};
 

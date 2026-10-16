@@ -8,7 +8,6 @@ from esphome.const import (
     CONF_NAME,
     CONF_OUTPUT_ID,
     CONF_OUTPUT,
-    CONF_WEIGHT,
     CONF_WIND_SPEED,
     CONF_ID,
     CONF_RESTORE_MODE
@@ -27,19 +26,16 @@ CONF_FAN_ID = 'fan_id'
 CONF_HYGRO = 'hygrostat'
 CONF_THERMO = 'thermostat'
 CONF_VICINITY = 'vicinity'
+CONF_TACHO = 'tacho'
 CONF_CALIBRATION_TARGET = 'calibration_target'
 CONF_AUTO_MODE = 'auto_mode'
-
-PidConf = geckofan_ns.struct("PidConf")
 
 def get_item_schema(item_type):
     return cv.Schema({
         cv.Required(CONF_ID): cv.use_id(climate.PIDClimate),
-        cv.Optional(CONF_WEIGHT, default=1.0): cv.positive_float,
     })
 ITEM_SCHEMA = cv.Schema({
     cv.Required(CONF_ID): cv.use_id(climate.PIDClimate),
-    cv.Optional(CONF_WEIGHT, default=1.0): cv.positive_float,
 }).extend(cv.polling_component_schema("10s"))
 
 CONFIG_SCHEMA = cv.ENTITY_BASE_SCHEMA.extend(
@@ -50,6 +46,7 @@ CONFIG_SCHEMA = cv.ENTITY_BASE_SCHEMA.extend(
         cv.Required(CONF_HYGRO): cv.ensure_list(ITEM_SCHEMA),
         cv.Required(CONF_THERMO): cv.ensure_list(ITEM_SCHEMA),
         cv.Optional(CONF_VICINITY): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_TACHO): cv.use_id(sensor.Sensor),
         cv.Optional(CONF_WIND_SPEED): cv.use_id(sensor.Sensor),
         cv.Optional(CONF_CALIBRATION_TARGET): cv.use_id(globals.GlobalsComponent),
         cv.Optional(CONF_AUTO_MODE): cv.use_id(globals.GlobalsComponent),
@@ -76,20 +73,15 @@ async def to_code(config):
         conf = conf[0]
         item_id = await cg.get_variable(conf[CONF_ID])
 
-        struct = cg.StructInitializer(
-            PidConf,
-            ('component', item_id),
-            ('weight', conf[CONF_WEIGHT])
-        )
-
         if item == CONF_HYGRO:
-            cg.add(var.set_hygro(struct))
+            cg.add(var.set_hygro(item_id))
 
         elif item == CONF_THERMO:
-            cg.add(var.set_thermo(struct))
+            cg.add(var.set_thermo(item_id))
 
     for item, func in [
         (CONF_VICINITY, var.set_vicinity),
+        (CONF_TACHO, var.set_tacho),
         (CONF_WIND_SPEED, var.set_windspeed),
         (CONF_CALIBRATION_TARGET, var.set_calibration_target),
         (CONF_AUTO_MODE, var.set_auto),

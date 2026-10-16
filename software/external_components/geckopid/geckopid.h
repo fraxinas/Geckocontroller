@@ -21,7 +21,11 @@ struct PidSet {
 };
 
 struct CalibData {
-  PidSet heat;
+  // Heating has two physically distinct actuators sharing one PID controller: the daylight lamp
+  // (daytime, primary) and the heat lamp (night, plus daytime supplement). Each is tuned and
+  // stored separately; geckopid swaps the thermostat's params on the day<->night transition.
+  PidSet heat_day;
+  PidSet heat_night;
   PidSet cool;
   PidSet humid;
   PidSet dehumid;
@@ -29,13 +33,14 @@ struct CalibData {
 };
 
 // Calibration targets (also written to the shared calibration_target global so actuators
-// switch to pass-through). 1 heat · 2 cool · 3 humidify · 4 dehumidify.
+// switch to pass-through). 1 heat_day · 2 heat_night · 3 cool · 4 humidify · 5 dehumidify.
 class GeckoPid : public Component {
  public:
   void set_thermostat(pid::PIDClimate *c) { this->thermostat_ = c; }
   void set_hygrostat(pid::PIDClimate *c) { this->hygrostat_ = c; }
   void set_vicinity_sensor(sensor::Sensor *s) { this->vicinity_sens_ = s; }
   void set_calibration_target(globals::GlobalsComponent<int> *g) { this->calib_target_ = g; }
+  void set_is_daytime(globals::RestoringGlobalsComponent<bool> *g) { this->is_daytime_ = g; }
   void set_noiseband(float n) { this->noiseband_ = n; }
 
   void setup() override;
@@ -59,6 +64,7 @@ class GeckoPid : public Component {
   pid::PIDClimate *hygrostat_{nullptr};
   sensor::Sensor *vicinity_sens_{nullptr};
   globals::GlobalsComponent<int> *calib_target_{nullptr};
+  globals::RestoringGlobalsComponent<bool> *is_daytime_{nullptr};
   float noiseband_{0.5f};
 
   CalibData data_{};
@@ -74,6 +80,7 @@ class GeckoPid : public Component {
 
   climate::ClimateAction last_therm_{climate::CLIMATE_ACTION_OFF};
   climate::ClimateAction last_hygro_{climate::CLIMATE_ACTION_OFF};
+  bool last_daytime_{true};  // tracks is_daytime so the heating set re-swaps on day<->night
 };
 
 }  // namespace geckopid

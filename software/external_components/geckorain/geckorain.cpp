@@ -11,6 +11,7 @@ static const char *const TAG = "geckorain";
 void RainPumpOutput::setup() {
   this->turn_off();
   this->current_state_ = false;
+  this->period_start_time_ = millis();
 }
 
 // Latest humidify demand from the hygrostat PID (heat_output). Stored, not applied directly;
@@ -48,7 +49,31 @@ float RainPumpOutput::arbitrate_duty_() {
 }
 
 void RainPumpOutput::loop() {
+  // Master enable off: stop all automatic rain/humidification and release the pump so the manual
+  // "Let it rain" button can drive it. Only turn off duty we started ourselves (current_state_),
+  // so we never fight the button's direct turn_on.
+  if (this->enabled_ != nullptr && !*this->enabled_) {
+    if (this->current_state_) {
+      ESP_LOGD(TAG, "rain disabled: releasing pump");
+      this->pump_->turn_off();
+      this->current_state_ = false;
+    }
+    this->was_enabled_ = false;
+    return;
+  }
+
   uint32_t now = millis();
+
+  // The period clock is frozen while disabled (we return above), so on the off->on edge it would
+  // otherwise still point at whenever the automation was last on. Start a fresh period instead:
+  // switching the automation on then puts the pump at the head of a period, so any rain the
+  // weather calls for starts right away rather than up to `period_` later.
+  if (!this->was_enabled_) {
+    this->was_enabled_ = true;
+    this->period_start_time_ = now;
+    ESP_LOGD(TAG, "rain enabled: starting a new %u ms period", this->period_);
+  }
+
   this->duty_ = this->arbitrate_duty_();
   float scaled_state = this->duty_ * (float) this->period_;
 
@@ -56,6 +81,10 @@ void RainPumpOutput::loop() {
     ESP_LOGD(TAG, "now=%u period=%u End of period. duty: %.3f, on-time: %.0f ms", now, this->period_, this->duty_,
              scaled_state);
     this->period_start_time_ += this->period_;
+    // More than one period behind (a starved loop): snap to now rather than crawling forward one
+    // period per loop() call, which would keep the pump off for the whole catch-up.
+    if (now - this->period_start_time_ > this->period_)
+      this->period_start_time_ = now;
   }
 
   if (scaled_state > now - this->period_start_time_) {
