@@ -208,11 +208,13 @@ button:
     name: "Let it rain"
     icon: "mdi:weather-rainy"
     on_press:
+      - logger.log: "Let it rain: pump ON for 4s"
       - output.turn_on:
           id: rain_pump
       - delay: 4s
       - output.turn_off:
           id: rain_pump
+      - logger.log: "Let it rain: pump OFF"
 
 output:
   - platform: ac_dimmer
@@ -226,11 +228,11 @@ output:
       mode: INPUT
       inverted: no
   - platform: slow_pwm
-    pin: 15
+    pin: 4
     id: heat_lamp_pwm
     period: 1min
   - platform: gpio
-    pin: 4
+    pin: 15
     id: rain_pump
   - platform: gpio
     pin: 2
