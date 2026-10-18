@@ -40,7 +40,7 @@ CONF_SUN_EFFECT_DELAY = "sun_effect_delay"
 CONF_ILLUMINATION = "illumination"
 CONF_SUN = "sun"
 CONF_GROWLIGHT = "growlight"
-CONF_DIMMABLE = "dimmable"
+CONF_GROWLIGHT_LIGHT = "growlight_light"
 CONF_PERIOD = "period"
 CONF_SPLIT = "split"
 CONF_FULL_ELEVATION = "full_elevation"
@@ -56,21 +56,25 @@ CONF_SUN_RISE_MAX = "sun_rise_max"
 # The visible-illumination controller: weather illumination x sun elevation, rendered on the
 # growlight strip with the scenic RGB as a white fill. See update_illumination_ in the .cpp.
 #
-# `dimmable` says what kind of output `growlight` is. false (the default) = a switched output
-# (gpio/relay), which the component slow-PWMs over `period`. true = a dimmable FloatOutput (ledc,
-# slow_pwm, ...), driven straight to the duty as a level with no chopping -- point `growlight` at
-# such an output and flip this, nothing else changes. Setting it on an output that is only binary
-# is caught as a C++ type error on the set_growlight_float call.
-ILLUMINATION_SCHEMA = cv.Schema(
-    {
-        cv.Required(CONF_SUN): cv.use_id(sun.Sun),
-        cv.Required(CONF_GROWLIGHT): cv.use_id(output.BinaryOutput),
-        cv.Optional(CONF_DIMMABLE, default=False): cv.boolean,
-        cv.Optional(CONF_PERIOD, default="5min"): cv.positive_time_period_milliseconds,
-        cv.Optional(CONF_SPLIT, default="50%"): cv.percentage,
-        cv.Optional(CONF_FULL_ELEVATION, default=45.0): cv.float_range(min=1.0, max=90.0),
-        cv.Optional(CONF_SENSOR): cv.use_id(sensor.Sensor),
-    }
+# The growlight is given as exactly one of:
+#   `growlight`       a switched output (gpio/relay), which the component slow-PWMs over `period`.
+#   `growlight_light` a dimmable light entity, driven straight to the duty as a brightness with no
+#                     chopping. Going through the light (rather than its output) keeps its state
+#                     in HA true and runs its own on_state/on_turn_off automations (relay power and
+#                     the like); the component only issues a light call when the level moved.
+ILLUMINATION_SCHEMA = cv.All(
+    cv.Schema(
+        {
+            cv.Required(CONF_SUN): cv.use_id(sun.Sun),
+            cv.Optional(CONF_GROWLIGHT): cv.use_id(output.BinaryOutput),
+            cv.Optional(CONF_GROWLIGHT_LIGHT): cv.use_id(light.LightState),
+            cv.Optional(CONF_PERIOD, default="5min"): cv.positive_time_period_milliseconds,
+            cv.Optional(CONF_SPLIT, default="50%"): cv.percentage,
+            cv.Optional(CONF_FULL_ELEVATION, default=45.0): cv.float_range(min=1.0, max=90.0),
+            cv.Optional(CONF_SENSOR): cv.use_id(sensor.Sensor),
+        }
+    ),
+    cv.has_exactly_one_key(CONF_GROWLIGHT, CONF_GROWLIGHT_LIGHT),
 )
 
 # Sleeping hours. From `start` on the LOCAL wall clock (this is about the people in the room, not
@@ -169,11 +173,10 @@ async def to_code(config):
     if CONF_ILLUMINATION in config:
         il = config[CONF_ILLUMINATION]
         cg.add(var.set_sun(await cg.get_variable(il[CONF_SUN])))
-        grow = await cg.get_variable(il[CONF_GROWLIGHT])
-        if il[CONF_DIMMABLE]:
-            cg.add(var.set_growlight_float(grow))
+        if CONF_GROWLIGHT_LIGHT in il:
+            cg.add(var.set_growlight_light(await cg.get_variable(il[CONF_GROWLIGHT_LIGHT])))
         else:
-            cg.add(var.set_growlight_binary(grow))
+            cg.add(var.set_growlight_binary(await cg.get_variable(il[CONF_GROWLIGHT])))
         cg.add(var.set_illumination_period(il[CONF_PERIOD]))
         cg.add(var.set_illumination_split(il[CONF_SPLIT]))
         cg.add(var.set_illumination_full_elevation(il[CONF_FULL_ELEVATION]))

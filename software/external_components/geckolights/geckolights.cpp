@@ -319,11 +319,11 @@ void GeckoLights::dump_config() {
   if (this->quiet_time_ != nullptr)
     ESP_LOGCONFIG(TAG, "  moonlight quiet hours: from %02u:%02u local until sunrise, factor %.2f",
                   this->quiet_start_min_ / 60, this->quiet_start_min_ % 60, this->quiet_factor_);
-  if (this->growlight_binary_ != nullptr || this->growlight_float_ != nullptr) {
+  if (this->growlight_binary_ != nullptr || this->growlight_light_ != nullptr) {
     ESP_LOGCONFIG(TAG, "  illumination: growlight %s, split %.0f%%, full elevation %.0f deg",
-                  this->growlight_float_ != nullptr ? "dimmable" : "switched", this->illum_split_ * 100.0f,
+                  this->growlight_light_ != nullptr ? "dimmable" : "switched", this->illum_split_ * 100.0f,
                   this->illum_full_elevation_);
-    if (this->growlight_float_ == nullptr)
+    if (this->growlight_light_ == nullptr)
       ESP_LOGCONFIG(TAG, "  illumination slow-PWM period: %u s", this->illum_period_ms_ / 1000);
   }
 }
@@ -350,6 +350,23 @@ bool GeckoLights::lamp_needs_update_(light::LightState *lamp, bool on, float bri
   if (!on)
     return false;  // brightness of a lamp that is off and stays off changes nothing
   return std::fabs(rv.get_brightness() - brightness) > LAMP_EPSILON;
+}
+
+// Off is a plain set_state(false): the stored brightness is left alone, which is harmless because
+// lamp_needs_update_ ignores it while the lamp is off and every turn-on here names its brightness.
+bool GeckoLights::drive_lamp_(light::LightState *lamp, float level, optional<uint32_t> transition_ms) {
+  level = clamp(level, 0.0f, 1.0f);
+  bool on = level > 0.0f;
+  if (!lamp_needs_update_(lamp, on, level))
+    return false;
+  auto call = lamp->make_call();
+  if (transition_ms.has_value())
+    call.set_transition_length(*transition_ms);
+  call.set_state(on);
+  if (on)
+    call.set_brightness(level);
+  call.perform();
+  return true;
 }
 
 // Thermostat heat_output target: drives the daylight lamp (daytime) or heat lamp (nighttime),
@@ -527,7 +544,7 @@ void GeckoLights::start_illumination_cycle_(uint32_t now) {
 }
 
 void GeckoLights::set_growlight_(bool on) {
-  if (this->growlight_float_ != nullptr) {
+  if (this->growlight_light_ != nullptr) {
     this->set_growlight_level_(on ? 1.0f : 0.0f);
     return;
   }
@@ -543,11 +560,14 @@ void GeckoLights::set_growlight_(bool on) {
            this->illum_duty_ * 100.0f, this->illum_setpoint_ * 100.0f);
 }
 
+// Goes through the light entity, so HA shows the real state and the light's own automations (relay
+// power) run. Skipped when the level did not change, e.g. a weather update that only moved the sky.
 void GeckoLights::set_growlight_level_(float level) {
-  if (this->growlight_float_ == nullptr)
+  if (this->growlight_light_ == nullptr)
     return;
-  this->growlight_float_->set_level(clamp(level, 0.0f, 1.0f));
+  level = clamp(level, 0.0f, 1.0f);
   this->illum_growlight_on_ = level > 0.0f;
+  drive_lamp_(this->growlight_light_, level, ILLUM_FADE_MS);
 }
 
 // The scenic RGB as a white fill. Skipped when the command would not move it, so the 1 s tick does
@@ -595,7 +615,7 @@ void GeckoLights::release_illumination_() {
 }
 
 void GeckoLights::update_illumination_() {
-  if (this->growlight_binary_ == nullptr && this->growlight_float_ == nullptr)
+  if (this->growlight_binary_ == nullptr && this->growlight_light_ == nullptr)
     return;  // no growlight configured -> feature not in use
   // Same freeze semantics as the lamps and effects: the master enable holds everything where it is
   // rather than switching it off, and the controller simply resumes on a later tick.
@@ -627,7 +647,7 @@ void GeckoLights::update_illumination_() {
     const uint32_t now = millis();
     if (now - this->illum_cycle_start_ >= this->illum_cycle_ms_)
       this->start_illumination_cycle_(now);
-    if (this->growlight_float_ != nullptr) {
+    if (this->growlight_light_ != nullptr) {
       // Dimmable strip: hold the level. Clouds still gust it, so it swells over the cycle rather
       // than sitting flat -- the same shape the chopping gives, without the switching.
       float level = this->illum_clouds_ ? this->illum_cycle_duty_ : this->illum_duty_;

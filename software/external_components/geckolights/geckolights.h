@@ -1,6 +1,7 @@
 #pragma once
 
 #include "esphome/core/component.h"
+#include "esphome/core/optional.h"
 #include "esphome/components/output/binary_output.h"
 #include "esphome/components/output/float_output.h"
 #include "esphome/components/light/light_output.h"
@@ -177,10 +178,10 @@ class GeckoLights : public Component, public output::FloatOutput {
   // Driven by the sky attenuation scaled by the sun's elevation, and rendered on the growlight
   // strip plus the scenic RGB run as a white fill.
   void set_sun(sun::Sun *s) { this->sun_ = s; }
-  // Exactly one of these is wired up at codegen, chosen by `dimmable:`. A switched strip is
-  // slow-PWM'd over illum_period_ms_; a dimmable one is simply driven to the duty as a level.
+  // Exactly one of these is wired up at codegen (`growlight:` / `growlight_light:`). A switched
+  // strip is slow-PWM'd over illum_period_ms_; a dimmable light is driven to the duty as brightness.
   void set_growlight_binary(output::BinaryOutput *o) { this->growlight_binary_ = o; }
-  void set_growlight_float(output::FloatOutput *o) { this->growlight_float_ = o; }
+  void set_growlight_light(light::LightState *l) { this->growlight_light_ = l; }
   void set_illumination_period(uint32_t ms) { this->illum_period_ms_ = ms; }
   void set_illumination_split(float v) { this->illum_split_ = v; }
   void set_illumination_full_elevation(float deg) { this->illum_full_elevation_ = deg; }
@@ -201,6 +202,8 @@ class GeckoLights : public Component, public output::FloatOutput {
   // "Would this command actually move the lamp?" -- see the definition in geckolights.cpp for why
   // write_state() needs it.
   static bool lamp_needs_update_(light::LightState *lamp, bool on, float brightness);
+  // Drive a lamp to `level` (0 = off) if that actually moves it; true when a call was issued.
+  static bool drive_lamp_(light::LightState *lamp, float level, optional<uint32_t> transition_ms = {});
 
   // --- Illumination controller ---
   void update_illumination_();             // recompute the setpoint and drive growlight + scenic
@@ -208,7 +211,7 @@ class GeckoLights : public Component, public output::FloatOutput {
   float sun_factor_();                     // sun elevation -> 0..1 daylight strength
   void start_illumination_cycle_(uint32_t now);  // draw the next (randomised) growlight cycle
   void set_growlight_(bool on);            // switched strip (slow-PWM phase)
-  void set_growlight_level_(float level);  // dimmable strip
+  void set_growlight_level_(float level);  // dimmable light (entity -> relay power)
   void drive_scenic_white_(float brightness, bool force = false);  // scenic RGB as a plain white fill
   void publish_illumination_();
 
@@ -236,7 +239,7 @@ class GeckoLights : public Component, public output::FloatOutput {
   // --- Illumination controller state ---
   sun::Sun *sun_{nullptr};
   output::BinaryOutput *growlight_binary_{nullptr};   // switched strip (slow-PWM)
-  output::FloatOutput *growlight_float_{nullptr};     // dimmable strip (level)
+  light::LightState *growlight_light_{nullptr};       // dimmable strip (light entity)
   sensor::Sensor *illum_sens_{nullptr};               // optional 0-100% readout of the setpoint
   float illum_setpoint_{0.0f};         // sky x sun, 0..1 -- what the terrarium should look like
   float illum_duty_{0.0f};             // growlight duty above the split, 0..1
