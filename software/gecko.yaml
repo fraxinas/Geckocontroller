@@ -388,8 +388,9 @@ geckolights:
   # setpoint is the weather matrix's illumination factor scaled by the sun's current elevation.
   # Below `split` the scenic RGB carries it alone as a white fill; above it the growlight strip
   # takes over, slow-PWM'd over `period` with the scenic white filling the off phases.
-  # `full_elevation` is the sun elevation counted as full daylight -- 45 deg so local midday
-  # reaches 100% year round (noon peaks at ~44 deg at the winter solstice for this latitude).
+  # `full_elevation` is the sun elevation counted as full daylight: the equinox noon at this
+  # latitude (90 - 22.6 = 67.4 deg). Summer middays clip at 100%, winter ones dim with the lower
+  # sun -- ~75% at the solstice's 44 deg noon.
   # HW Rev 2.0 dims the growlight via PWM, so it is given as `growlight_light`: the antiphase
   # scheme becomes a plain crossfade, driven through the "Grow Light" entity itself (relay power-up,
   # state in HA) and only when the level moves.
@@ -405,7 +406,7 @@ geckolights:
     growlight_light: grow_light
     period: 5min
     split: 50%
-    full_elevation: 45
+    full_elevation: 67.4
     sensor: illumination_setpoint
   heat_lamp:
     id: heat_lamp
@@ -701,15 +702,12 @@ time:
   - platform: homeassistant
     id: esptime
     timezone: "Europe/Berlin"
+  # Deliberately the only clock. ESPHome time components are views onto ONE system clock
+  # (settimeofday) with one global timezone, so a second "remote" clock set 182 days back did not
+  # offset the weather -- it dragged the whole device, sun included, half a year into the past.
+  # The weather offset lives in HA instead (the "*_182_days_ago" sensors).
     on_time_sync:
       then:
-        - lambda: |-
-              auto ts = id(esptime).now();
-              ESPTime remote_ts = ESPTime::from_epoch_utc(ts.timestamp - 182*24*60*60);
-              char datetimestr[21];
-              remote_ts.strftime(datetimestr, 20, "%Y-%m-%d %H:%M:%S");
-              ESP_LOGD("gecko", "offset timestamp: %s", datetimestr);
-              id(remote_time).set_epoch_time(ts.timestamp - 182*24*60*60);
         - lambda: |-
               // Boot/resync reconcile: a sunrise/sunset edge missed during a reboot (e.g. the device
               // booted after sunset) must not strand is_daytime. Align it to the sun's current
@@ -731,27 +729,11 @@ time:
                 call.perform();
               }
 
-  - platform: homeassistant
-    id: remote_time
-    timezone: Pacific/Noumea
-    on_time_sync:
-      then:
-        - logger.log: "Synchronized remote_time"
-        - lambda: |-
-              auto ts = id(remote_time).now();
-              ESPTime remote_ts = ESPTime::from_epoch_utc(ts.timestamp);
-              char datetimestr[21];
-              remote_ts.strftime(datetimestr, 20, "%Y-%m-%d %H:%M:%S");
-              ESP_LOGD("gecko", "remote_time timestamp = %s", datetimestr);
-
 sun:
   id: remote_sun
-  # Sun ephemeris uses LOCAL time (esptime), NOT the -182-day weather offset (remote_time).
-  # The terrarium stands in the northern hemisphere, so its day/night cycle and seasons must be
-  # local: summer solstice ~June 20, sun high, long summer days. Only the *weather* feed is taken
-  # from Noumea 182 days ago (southern summer) via the historic HA sensors. Feeding remote_time
-  # here inverted the season -- it simulated northern winter (December) in June, dropping the noon
-  # sun to ~44° so the on_sunset @44° ramp (which flips is_daytime) silently never fired.
+  # Sun ephemeris on local time. The terrarium stands in the northern hemisphere, so its day/night
+  # cycle and seasons are local: summer solstice ~June 20, sun high, long summer days. Only the
+  # *weather* feed comes from Noumea 182 days ago, via the historic HA sensors.
   time_id: esptime
   #latitude: -22.6
   #longitude: 167.5
