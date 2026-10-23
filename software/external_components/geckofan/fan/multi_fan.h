@@ -76,15 +76,6 @@ class MultiFan : public Component, public sensor::Sensor, public output::FloatOu
   bool next_update_{true};
   bool enable_auto_mode_{true};
 
-  // Rate-limit the recompute: at most once per minute unless a PID control value
-  // moved meaningfully. The PID callbacks fire on every sensor update (~15 s) otherwise.
-  static constexpr uint32_t RECOMPUTE_INTERVAL_MS = 60000;
-  static constexpr float RECOMPUTE_THRESHOLD = 0.02f;
-  uint32_t last_compute_ms_{0};
-  float last_hum_ctrl_{0};
-  float last_therm_ctrl_{0};
-  bool have_last_{false};
-
   // Tacho re-sampling: when the applied PWM level changes, kick the tacho to publish a fresh
   // reading. TACHO_SAMPLE_MS is the window after the change over which the new speed is counted
   // (long enough for the fan to settle and accumulate countable pulses).

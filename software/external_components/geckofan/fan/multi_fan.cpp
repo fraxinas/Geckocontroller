@@ -53,13 +53,15 @@ void MultiFan::loop() {
   if (this->fan_->state) {
     speed = static_cast<float>(this->fan_->speed) / 100.f;
   }
+  if (this->have_applied_ && speed == this->last_applied_level_)
+    return;  // re-published without a change (e.g. HA re-sent the same speed)
   ESP_LOGD(TAG, "Setting speed: %.2f", speed);
   this->output_->set_level(speed);
 
   // The fan speed just changed -> don't make the tacho wait out its slow update_interval. Sample
   // now (closes the previous counting window and publishes the final old-speed reading), then once
   // more after a short window so the new speed shows up promptly in Home Assistant.
-  if (this->tacho_ != nullptr && (!this->have_applied_ || std::fabs(speed - this->last_applied_level_) > 0.005f)) {
+  if (this->tacho_ != nullptr) {
     this->tacho_->update();
     this->set_timeout("tacho_resample", TACHO_SAMPLE_MS, [this]() { this->tacho_->update(); });
   }
@@ -128,24 +130,23 @@ void MultiFan::set_combined_fan_value() {
   // terrarium running away, so a real overheat lifts the ceiling and lets the PID have the fan.
   float current = this->thermo_->current_temperature;
   float excess = current - this->thermo_->target_temperature;
-  if (cooling && !std::isnan(current) && excess > OVERHEAT_RELEASE_K) {
-    ESP_LOGD(TAG, "%.2f K over setpoint -> releasing the calm-weather ceiling (was %.1f%%)", excess, wind_ceil);
+  bool overheat = cooling && !std::isnan(current) && excess > OVERHEAT_RELEASE_K;
+  if (overheat)
     wind_ceil = 100.0f;
-  }
 
   // PID-demanded cooling/dehumidification share of the fan output (0..100%).
   float set_val = 0.0f;
+  float vt = NAN;
+  bool below_vicinity = false;
   if (dehumidification || cooling) {
     set_val = hum_ctrl_val * 100.0f;  // dehumidification baseline
     if (cooling) {
-      float vt;
       bool have_vt = get_vicinity_temperature(&vt);
       if (have_vt && this->thermo_->target_temperature < vt - 1.0f && therm_ctrl_val > 1.0f) {
         // The fan can only equalize towards the vicinity temperature, never cool below it.
         // The thermostat is asking for the impossible, so ignore its demand here and let the
         // ambient windspeed band drive the fan instead of blasting it pointlessly.
-        ESP_LOGD(TAG, "target_temp: %.2f°C < vicinity_temp: %.2f-1.0°C -> ignore thermostat, follow ambient wind %.2f km/h",
-            this->thermo_->target_temperature, vt, windspeed);
+        below_vicinity = true;
         set_val = hum_ctrl_val * 100.0f;
       } else {
         // Two independent consumers share one fan, so the operator is max(), not a weighted mean:
@@ -162,12 +163,25 @@ void MultiFan::set_combined_fan_value() {
   // Clamp the PID demand into the windspeed band: the floor enforces the minimum ambient
   // wind, the ceiling enforces the calm-weather cap.
   float speed = clamp(clamp(set_val, wind_floor, wind_ceil), 0.0f, 100.0f);
-  ESP_LOGD(TAG, "fan value: windspeed=%.2f km/h, humidifier=%.2f, thermostat=%.2f, set_val=%.2f, band=[%.1f, %.1f] -> speed=%.0f%%",
-      windspeed, hum_ctrl_val, therm_ctrl_val, set_val, wind_floor, wind_ceil, speed);
+
+  // The PIDs call in on every sensor reading; most of the time the result is the speed the fan
+  // already runs at. Only a real change is commanded (and published, and logged) -- the trace
+  // below explains each step the fan takes.
+  bool on = speed > 0.0f;
+  int pct = (int) speed;
+  if (this->fan_->state == on && (!on || this->fan_->speed == pct))
+    return;
+  if (overheat)
+    ESP_LOGD(TAG, "%.2f K over setpoint -> calm-weather ceiling released", excess);
+  if (below_vicinity)
+    ESP_LOGD(TAG, "target_temp: %.2f°C < vicinity_temp: %.2f-1.0°C -> ignore thermostat, follow ambient wind",
+             this->thermo_->target_temperature, vt);
+  ESP_LOGD(TAG, "fan value: windspeed=%.2f km/h, humidifier=%.2f, thermostat=%.2f, set_val=%.2f, band=[%.1f, %.1f] -> speed=%d%%",
+      windspeed, hum_ctrl_val, therm_ctrl_val, set_val, wind_floor, wind_ceil, pct);
 
   auto fan = this->fan_->make_call();
-  fan.set_state(speed > 0.0f);
-  fan.set_speed((int) speed);
+  fan.set_state(on);
+  fan.set_speed(pct);
   fan.perform();
 }
 
@@ -190,22 +204,7 @@ void MultiFan::update_from_pid_(bool hygro_action) {
   if (!this->auto_mode_()) {
     return;
   }
-
-  // The PID callbacks fire on every sensor update; only recompute the fan value once a minute,
-  // or sooner if a control value changed meaningfully. Avoids churning the fan every few seconds.
-  float hum = this->hygro_->get_output_value() * -1.0f;
-  float therm = this->thermo_->get_output_value() * -1.0f;
-  uint32_t now = millis();
-  bool due = !this->have_last_ || (now - this->last_compute_ms_) >= RECOMPUTE_INTERVAL_MS;
-  bool changed = !this->have_last_ || std::fabs(hum - this->last_hum_ctrl_) >= RECOMPUTE_THRESHOLD ||
-                 std::fabs(therm - this->last_therm_ctrl_) >= RECOMPUTE_THRESHOLD;
-  if (!due && !changed) {
-    return;
-  }
-  this->have_last_ = true;
-  this->last_compute_ms_ = now;
-  this->last_hum_ctrl_ = hum;
-  this->last_therm_ctrl_ = therm;
+  // Cheap to recompute; set_combined_fan_value() only touches the fan when the speed changes.
   set_combined_fan_value();
 }
 
