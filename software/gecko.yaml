@@ -233,7 +233,7 @@ output:
   - platform: ac_dimmer
     id: dimmer1
     gate_pin: 16
-    method: leading
+    method: leading_pulse
     min_power: 15%
     zero_cross_pin:
       # 6N139 open collector, pulled up externally by R81 (GPIO34 is input-only, no internal pulls)
@@ -243,7 +243,7 @@ output:
   - platform: slow_pwm
     pin: 4
     id: heat_lamp_pwm
-    period: 1min
+    period: 5min
   - platform: gpio
     pin: 15
     id: rain_pump
@@ -412,6 +412,10 @@ geckolights:
     id: heat_lamp
     output: heat_lamp_pwm
     name: "Heat Lamp"
+    on_turn_on:
+      - logger.log: "Heat Lamp ON"
+    on_turn_off:
+      - logger.log: "Heat Lamp OFF"
   day_light:
     id: day_light
     output: dimmer1
@@ -557,11 +561,15 @@ sensor:
       name: "Ceiling Temperature"
       oversampling: 16x
       id: temperature_ceiling
+      # Rounded to what the BME280 can actually resolve: the 0.01 K digit is noise, and the
+      # Thermostat Air PID climate republishes on every change in it (i.e. on every reading).
+      accuracy_decimals: 1
       filters:
         - lambda: |-
             if (x < 60)
               return x;
             return {};
+        - round: 1
     pressure:
       name: "Air Pressure"
     humidity:
@@ -808,6 +816,10 @@ climate:
       kp: 2.34544
       ki: 0.00987
       kd: 208.97874
+      # The ceiling temperature arrives in 0.1 K steps: one step inside a single 15 s reading would
+      # be a one-off D spike of kd*0.1/15 ~ 1.4 (full output). Averaging over 4 readings (1 min)
+      # spreads it back into the slope it really is.
+      derivative_averaging_samples: 4
 
   - platform: pid
     id: hygrostat
