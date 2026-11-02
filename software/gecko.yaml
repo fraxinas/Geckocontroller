@@ -42,14 +42,6 @@ logger:
 
 # Enable Home Assistant API
 api:
-  services:
-    - service: control_twilight_attenuation
-      variables:
-        level: float
-      then:
-        - output.set_level:
-            id: daylight_attenuation_output
-            level: !lambda 'return level / 100.0;'
 ota:
   - platform: esphome
 
@@ -61,10 +53,12 @@ preferences:
 
 switch:
   - platform: template
-    name: "Nighttime / Daytime"
+    name: "Daytime"
     icon: mdi:theme-light-dark
     # The global is the source of truth; the switch only mirrors it. Without DISABLED the
     # template default (ALWAYS_OFF) fires turn_off_action at boot and clobbers the global.
+    # geckolights sets it from the sun crossing the horizon; flipping it here is a manual
+    # override that holds until the sun next crosses.
     restore_mode: DISABLED
     lambda: |-
       return id(is_daytime);
@@ -93,8 +87,9 @@ switch:
           id(fan_manual_speed).update();
 
   # Master enable for the light automation. Off freezes the lamps/RGB in their current state:
-  # no sunrise/sunset cycles, no daylight/sky/moon/lightning effects. Heating is unaffected
-  # (disable it via the thermostat). Default on.
+  # no sunrise/sunset colours, no illumination/moon/lightning updates. Heating is unaffected
+  # (disable it via the thermostat), and day/night still follows the sun, so the heater hand-over
+  # between daylight and heat lamp keeps happening. Default on.
   - platform: template
     name: "Light Automation"
     id: lights_enabled_switch
@@ -105,24 +100,10 @@ switch:
     turn_on_action:
       - lambda: |-
           id(lights_enabled) = true;
-          // Resume immediately instead of waiting for the next sun/moon/weather event. The day/night
-          // flip is frozen while automation is off, so re-sync is_daytime to the sun's current
-          // position, then re-apply: at night turn the daylight lamp off and re-run the moon handler
-          // for the scenic moonlight; by day the PID relights the daylight lamp on its next cycle.
-          // Cloud dimming and the weather effect were skipped while frozen; re-run the matrix for
-          // the code in force so the lamps match the weather right away.
+          // Resume immediately instead of waiting for the next sun/moon/weather event: re-running
+          // the weather matrix for the code in force re-applies the weather effect and re-renders
+          // the illumination (day) or the scenic moonlight (night).
           id(gecko_weather).reapply();
-          if (!id(esptime).now().is_valid()) return;
-          bool day = id(remote_sun).elevation() > 0.0f;
-          id(is_daytime) = day;
-          id(twilight_attenuation) = 1.0f;
-          if (!day) {
-            auto off = id(day_light).turn_off();
-            off.set_transition_length(2000);
-            off.perform();
-            if (id(moon).has_state())
-              id(moon).publish_state(id(moon).state);   // re-runs the moon handler -> scenic moonlight
-          }
     turn_off_action:
       - lambda: |-
           id(lights_enabled) = false;
@@ -283,13 +264,6 @@ output:
     hygrostat: hygrostat
     calibration_target: calibration_target
     enabled: rain_enabled
-  - platform: template
-    id: daylight_attenuation_output
-    type: float
-    write_action:
-      - lambda: |-
-          id(twilight_attenuation) = state;
-          ESP_LOGD("gecko", "wrote twilight_attenuation: %.2f", id(twilight_attenuation));
 
 # The WMO weather matrix and the resolved weather state, owned separately from the lights: it is
 # the single answer to "what is the weather doing right now", and its consumers are unrelated to
@@ -376,7 +350,6 @@ geckoweather:
 geckolights:
   id: gecko_lights
   thermostat: thermostat_air
-  twilight_attenuation: twilight_attenuation
   skycond_attenuation: skycond_attenuation
   is_daytime: is_daytime
   calibration_target: calibration_target
@@ -397,6 +370,12 @@ geckolights:
   # Human sleeping hours: from 23:30 local until the night ends at sunrise, halve the scenic
   # moonlight so it stops glowing into the room. Local clock on purpose -- the weather feed runs on
   # Noumea time, but whoever is trying to sleep is here.
+  # The sun-driven day, all from `illumination.sun` below: the "Sunrise Color" sweep starts as the
+  # rising sun passes 5°, and the day -- the daylight lamp taking over heating -- begins once it has
+  # played (~19 min). "Sunset Color" starts at 5° on the way down, the night at the horizon.
+  sunrise_elevation: 5
+  sunset_elevation: 5
+  day_end_elevation: 0
   quiet_hours:
     time: esptime
     start: "23:30:00"
@@ -714,28 +693,6 @@ time:
   # (settimeofday) with one global timezone, so a second "remote" clock set 182 days back did not
   # offset the weather -- it dragged the whole device, sun included, half a year into the past.
   # The weather offset lives in HA instead (the "*_182_days_ago" sensors).
-    on_time_sync:
-      then:
-        - lambda: |-
-              // Boot/resync reconcile: a sunrise/sunset edge missed during a reboot (e.g. the device
-              // booted after sunset) must not strand is_daytime. Align it to the sun's current
-              // position as soon as local time is valid. A cosmetic ramp, if animating, owns the flip.
-              if (!id(lights_enabled)) return;
-              std::string eff = id(day_light).get_effect_name();
-              if (eff == "Sunrise Daylight" || eff == "Sunset Daylight") return;
-              bool day = id(remote_sun).elevation() > 0.0f;
-              if (day && !id(is_daytime)) {
-                ESP_LOGI("gecko", "time sync reconcile -> DAY (sun above horizon)");
-                id(is_daytime) = true;
-                id(twilight_attenuation) = 1.0f;
-              } else if (!day && id(is_daytime)) {
-                ESP_LOGI("gecko", "time sync reconcile -> NIGHT (sun below horizon)");
-                id(is_daytime) = false;
-                id(twilight_attenuation) = 1.0f;
-                auto call = id(day_light).turn_off();
-                call.set_transition_length(60000);
-                call.perform();
-              }
 
 sun:
   id: remote_sun
@@ -749,57 +706,6 @@ sun:
   # equator for a tropical day length, paired with the actual local installation longitude.
   latitude: 22.6
   longitude: 9.15
-
-  on_sunrise:
-    - elevation: 5°
-      then:
-        - lambda: |-
-              if (!id(lights_enabled)) return;  // light automation disabled -> no day/night cycle
-              auto call = id(scenic_light).turn_on();
-              call.set_effect("Sunrise Color");
-              call.perform();
-              auto call2 = id(day_light).turn_on();
-              // The ramp is only the envelope now, so start the day dark and let the thermostat
-              // raise the lamp: turn_on() alone would restore last night's remembered brightness
-              // and flash it at full until the PID's next cycle (15 s). 0.001 instead of 0 because
-              // set_brightness(0) resets the light's stored brightness to 1.0.
-              call2.set_brightness(0.001f);
-              call2.set_effect("Sunrise Daylight");
-              call2.perform();
-        - logger.log: Good morning, Gecko.
-
-  on_sunset:
-    - elevation: 44°
-      then:
-        - lambda: |-
-              if (!id(lights_enabled)) return;  // light automation disabled -> no day/night cycle
-              auto call = id(day_light).make_call();
-              call.set_effect("Sunset Daylight");
-              call.perform();
-    - elevation: 5°
-      then:
-        - logger.log: Good night, Gecko.
-        - lambda: |-
-              if (!id(lights_enabled)) return;  // light automation disabled -> no day/night cycle
-              auto call = id(scenic_light).turn_on();
-              call.set_effect("Sunset Color");
-              call.perform();
-    # Reliable daily night flip: the sun crosses the horizon every day, all year, so this can never
-    # be skipped the way the cosmetic on_sunset @44° ramp is near the winter solstice (sun peaks at
-    # ~44° and never descends through it). In summer that ramp is usually still animating here and
-    # owns the flip, so defer to it; otherwise (winter, or the ramp already done) force night now.
-    - elevation: 0°
-      then:
-        - lambda: |-
-              if (!id(lights_enabled)) return;  // light automation disabled -> no day/night cycle
-              if (id(day_light).get_effect_name() == "Sunset Daylight") return;  // ramp owns the flip
-              if (!id(is_daytime)) return;                                       // already night
-              ESP_LOGI("gecko", "sunset @ horizon: forcing NIGHT");
-              id(is_daytime) = false;
-              id(twilight_attenuation) = 1.0f;        // reset day baseline for next sunrise
-              auto call = id(day_light).turn_off();
-              call.set_transition_length(60000);      // gentle fade, not a snap-off
-              call.perform();
 
 climate:
   - platform: pid
@@ -920,11 +826,6 @@ globals:
      type: float
      restore_value: no
      initial_value: '0.7'
-
-   - id: twilight_attenuation
-     type: float
-     restore_value: no
-     initial_value: '1'
 
    - id: is_daytime
      type: bool

@@ -13,7 +13,7 @@
 #include "esphome/components/sun/sun.h"
 #include "esphome/components/time/real_time_clock.h"
 #include "../geckoweather/geckoweather.h"
-#include <map>
+#include <functional>
 #include <string>
 
 namespace esphome {
@@ -64,11 +64,29 @@ class GeckoRGBOutput : public light::LightOutput {
   output::FloatOutput *blue_{nullptr};
 };
 
+// Base for the effects on the scenic RGB. Between effects the light has a standing owner -- the
+// illumination white fill by day, the moonlight by night -- so every effect reports its end, and
+// whether it played to completion or was cut short, and the owner takes the light back.
+class ScenicLightEffect : public light::LightEffect {
+ public:
+  explicit ScenicLightEffect(const char *name) : light::LightEffect(name) {}
+
+  void set_on_stop(std::function<void(bool finished)> &&f) { this->on_stop_ = std::move(f); }
+  void stop() override {
+    if (this->on_stop_)
+      this->on_stop_(this->finished_);
+  }
+
+ protected:
+  std::function<void(bool)> on_stop_;
+  bool finished_{false};
+};
+
 // --- Sunrise / sunset light effects, ported from the old gecko_custom.h. ---
 
-class SunColorLightEffect : public light::LightEffect {
+class SunColorLightEffect : public ScenicLightEffect {
  public:
-  explicit SunColorLightEffect(const char *name) : light::LightEffect(name) {}
+  explicit SunColorLightEffect(const char *name) : ScenicLightEffect(name) {}
 
   void set_scenic_light(light::LightState *scenic_light) { this->scenic_light_ = scenic_light; }
   void set_sun_effect_delay(uint16_t delay) { this->sun_effect_delay_ = delay; }
@@ -85,45 +103,16 @@ class SunColorLightEffect : public light::LightEffect {
   bool inverse_{false};
   uint32_t last_color_change_{0};
   uint32_t transition_length_{};
-  size_t index_{};
-  size_t final_index_{};
-  ssize_t incr_{};
-};
-
-class SunDayLightEffect : public light::LightEffect {
- public:
-  explicit SunDayLightEffect(const char *name) : light::LightEffect(name) {}
-
-  void set_day_light(light::LightState *day_light) { this->day_light_ = day_light; }
-  void set_twilight_attenuation(globals::GlobalsComponent<float> *g) { this->twilight_attenuation_ = g; }
-  void set_is_daytime(globals::RestoringGlobalsComponent<bool> *g) { this->is_daytime_ = g; }
-  void set_sun_effect_delay(uint16_t delay) { this->sun_effect_delay_ = delay; }
-  void set_sun_rise_max(float v) { this->sun_rise_max_ = v; }
-  void set_enabled(bool *g) { this->enabled_ = g; }
-  void set_inverse(bool direction) { this->inverse_ = direction; }
-
-  void start() override;
-  void apply() override;
-
- protected:
-  light::LightState *day_light_{nullptr};
-  globals::GlobalsComponent<float> *twilight_attenuation_{nullptr};
-  globals::RestoringGlobalsComponent<bool> *is_daytime_{nullptr};
-  bool *enabled_{nullptr};
-  uint16_t sun_effect_delay_{180};
-  float sun_rise_max_{0.75f};
-  bool inverse_{false};
-  uint32_t last_brightness_change_{0};
-  uint32_t transition_length_{};
-  float brightness_{};
-  float incr_{};
+  int index_{};        // LUT step shown next
+  int final_index_{};  // one past the last step, in the direction of travel
+  int incr_{};
 };
 
 // Thunderstorm flicker on the scenic RGB light (ported from the gecko.yaml "Lightning" lambda
 // effect). Triggered by the sky handler when the historic sky value hits the storm marker.
-class LightningLightEffect : public light::LightEffect {
+class LightningLightEffect : public ScenicLightEffect {
  public:
-  explicit LightningLightEffect(const char *name) : light::LightEffect(name) {}
+  explicit LightningLightEffect(const char *name) : ScenicLightEffect(name) {}
 
   void set_scenic_light(light::LightState *scenic_light) { this->scenic_light_ = scenic_light; }
   void set_enabled(bool *g) { this->enabled_ = g; }
@@ -148,7 +137,6 @@ class GeckoLights : public Component, public output::FloatOutput {
   void set_day_light(light::LightState *l) { this->day_light_ = l; }
   void set_scenic_light(light::LightState *l) { this->scenic_light_ = l; }
   void set_thermostat(pid::PIDClimate *t) { this->thermostat_ = t; }
-  void set_twilight_attenuation(globals::GlobalsComponent<float> *g) { this->twilight_attenuation_ = g; }
   void set_skycond_attenuation(globals::GlobalsComponent<float> *g) { this->skycond_attenuation_ = g; }
   void set_is_daytime(globals::RestoringGlobalsComponent<bool> *g) { this->is_daytime_ = g; }
   void set_calibration_target(globals::GlobalsComponent<int> *g) { this->calib_target_ = g; }
@@ -170,8 +158,14 @@ class GeckoLights : public Component, public output::FloatOutput {
   void set_quiet_time(time::RealTimeClock *t) { this->quiet_time_ = t; }
   void set_quiet_start(uint16_t minutes) { this->quiet_start_min_ = minutes; }
   void set_quiet_factor(float f) { this->quiet_factor_ = f; }
+  // Sun elevations (deg): the rising sun's that starts the "Sunrise Color" sweep (day begins once
+  // it has played), the setting sun's that starts "Sunset Color", and the one at which day ends.
+  void set_day_elevations(float sunrise, float sunset, float end) {
+    this->sunrise_elevation_ = sunrise;
+    this->sunset_elevation_ = sunset;
+    this->day_end_elevation_ = end;
+  }
   void set_sun_effect_delay(uint16_t delay) { this->sun_effect_delay_ = delay; }
-  void set_sun_rise_max(float v) { this->sun_rise_max_ = v; }
 
   // --- Illumination controller (see update_illumination_ in the .cpp for the whole scheme) ---
   // How bright the terrarium *looks*, as opposed to how much heat the daylight lamp is making.
@@ -188,13 +182,12 @@ class GeckoLights : public Component, public output::FloatOutput {
   void set_illumination_sensor(sensor::Sensor *s) { this->illum_sens_ = s; }
 
   void setup() override;
-  void loop() override;
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::LATE; }
 
  protected:
   void write_state(float state) override;       // thermostat heat_output target
-  void apply_weather_effect_(const std::string &effect);  // switch the active weather light effect
+  void apply_weather_effect_(const std::string &effect);  // switch the weather effect on the scenic RGB
   void on_weather_(const geckoweather::WeatherState &w);   // weather changed -> effect + moonlight
   void on_moon_(float x);                  // moon illumination changed -> scenic moonlight at night
   bool in_quiet_hours_();                  // local clock is inside the sleeping-hours window
@@ -204,6 +197,9 @@ class GeckoLights : public Component, public output::FloatOutput {
   static bool lamp_needs_update_(light::LightState *lamp, bool on, float brightness);
   // Drive a lamp to `level` (0 = off) if that actually moves it; true when a call was issued.
   static bool drive_lamp_(light::LightState *lamp, float level, optional<uint32_t> transition_ms = {});
+  void follow_sun_();                      // sunrise/sunset sweeps and the day/night flip
+  void start_scenic_effect_(const char *name);
+  void on_scenic_effect_stopped_(bool sunrise_done);  // an effect let go of the scenic RGB
 
   // --- Illumination controller ---
   void update_illumination_();             // recompute the setpoint and drive growlight + scenic
@@ -212,14 +208,13 @@ class GeckoLights : public Component, public output::FloatOutput {
   void start_illumination_cycle_(uint32_t now);  // draw the next (randomised) growlight cycle
   void set_growlight_(bool on);            // switched strip (slow-PWM phase)
   void set_growlight_level_(float level);  // dimmable light (entity -> relay power)
-  void drive_scenic_white_(float brightness, bool force = false);  // scenic RGB as a plain white fill
+  void drive_scenic_white_(float brightness, bool force);  // scenic RGB as a plain white fill
   void publish_illumination_();
 
   light::LightState *heat_lamp_{nullptr};
   light::LightState *day_light_{nullptr};
   light::LightState *scenic_light_{nullptr};
   pid::PIDClimate *thermostat_{nullptr};
-  globals::GlobalsComponent<float> *twilight_attenuation_{nullptr};
   globals::GlobalsComponent<float> *skycond_attenuation_{nullptr};
   globals::RestoringGlobalsComponent<bool> *is_daytime_{nullptr};
   globals::GlobalsComponent<int> *calib_target_{nullptr};  // 1/2 == heating calibration (day/night)
@@ -230,11 +225,16 @@ class GeckoLights : public Component, public output::FloatOutput {
   uint16_t quiet_start_min_{23 * 60 + 30};    // minutes past local midnight
   float quiet_factor_{0.5f};                  // moonlight scale inside the window
   bool quiet_now_{false};                     // last evaluated state, to catch the boundary
-  std::map<std::string, light::LightState *> effect_lights_;  // effect name -> owning light
   std::string active_weather_effect_;                 // currently-running weather effect ("" = none)
-  bool logged_thermostat_off_{false};                 // "thermostat is off" logged once, not per poll
+  bool thermostat_off_{false};                        // heaters already released for thermostat OFF
+  optional<bool> sun_day_{};                          // the sun said "day" at the last sample
+  float sunrise_elevation_{5.0f};
+  time_t sunrise_swept_{0};                           // when the Sunrise Color sweep last completed
+  bool scenic_dirty_{false};  // someone else had the scenic RGB: re-assert colour, not just level
+  float sunset_elevation_{5.0f};
+  float day_end_elevation_{0.0f};
+  time_t last_sun_sample_{0};                         // UTC time of the previous follow_sun_ pass
   uint16_t sun_effect_delay_{180};
-  float sun_rise_max_{0.75f};
 
   // --- Illumination controller state ---
   sun::Sun *sun_{nullptr};
@@ -251,10 +251,8 @@ class GeckoLights : public Component, public output::FloatOutput {
   uint32_t illum_on_ms_{0};            // growlight on-time within the current cycle
   float illum_cycle_duty_{0.0f};       // duty drawn for the current cycle (gusts around illum_duty_)
   bool illum_clouds_{false};           // weather code asks for passing clouds ("Daylight Swell")
-  uint32_t illum_last_tick_{0};
   bool illum_growlight_on_{false};     // last state written to a switched growlight
-  bool illum_scenic_owned_{false};     // controller is currently driving the scenic RGB
-  bool illum_active_{false};           // controller drove the lights on its last tick
+  bool illum_active_{false};           // controller drove the lights on its last update
   float illum_published_{NAN};         // last value pushed to illum_sens_
 };
 

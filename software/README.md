@@ -3,35 +3,6 @@
 ## Home Assistant Setup
 Using esphome, the Geckocontroller shows up as a device in your Home Assistant automatically
 
-### Slider for Daylight Attenuation
-* twilight attenuation is a correction factor for the daylight, which is automatically in-/de-cremented by sunrise and suset effects
-* it can also be manually set with a slider from Home Assistant using this setup:
-* add the following definition to your Home Assistant's `configuration.yaml` in the root level:
-```
-input_number:
-  twilight_attenuation_input:
-    name: Twilight Attenuation
-    initial: 0
-    min: 0
-    max: 100
-    step: 1
-    mode: slider
-```
-* then specify a corresponding automation in `automation.yaml`:
-```
-- id: 'your-unique-id'
-  alias: Write twilight attenuation value to geckocontroller
-  trigger:
-  - entity_id: input_number.twilight_attenuation_input
-    platform: state
-  condition: []
-  action:
-  - service: esphome.geckocontrol_control_twilight_attenuation
-    data_template:
-      level: '{{ trigger.to_state.state | int }}'
-  mode: single
-```
-
 ### Historic Weather
 * To create varied simulated weather conditions based on real weather records from the natural habitat of the inhabitant
 * Living on the opposite hemisphere, it is reasonable to use weather records from half a year ago
