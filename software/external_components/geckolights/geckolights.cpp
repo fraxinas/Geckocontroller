@@ -157,21 +157,19 @@ void GeckoLights::setup() {
     this->update_quiet_hours_();
     this->update_illumination_();
   });
-  this->start_illumination_cycle_(millis());
+  if (this->growlight_binary_ != nullptr)
+    this->start_illumination_cycle_(millis());
 }
 
 // The weather changed. This component only owns the lamp-facing half of the response: the scenic
-// light effect, and telling the illumination controller whether clouds are drifting through.
+// light effect, and how much broken cloud the illumination controller lets drift across the sun.
 // The sky attenuation and the rain intensity are already published by geckoweather -- every other
 // consumer reads them straight from there.
 void GeckoLights::on_weather_(const geckoweather::WeatherState &w) {
   if (this->enabled_ != nullptr && !*this->enabled_)
     return;  // light automation disabled -> lamps stay as they are
-  // "Daylight Swell" is not a light effect: it tells the illumination controller that this weather
-  // has clouds drifting through it, so the growlight's cycle gusts instead of holding a steady
-  // duty. Keep it out of apply_weather_effect_, which only knows about real light effects.
-  this->illum_clouds_ = w.effect == "Daylight Swell";
-  this->apply_weather_effect_(this->illum_clouds_ ? "" : w.effect);
+  this->set_clouds_(w.clouds);
+  this->apply_weather_effect_(w.effect);
   // Re-render with the new sky attenuation right away: by day through the illumination controller,
   // by night through the moonlight (the moon sensor itself can be hours from its next change).
   if (globals::id(this->is_daytime_)) {
@@ -463,16 +461,16 @@ void GeckoLights::write_state(float state) {
 // level, with the scenic white at the complement -- the same time-average, minus the flicker.
 //
 // The chopping is not a metronome. A fixed 5-minute square wave reads as machinery, and real sky
-// does not work that way, so every cycle draws its own length around the nominal period. Under a
-// weather code that carries clouds ("Daylight Swell", which used to be a light effect on the
-// daylight lamp) the duty gusts from cycle to cycle as well: a thick cloud, then a sunny break.
-// Both draws are symmetric around the target, so the mean duty -- and with it the illumination the
-// setpoint asked for -- is preserved; only the rhythm is irregular.
+// does not work that way, so every cycle draws its own length around the nominal period. The draw
+// is symmetric, so the mean duty -- and with it the illumination the setpoint asked for -- is
+// preserved; only the rhythm is irregular.
+//
+// Passing clouds dim the setpoint itself, before the split, so they show across the whole range --
+// on the scenic white alone as much as on the growlight. See the "Passing clouds" section below.
 
 // Cross-fade for the scenic white. Short next to a 5 min cycle, long enough not to snap.
 static constexpr uint32_t ILLUM_FADE_MS = 1000;
 static constexpr float ILLUM_CYCLE_VARIANCE = 0.5f;  // cycle length: nominal period +/- 50%
-static constexpr float ILLUM_CLOUD_GUST = 0.25f;     // duty swing per cycle while clouds pass
 // Spelled out rather than reusing the Arduino core's DEG_TO_RAD: that one is a double macro,
 // which would silently widen the whole sun_factor_ computation.
 static constexpr float ILLUM_DEG_PER_RAD = 3.14159265f / 180.0f;
@@ -492,26 +490,22 @@ float GeckoLights::sun_factor_() {
   return clamp(std::sin(elevation * ILLUM_DEG_PER_RAD) / full, 0.0f, 1.0f);
 }
 
-// Draw the next growlight cycle: its length, and the duty it runs at. Called at each cycle
-// boundary, so a cloud holds for the whole cycle; the cycle's own edges are scheduled here, so they
-// land on time rather than on the next sample.
+// Switched strip only: draw the next slow-PWM cycle -- its length, and the on-time at the current
+// duty. Called at each cycle boundary; the cycle's own edges are scheduled here, so they land on
+// time rather than on the next sample.
 void GeckoLights::start_illumination_cycle_(uint32_t now) {
   this->illum_cycle_start_ = now;
   this->illum_cycle_ms_ =
       (uint32_t) ((float) this->illum_period_ms_ * frand(1.0f - ILLUM_CYCLE_VARIANCE, 1.0f + ILLUM_CYCLE_VARIANCE));
-  this->illum_cycle_duty_ = this->illum_clouds_
-                                ? clamp(this->illum_duty_ + frand(-ILLUM_CLOUD_GUST, ILLUM_CLOUD_GUST), 0.0f, 1.0f)
-                                : this->illum_duty_;
-  this->illum_on_ms_ = (uint32_t) (this->illum_cycle_duty_ * (float) this->illum_cycle_ms_);
+  this->illum_on_ms_ = (uint32_t) (this->illum_duty_ * (float) this->illum_cycle_ms_);
   this->set_timeout("illum_cycle", this->illum_cycle_ms_, [this]() { this->update_illumination_(); });
   this->set_timeout("illum_phase", this->illum_on_ms_, [this]() { this->update_illumination_(); });
-  ESP_LOGD(TAG, "illumination: cycle %us at duty %.0f%%%s (target %.0f%%)", this->illum_cycle_ms_ / 1000,
-           this->illum_cycle_duty_ * 100.0f, this->illum_clouds_ ? " (clouds)" : "", this->illum_duty_ * 100.0f);
+  ESP_LOGD(TAG, "illumination: cycle %us at duty %.0f%%", this->illum_cycle_ms_ / 1000, this->illum_duty_ * 100.0f);
 }
 
 void GeckoLights::set_growlight_(bool on) {
   if (this->growlight_light_ != nullptr) {
-    this->set_growlight_level_(on ? 1.0f : 0.0f);
+    this->set_growlight_level_(on ? 1.0f : 0.0f, ILLUM_FADE_MS);
     return;
   }
   if (this->growlight_binary_ == nullptr || on == this->illum_growlight_on_)
@@ -528,16 +522,16 @@ void GeckoLights::set_growlight_(bool on) {
 
 // Goes through the light entity, so HA shows the real state and the light's own automations (relay
 // power) run. Skipped when the level did not change, e.g. a weather update that only moved the sky.
-void GeckoLights::set_growlight_level_(float level) {
+void GeckoLights::set_growlight_level_(float level, uint32_t fade_ms) {
   if (this->growlight_light_ == nullptr)
     return;
   level = clamp(level, 0.0f, 1.0f);
   this->illum_growlight_on_ = level > 0.0f;
-  drive_lamp_(this->growlight_light_, level, ILLUM_FADE_MS);
+  drive_lamp_(this->growlight_light_, level, fade_ms);
 }
 
 // The scenic RGB as a white fill. Skipped when the command would not move it.
-void GeckoLights::drive_scenic_white_(float brightness, bool force) {
+void GeckoLights::drive_scenic_white_(float brightness, uint32_t fade_ms, bool force) {
   brightness = clamp(brightness, 0.0f, 1.0f);
   bool on = brightness > 0.0f;
   // `force` covers taking the light back from an effect or the moonlight: they may have left the
@@ -546,7 +540,7 @@ void GeckoLights::drive_scenic_white_(float brightness, bool force) {
   if (!force && !this->lamp_needs_update_(this->scenic_light_, on, brightness))
     return;
   auto call = this->scenic_light_->make_call();
-  call.set_transition_length(ILLUM_FADE_MS);
+  call.set_transition_length(fade_ms);
   call.set_state(on);
   if (on) {
     call.set_rgb(1.0f, 1.0f, 1.0f);
@@ -599,7 +593,12 @@ void GeckoLights::update_illumination_() {
 
   float sun = this->sun_factor_();
   float sky = globals::id(this->skycond_attenuation_);
-  float setpoint = clamp(sky * sun, 0.0f, 1.0f);
+  float setpoint = clamp(sky * sun * this->cloud_factor_, 0.0f, 1.0f);
+  // While a cloud fades, every render -- the cloud's own and any sample in between -- fades over
+  // what is left of it; a fixed short fade would snap the lamps to the cloud's end state.
+  const uint32_t now = millis();
+  int32_t fade_left = (int32_t) (this->cloud_fade_end_ - now);
+  uint32_t fade = fade_left > (int32_t) ILLUM_FADE_MS ? (uint32_t) fade_left : ILLUM_FADE_MS;
   bool moved = std::fabs(setpoint - this->illum_setpoint_) > 0.01f;
   this->illum_setpoint_ = setpoint;
 
@@ -610,16 +609,13 @@ void GeckoLights::update_illumination_() {
     scenic = (this->illum_split_ > 0.0f) ? setpoint / this->illum_split_ : 1.0f;
   } else {
     this->illum_duty_ = (setpoint - this->illum_split_) / (1.0f - this->illum_split_);
-    const uint32_t now = millis();
-    if (now - this->illum_cycle_start_ >= this->illum_cycle_ms_)
-      this->start_illumination_cycle_(now);
     if (this->growlight_light_ != nullptr) {
-      // Dimmable strip: hold the level. Clouds still gust it, so it swells over the cycle rather
-      // than sitting flat -- the same shape the chopping gives, without the switching.
-      float level = this->illum_clouds_ ? this->illum_cycle_duty_ : this->illum_duty_;
-      this->set_growlight_level_(level);
-      scenic = 1.0f - level;
+      // Dimmable strip: hold the level, scenic white at the complement.
+      this->set_growlight_level_(this->illum_duty_, fade);
+      scenic = 1.0f - this->illum_duty_;
     } else {
+      if (now - this->illum_cycle_start_ >= this->illum_cycle_ms_)
+        this->start_illumination_cycle_(now);
       bool on = (now - this->illum_cycle_start_) < this->illum_on_ms_;
       this->set_growlight_(on);
       scenic = on ? 0.0f : 1.0f;
@@ -629,14 +625,69 @@ void GeckoLights::update_illumination_() {
   // The scenic RGB is shared: the sunrise/sunset colour sweeps and Lightning own it while they run,
   // and they are the more interesting thing to look at. Keep out, they hand it back when they stop.
   if (this->scenic_light_->get_effect_name() == "None") {
-    this->drive_scenic_white_(scenic, this->scenic_dirty_);
+    this->drive_scenic_white_(scenic, fade, this->scenic_dirty_);
     this->scenic_dirty_ = false;
   }
 
   if (moved)
-    ESP_LOGD(TAG, "illumination: setpoint %.0f%% (sky %.0f%% x sun %.0f%%) -> growlight duty %.0f%%",
-             setpoint * 100.0f, sky * 100.0f, sun * 100.0f, this->illum_duty_ * 100.0f);
+    ESP_LOGD(TAG, "illumination: setpoint %.0f%% (sky %.0f%% x sun %.0f%% x cloud %.0f%%) -> growlight duty %.0f%%",
+             setpoint * 100.0f, sky * 100.0f, sun * 100.0f, this->cloud_factor_ * 100.0f, this->illum_duty_ * 100.0f);
   this->publish_illumination_();
+}
+
+// ------------------- Passing clouds -------------------
+//
+// Broken cloud drifting across the sun, on top of the steady sky the weather's oktas already set.
+// The weather's `clouds` (0..1) says how much of it there is: the more, the shorter the clear gaps
+// and the deeper the clouds. Each cloud is one event -- it slides in, sits, and slides off again --
+// rendered by fading the illumination setpoint, so the growlight and the scenic white dim together.
+// The daylight lamp is not involved: it is the heater and the PID's alone.
+
+static constexpr float CLOUD_MAX_DEPTH = 0.7f;              // deepest cloud at clouds = 100%
+static constexpr float CLOUD_MIN_DEPTH_SHARE = 0.4f;        // a cloud's depth: 40..100% of the max
+static constexpr uint32_t CLOUD_GAP_MIN_MS = 30000;         // clear sky between clouds, at least
+static constexpr uint32_t CLOUD_GAP_SPREAD_MS = 8 * 60000;  // ... plus up to this at clouds -> 0
+static constexpr uint32_t CLOUD_FADE_MIN_MS = 30000, CLOUD_FADE_MAX_MS = 90000;  // sliding in / off
+static constexpr uint32_t CLOUD_HOLD_MIN_MS = 20000, CLOUD_HOLD_MAX_MS = 120000;  // fully across
+
+static uint32_t frand_ms(uint32_t a, uint32_t b) { return (uint32_t) frand((float) a, (float) b); }
+
+void GeckoLights::set_clouds_(float clouds) {
+  this->clouds_ = clamp(clouds, 0.0f, 1.0f);
+  // A cloud already under way finishes on its own; the chain stops at the next gap once clear.
+  if (this->clouds_ > 0.0f && !this->cloud_chain_) {
+    this->cloud_chain_ = true;
+    this->schedule_cloud_();
+  }
+}
+
+void GeckoLights::schedule_cloud_() {
+  uint32_t gap = CLOUD_GAP_MIN_MS + (uint32_t) (frand(0.0f, 1.0f) * (1.0f - this->clouds_) * CLOUD_GAP_SPREAD_MS);
+  this->set_timeout("cloud", gap, [this]() { this->cloud_arrives_(); });
+}
+
+void GeckoLights::cloud_arrives_() {
+  if (this->clouds_ <= 0.0f) {
+    this->cloud_chain_ = false;  // the sky cleared during the gap
+    return;
+  }
+  float depth = CLOUD_MAX_DEPTH * this->clouds_ * frand(CLOUD_MIN_DEPTH_SHARE, 1.0f);
+  uint32_t fade_in = frand_ms(CLOUD_FADE_MIN_MS, CLOUD_FADE_MAX_MS);
+  uint32_t hold = frand_ms(CLOUD_HOLD_MIN_MS, CLOUD_HOLD_MAX_MS);
+  uint32_t fade_out = frand_ms(CLOUD_FADE_MIN_MS, CLOUD_FADE_MAX_MS);
+  ESP_LOGD(TAG, "cloud: %.0f%% deep, %us in, %us across, %us off", depth * 100.0f, fade_in / 1000, hold / 1000,
+           fade_out / 1000);
+  this->render_cloud_(1.0f - depth, fade_in);
+  this->set_timeout("cloud", fade_in + hold, [this, fade_out]() {
+    this->render_cloud_(1.0f, fade_out);
+    this->set_timeout("cloud", fade_out, [this]() { this->schedule_cloud_(); });
+  });
+}
+
+void GeckoLights::render_cloud_(float factor, uint32_t fade_ms) {
+  this->cloud_factor_ = factor;
+  this->cloud_fade_end_ = millis() + fade_ms;
+  this->update_illumination_();  // by night / frozen: a no-op, the factor is picked up later
 }
 
 }  // namespace geckolights

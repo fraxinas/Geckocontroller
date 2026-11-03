@@ -11,14 +11,16 @@ namespace esphome {
 namespace geckoweather {
 
 // One resolved weather behaviour: how bright the terrarium looks under this condition
-// (attenuation, 0..1), the rain intensity (0..5) and an optional named light effect. The matrix
-// maps each WMO code to one of these.
+// (attenuation, 0..1), how much broken cloud drifts across the sun (clouds, 0..1), the rain
+// intensity (0..5) and an optional named light effect. The matrix maps each WMO code to one of
+// these.
 //
 // attenuation is the single sky-attenuation figure -- a plain per-condition percentage, derived
 // from cloud cover in oktas at codegen. It says what the weather *looks* like, and nothing about
 // heating: the daylight lamp is the daytime heater and belongs to the thermostat PID.
 struct WeatherRule {
   float attenuation{1.0f};
+  float clouds{0.0f};
   float rain{0.0f};
   std::string effect;  // empty / "none" -> no effect
 };
@@ -27,6 +29,7 @@ struct WeatherRule {
 struct WeatherState {
   int code{-1};             // WMO code, -1 before the first reading
   float attenuation{1.0f};
+  float clouds{0.0f};
   float rain{0.0f};
   std::string effect;
   bool from_override{false};  // pinned by the HA test override rather than the live feed
@@ -45,11 +48,11 @@ class GeckoWeather : public Component {
   void set_precipitation_sensor(sensor::Sensor *s) { this->precip_sens_ = s; }
   void set_attenuation(globals::GlobalsComponent<float> *g) { this->attenuation_ = g; }
   // Matrix, flattened to one entry per WMO code at codegen time.
-  void add_rule(int code, float attenuation, float rain, const std::string &effect) {
-    this->rules_[code] = WeatherRule{attenuation, rain, effect};
+  void add_rule(int code, float attenuation, float clouds, float rain, const std::string &effect) {
+    this->rules_[code] = WeatherRule{attenuation, clouds, rain, effect};
   }
-  void set_default_rule(float attenuation, float rain, const std::string &effect) {
-    this->default_ = WeatherRule{attenuation, rain, effect};
+  void set_default_rule(float attenuation, float clouds, float rain, const std::string &effect) {
+    this->default_ = WeatherRule{attenuation, clouds, rain, effect};
   }
 
   // Dispatch a WMO code through the matrix. Used by the live sensor and by the HA test override,

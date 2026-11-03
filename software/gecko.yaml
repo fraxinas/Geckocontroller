@@ -168,7 +168,7 @@ select:
 
   # Testing aid: pick a weather condition and the geckolights matrix immediately drives the
   # terrarium (illumination + rain + effect). "(live)" releases back to the historic weather_code
-  # feed. Shower codes put the growlight into its gusty passing-clouds cycle.
+  # feed. Partly cloudy and shower codes send passing clouds across the sun.
   # The labels' WMO codes are listed in `codes[]` below (index-aligned to the options).
   - platform: template
     name: "Weather Override (test)"
@@ -286,17 +286,22 @@ geckoweather:
   # So these are illumination figures, not heater figures: overcast is a dull day (3 oktas / 67%),
   # not the near-dark the old heater-facing scale used.
   #
-  # Effects: "Lightning" (scenic RGB flicker) and "Daylight Swell", which now means "this weather
-  # has clouds drifting through it" -- the growlight's cycle gusts instead of holding a steady duty.
-  # Edit freely.
+  # clouds (0..100%) is broken cloud drifting across the sun on top of that steady sky: single
+  # clouds slide in over 30-90 s, sit for up to two minutes and slide off, dimming the growlight
+  # and scenic white together. The more clouds, the shorter the clear gaps and the deeper they go
+  # (up to 70% at 100%). Uniform overcast, fog and steady rain have none -- nothing to drift.
+  #
+  # Effect: "Lightning" (scenic RGB flicker). Edit freely.
   default: { oktas: 0, rain: 0 }               # unmapped code -> clear
   rules:
     - codes: [0]                                # clear
       oktas: 0
     - codes: [1]                                # mainly clear
       oktas: 1
+      clouds: 25%
     - codes: [2]                                # partly cloudy
       oktas: 2
+      clouds: 50%
     - codes: [3]                                # overcast
       oktas: 3
     - codes: [45, 48]                           # fog / rime fog
@@ -331,15 +336,15 @@ geckoweather:
     - codes: [80, 85]                           # light rain / snow showers
       oktas: 4
       rain: 2
-      effect: "Daylight Swell"
+      clouds: 60%
     - codes: [81, 86]                           # rain / snow showers
       oktas: 5
       rain: 3
-      effect: "Daylight Swell"
+      clouds: 70%
     - codes: [82]                               # violent rain showers
       oktas: 7
       rain: 5
-      effect: "Daylight Swell"
+      clouds: 80%
     - codes: [95, 96, 99]                       # thunderstorms
       oktas: 8
       rain: 4

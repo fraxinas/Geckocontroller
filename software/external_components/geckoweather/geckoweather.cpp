@@ -42,9 +42,9 @@ void GeckoWeather::resolve_(int code, bool from_override) {
   auto it = this->rules_.find(code);
   const WeatherRule &r = (it != this->rules_.end()) ? it->second : this->default_;
 
-  this->state_ = WeatherState{code, r.attenuation, r.rain, r.effect, from_override};
-  ESP_LOGD(TAG, "code %d%s -> attenuation %.2f, rain %.1f, effect '%s'", code,
-           from_override ? " (override)" : "", r.attenuation, r.rain, r.effect.c_str());
+  this->state_ = WeatherState{code, r.attenuation, r.clouds, r.rain, r.effect, from_override};
+  ESP_LOGD(TAG, "code %d%s -> attenuation %.2f, clouds %.2f, rain %.1f, effect '%s'", code,
+           from_override ? " (override)" : "", r.attenuation, r.clouds, r.rain, r.effect.c_str());
 
   if (this->attenuation_ != nullptr)
     globals::id(this->attenuation_) = r.attenuation;

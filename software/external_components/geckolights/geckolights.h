@@ -207,8 +207,13 @@ class GeckoLights : public Component, public output::FloatOutput {
   float sun_factor_();                     // sun elevation -> 0..1 daylight strength
   void start_illumination_cycle_(uint32_t now);  // draw the next (randomised) growlight cycle
   void set_growlight_(bool on);            // switched strip (slow-PWM phase)
-  void set_growlight_level_(float level);  // dimmable light (entity -> relay power)
-  void drive_scenic_white_(float brightness, bool force);  // scenic RGB as a plain white fill
+  void set_growlight_level_(float level, uint32_t fade_ms);  // dimmable light (entity -> relay power)
+  void drive_scenic_white_(float brightness, uint32_t fade_ms, bool force);  // scenic RGB as white fill
+  // --- Passing clouds ---
+  void set_clouds_(float clouds);          // weather changed how much broken cloud drifts across
+  void schedule_cloud_();                  // clear gap, then the next cloud
+  void cloud_arrives_();                   // one cloud: fade in, hold, fade out
+  void render_cloud_(float factor, uint32_t fade_ms);  // move the cloud factor, fading over fade_ms
   void publish_illumination_();
 
   light::LightState *heat_lamp_{nullptr};
@@ -249,11 +254,15 @@ class GeckoLights : public Component, public output::FloatOutput {
   uint32_t illum_cycle_start_{0};      // millis() at the start of the current growlight cycle
   uint32_t illum_cycle_ms_{300000};    // length drawn for the current cycle
   uint32_t illum_on_ms_{0};            // growlight on-time within the current cycle
-  float illum_cycle_duty_{0.0f};       // duty drawn for the current cycle (gusts around illum_duty_)
-  bool illum_clouds_{false};           // weather code asks for passing clouds ("Daylight Swell")
   bool illum_growlight_on_{false};     // last state written to a switched growlight
   bool illum_active_{false};           // controller drove the lights on its last update
   float illum_published_{NAN};         // last value pushed to illum_sens_
+
+  // --- Passing clouds ---
+  float clouds_{0.0f};                 // weather: how much broken cloud drifts across, 0..1
+  float cloud_factor_{1.0f};           // current cloud dimming on the setpoint, 1 = clear sun
+  uint32_t cloud_fade_end_{0};         // millis() at which the running cloud fade completes
+  bool cloud_chain_{false};            // a gap -> cloud -> gap timeout chain is running
 };
 
 }  // namespace geckolights

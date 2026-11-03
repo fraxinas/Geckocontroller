@@ -15,6 +15,7 @@ CONF_DEFAULT = "default"
 CONF_RULES = "rules"
 CONF_CODES = "codes"
 CONF_OKTAS = "oktas"
+CONF_CLOUDS = "clouds"
 CONF_RAIN = "rain"
 CONF_EFFECT = "effect"
 
@@ -29,9 +30,12 @@ def _atten(oktas):
     return 1.0 - oktas / 9.0
 
 
-# One weather behaviour (cloud cover in oktas 0..8, rain 0..5, optional named light effect).
+# One weather behaviour (cloud cover in oktas 0..8, passing clouds 0..100%, rain 0..5, optional
+# named light effect). `oktas` is the steady sky; `clouds` is broken cloud drifting across the sun
+# on top of it, which the illumination controller renders as individual clouds dimming the light.
 _RULE_BODY = {
     cv.Optional(CONF_OKTAS, default=0): cv.int_range(min=0, max=8),
+    cv.Optional(CONF_CLOUDS, default=0.0): cv.percentage,
     cv.Optional(CONF_RAIN, default=0.0): cv.float_,
     cv.Optional(CONF_EFFECT, default=""): cv.string,
 }
@@ -61,8 +65,8 @@ async def to_code(config):
         cg.add(var.set_attenuation(await cg.get_variable(config[CONF_ATTENUATION])))
     if CONF_DEFAULT in config:
         d = config[CONF_DEFAULT]
-        cg.add(var.set_default_rule(_atten(d[CONF_OKTAS]), d[CONF_RAIN], d[CONF_EFFECT]))
+        cg.add(var.set_default_rule(_atten(d[CONF_OKTAS]), d[CONF_CLOUDS], d[CONF_RAIN], d[CONF_EFFECT]))
     # Flatten each rule's code list into one add_rule call per WMO code.
     for rule in config[CONF_RULES]:
         for code in rule[CONF_CODES]:
-            cg.add(var.add_rule(code, _atten(rule[CONF_OKTAS]), rule[CONF_RAIN], rule[CONF_EFFECT]))
+            cg.add(var.add_rule(code, _atten(rule[CONF_OKTAS]), rule[CONF_CLOUDS], rule[CONF_RAIN], rule[CONF_EFFECT]))
