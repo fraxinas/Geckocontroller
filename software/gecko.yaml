@@ -1,3 +1,12 @@
+substitutions:
+  # Shifts the whole simulated day (sunrise, solar noon, sunset) against the local clock, in hours;
+  # positive = later. Fits the terrarium's day to the keepers' daily routine. The sun applies it as
+  # a longitude offset (15° per hour). The weather must follow by the same amount: set
+  # `offset_hours` of the historic_weather sensor in HA's configuration.yaml to the same value.
+  day_shift_hours: 1
+  # Actual longitude of the installation.
+  local_longitude: 9.15
+
 esphome:
   name: geckocontrol
   # Every boot/reflash comes up with all automations ENABLED. The PID climates (heating + humidity)
@@ -57,8 +66,8 @@ switch:
     icon: mdi:theme-light-dark
     # The global is the source of truth; the switch only mirrors it. Without DISABLED the
     # template default (ALWAYS_OFF) fires turn_off_action at boot and clobbers the global.
-    # geckolights sets it from the sun crossing the horizon; flipping it here is a manual
-    # override that holds until the sun next crosses.
+    # geckolights sets it from the sun: day from the end of the sunrise sweep, night from the
+    # start of the sunset sweep. Flipping it here is a manual override that holds until the next.
     restore_mode: DISABLED
     lambda: |-
       return id(is_daytime);
@@ -281,15 +290,15 @@ geckoweather:
   # oktas (0 = clear .. 8 = overcast) is the single sky-attenuation input: the device turns it into
   # a brightness factor as 1 - oktas/9, i.e. 0 -> 100%, 1 -> 89%, 2 -> 78%, 3 -> 67%, 4 -> 56%,
   # 5 -> 44%, 6 -> 33%, 7 -> 22%, 8 -> 11%. That factor is what the terrarium *looks* like: it
-  # drives the growlight/scenic pair by day and the moonlight by night, and nothing else. The
-  # daylight lamp is not weather-dimmed any more -- it is the daytime heater and belongs to the PID.
+  # drives the growlight by day and the moonlight by night, and nothing else. The daylight lamp
+  # is not weather-dimmed any more -- it is the daytime heater and belongs to the PID.
   # So these are illumination figures, not heater figures: overcast is a dull day (3 oktas / 67%),
   # not the near-dark the old heater-facing scale used.
   #
   # clouds (0..100%) is broken cloud drifting across the sun on top of that steady sky: single
-  # clouds slide in over 30-90 s, sit for up to two minutes and slide off, dimming the growlight
-  # and scenic white together. The more clouds, the shorter the clear gaps and the deeper they go
-  # (up to 70% at 100%). Uniform overcast, fog and steady rain have none -- nothing to drift.
+  # clouds slide in over 30-90 s, sit for up to two minutes and slide off, dimming the growlight.
+  # The more clouds, the shorter the clear gaps and the deeper they go (up to 70% at 100%).
+  # Uniform overcast, fog and steady rain have none -- nothing to drift.
   #
   # Effect: "Lightning" (scenic RGB flicker). Edit freely.
   default: { oktas: 0, rain: 0 }               # unmapped code -> clear
@@ -363,24 +372,25 @@ geckolights:
   weather: gecko_weather
   # Visible illumination: what the terrarium *looks* like, which since the daylight lamp became a
   # pure heater (it follows the PID demand down to zero) is no longer the daylight lamp's job. The
-  # setpoint is the weather matrix's illumination factor scaled by the sun's current elevation.
-  # Below `split` the scenic RGB carries it alone as a white fill; above it the growlight strip
-  # takes over, slow-PWM'd over `period` with the scenic white filling the off phases.
-  # `full_elevation` is the sun elevation counted as full daylight: the equinox noon at this
-  # latitude (90 - 22.6 = 67.4 deg). Summer middays clip at 100%, winter ones dim with the lower
-  # sun -- ~75% at the solstice's 44 deg noon.
-  # HW Rev 2.0 dims the growlight via PWM, so it is given as `growlight_light`: the antiphase
-  # scheme becomes a plain crossfade, driven through the "Grow Light" entity itself (relay power-up,
-  # state in HA) and only when the level moves.
+  # setpoint is the weather matrix's illumination factor scaled by the sun's current elevation, and
+  # the growlight alone renders it: the scenic RGB is no daylight, it stays dark by day and is only
+  # there for the sunrise/sunset sweeps, Lightning and the moon. The growlight is still lit when the
+  # sunset sweep starts and fades out over its first step while the first colour fades in, so the
+  # terrarium never goes dark in between (the sunrise hands over the same way, in reverse).
+  # `full_elevation` is the sun elevation counted as full daylight: the equinox noon at this latitude
+  # (90 - 22.6 = 67.4 deg). Summer middays clip at 100%, winter ones dim with the lower sun.
+  # HW Rev 2.0 dims the growlight via PWM, so it is given as `growlight_light` and held at the
+  # setpoint as its level, driven through the "Grow Light" entity itself (relay power-up, state in
+  # HA) and only when the level moves. A switched `growlight` would be slow-PWM'd over `period`.
   # Human sleeping hours: from 23:30 local until the night ends at sunrise, halve the scenic
   # moonlight so it stops glowing into the room. Local clock on purpose -- the weather feed runs on
   # Noumea time, but whoever is trying to sleep is here.
   # The sun-driven day, all from `illumination.sun` below: the "Sunrise Color" sweep starts as the
   # rising sun passes 5°, and the day -- the daylight lamp taking over heating -- begins once it has
-  # played (~19 min). "Sunset Color" starts at 5° on the way down, the night at the horizon.
+  # played (~18 min). "Sunset Color" starts at 5° on the way down, and so does the night: the
+  # bright daylight lamp would wash the sunset out, so the invisible heat lamp heats from there.
   sunrise_elevation: 5
   sunset_elevation: 5
-  day_end_elevation: 0
   quiet_hours:
     time: esptime
     start: "23:30:00"
@@ -389,7 +399,6 @@ geckolights:
     sun: remote_sun
     growlight_light: grow_light
     period: 5min
-    split: 50%
     full_elevation: 67.4
     sensor: illumination_setpoint
   heat_lamp:
@@ -417,8 +426,8 @@ geckolights:
 
 # Growlight PWM fader on the HW Rev 2.0 white channel. Driven by the illumination controller
 # (`growlight_light` above) and manually from HA. Any level > 0 powers relay K92 ("Grow Light
-# Power"); going to 0 drops it after 30 s. gamma 1.0 keeps the duty linear, which the controller's
-# scenic crossfade (scenic = 1 - level) assumes.
+# Power"); going to 0 drops it after 30 s. gamma 1.0 keeps the duty linear, so the level follows
+# the sun's sin(elevation) the way the controller computes it.
 light:
   - platform: monochromatic
     id: grow_light
@@ -640,7 +649,7 @@ sensor:
 
   # Visible-illumination setpoint (0-100%) published by the geckolights illumination controller:
   # the weather matrix's illumination factor scaled by the sun's elevation. Read-only readout --
-  # useful for seeing why the growlight is cycling the way it is.
+  # it is the growlight's level.
   - platform: template
     id: illumination_setpoint
     name: "Illumination"
@@ -708,9 +717,10 @@ sun:
   #latitude: -22.6
   #longitude: 167.5
   # Original Noumea latitude (22.6°S) mirrored to the northern hemisphere, i.e. kept near the
-  # equator for a tropical day length, paired with the actual local installation longitude.
+  # equator for a tropical day length, paired with the actual local installation longitude, moved
+  # west by `day_shift_hours` (15° per hour) so that the sun runs that much later.
   latitude: 22.6
-  longitude: 9.15
+  longitude: ${ local_longitude - 15 * day_shift_hours }
 
 climate:
   - platform: pid

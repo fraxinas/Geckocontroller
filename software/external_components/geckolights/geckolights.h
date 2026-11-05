@@ -65,7 +65,7 @@ class GeckoRGBOutput : public light::LightOutput {
 };
 
 // Base for the effects on the scenic RGB. Between effects the light has a standing owner -- the
-// illumination white fill by day, the moonlight by night -- so every effect reports its end, and
+// illumination controller by day, which keeps it dark, the moonlight by night -- so every effect reports its end, and
 // whether it played to completion or was cut short, and the owner takes the light back.
 class ScenicLightEffect : public light::LightEffect {
  public:
@@ -159,25 +159,25 @@ class GeckoLights : public Component, public output::FloatOutput {
   void set_quiet_start(uint16_t minutes) { this->quiet_start_min_ = minutes; }
   void set_quiet_factor(float f) { this->quiet_factor_ = f; }
   // Sun elevations (deg): the rising sun's that starts the "Sunrise Color" sweep (day begins once
-  // it has played), the setting sun's that starts "Sunset Color", and the one at which day ends.
-  void set_day_elevations(float sunrise, float sunset, float end) {
+  // it has played), and the setting sun's that starts "Sunset Color" and with it the night.
+  void set_day_elevations(float sunrise, float sunset) {
     this->sunrise_elevation_ = sunrise;
     this->sunset_elevation_ = sunset;
-    this->day_end_elevation_ = end;
   }
   void set_sun_effect_delay(uint16_t delay) { this->sun_effect_delay_ = delay; }
+  // One step of the sunrise/sunset sweeps; also the pace of the growlight <-> sweep cross-fades.
+  uint32_t sweep_step_ms_() const { return (uint32_t) this->sun_effect_delay_ * 1000; }
 
   // --- Illumination controller (see update_illumination_ in the .cpp for the whole scheme) ---
   // How bright the terrarium *looks*, as opposed to how much heat the daylight lamp is making.
   // Driven by the sky attenuation scaled by the sun's elevation, and rendered on the growlight
-  // strip plus the scenic RGB run as a white fill.
+  // strip alone -- the scenic RGB stays dark by day.
   void set_sun(sun::Sun *s) { this->sun_ = s; }
   // Exactly one of these is wired up at codegen (`growlight:` / `growlight_light:`). A switched
   // strip is slow-PWM'd over illum_period_ms_; a dimmable light is driven to the duty as brightness.
   void set_growlight_binary(output::BinaryOutput *o) { this->growlight_binary_ = o; }
   void set_growlight_light(light::LightState *l) { this->growlight_light_ = l; }
   void set_illumination_period(uint32_t ms) { this->illum_period_ms_ = ms; }
-  void set_illumination_split(float v) { this->illum_split_ = v; }
   void set_illumination_full_elevation(float deg) { this->illum_full_elevation_ = deg; }
   void set_illumination_sensor(sensor::Sensor *s) { this->illum_sens_ = s; }
 
@@ -202,13 +202,12 @@ class GeckoLights : public Component, public output::FloatOutput {
   void on_scenic_effect_stopped_(bool sunrise_done);  // an effect let go of the scenic RGB
 
   // --- Illumination controller ---
-  void update_illumination_();             // recompute the setpoint and drive growlight + scenic
+  void update_illumination_();             // recompute the setpoint and drive the growlight
   void release_illumination_();            // night / disabled: growlight off, scenic back to the moon
   float sun_factor_();                     // sun elevation -> 0..1 daylight strength
   void start_illumination_cycle_(uint32_t now);  // draw the next (randomised) growlight cycle
   void set_growlight_(bool on);            // switched strip (slow-PWM phase)
   void set_growlight_level_(float level, uint32_t fade_ms);  // dimmable light (entity -> relay power)
-  void drive_scenic_white_(float brightness, uint32_t fade_ms, bool force);  // scenic RGB as white fill
   // --- Passing clouds ---
   void set_clouds_(float clouds);          // weather changed how much broken cloud drifts across
   void schedule_cloud_();                  // clear gap, then the next cloud
@@ -235,9 +234,7 @@ class GeckoLights : public Component, public output::FloatOutput {
   optional<bool> sun_day_{};                          // the sun said "day" at the last sample
   float sunrise_elevation_{5.0f};
   time_t sunrise_swept_{0};                           // when the Sunrise Color sweep last completed
-  bool scenic_dirty_{false};  // someone else had the scenic RGB: re-assert colour, not just level
   float sunset_elevation_{5.0f};
-  float day_end_elevation_{0.0f};
   time_t last_sun_sample_{0};                         // UTC time of the previous follow_sun_ pass
   uint16_t sun_effect_delay_{180};
 
@@ -246,9 +243,7 @@ class GeckoLights : public Component, public output::FloatOutput {
   output::BinaryOutput *growlight_binary_{nullptr};   // switched strip (slow-PWM)
   light::LightState *growlight_light_{nullptr};       // dimmable strip (light entity)
   sensor::Sensor *illum_sens_{nullptr};               // optional 0-100% readout of the setpoint
-  float illum_setpoint_{0.0f};         // sky x sun, 0..1 -- what the terrarium should look like
-  float illum_duty_{0.0f};             // growlight duty above the split, 0..1
-  float illum_split_{0.5f};            // below this the scenic white carries it alone
+  float illum_setpoint_{0.0f};         // sky x sun x cloud, 0..1 -- the growlight level / duty
   float illum_full_elevation_{45.0f};  // sun elevation (deg) at which daylight counts as full
   uint32_t illum_period_ms_{300000};   // nominal growlight cycle; each cycle varies around it
   uint32_t illum_cycle_start_{0};      // millis() at the start of the current growlight cycle

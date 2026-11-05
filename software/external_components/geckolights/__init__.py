@@ -38,13 +38,11 @@ CONF_WEATHER = "weather"
 CONF_SUN_EFFECT_DELAY = "sun_effect_delay"
 CONF_SUNRISE_ELEVATION = "sunrise_elevation"
 CONF_SUNSET_ELEVATION = "sunset_elevation"
-CONF_DAY_END_ELEVATION = "day_end_elevation"
 CONF_ILLUMINATION = "illumination"
 CONF_SUN = "sun"
 CONF_GROWLIGHT = "growlight"
 CONF_GROWLIGHT_LIGHT = "growlight_light"
 CONF_PERIOD = "period"
-CONF_SPLIT = "split"
 CONF_FULL_ELEVATION = "full_elevation"
 CONF_SENSOR = "sensor"
 CONF_QUIET_HOURS = "quiet_hours"
@@ -55,7 +53,8 @@ CONF_FACTOR = "factor"
 
 
 # The visible-illumination controller: weather illumination x sun elevation, rendered on the
-# growlight strip with the scenic RGB as a white fill. See update_illumination_ in the .cpp.
+# growlight strip alone (the scenic RGB stays dark by day), full at `full_elevation`. It cross-fades
+# with the sunrise/sunset sweeps on the scenic RGB. See update_illumination_ in the .cpp.
 #
 # The growlight is given as exactly one of:
 #   `growlight`       a switched output (gpio/relay), which the component slow-PWMs over `period`.
@@ -70,7 +69,6 @@ ILLUMINATION_SCHEMA = cv.All(
             cv.Optional(CONF_GROWLIGHT): cv.use_id(output.BinaryOutput),
             cv.Optional(CONF_GROWLIGHT_LIGHT): cv.use_id(light.LightState),
             cv.Optional(CONF_PERIOD, default="5min"): cv.positive_time_period_milliseconds,
-            cv.Optional(CONF_SPLIT, default="50%"): cv.percentage,
             cv.Optional(CONF_FULL_ELEVATION, default=45.0): cv.float_range(min=1.0, max=90.0),
             cv.Optional(CONF_SENSOR): cv.use_id(sensor.Sensor),
         }
@@ -125,10 +123,9 @@ CONFIG_SCHEMA = cv.Schema(
         # The sun-driven day, from the illumination `sun` (degrees): the "Sunrise Color" sweep
         # starts as the rising sun passes `sunrise_elevation`, and the day -- the daylight lamp
         # heating -- begins once it has played. "Sunset Color" starts as the setting sun passes
-        # `sunset_elevation`, and the night begins below `day_end_elevation`.
+        # `sunset_elevation`, and with it the night: the heat lamp takes over the heating.
         cv.Optional(CONF_SUNRISE_ELEVATION, default=5.0): cv.float_range(min=-18.0, max=40.0),
         cv.Optional(CONF_SUNSET_ELEVATION, default=5.0): cv.float_range(min=-18.0, max=40.0),
-        cv.Optional(CONF_DAY_END_ELEVATION, default=0.0): cv.float_range(min=-18.0, max=40.0),
         cv.Optional(CONF_ILLUMINATION): ILLUMINATION_SCHEMA,
         cv.Optional(CONF_QUIET_HOURS): QUIET_HOURS_SCHEMA,
     }
@@ -169,11 +166,7 @@ async def to_code(config):
     if CONF_WEATHER in config:
         cg.add(var.set_weather(await cg.get_variable(config[CONF_WEATHER])))
     cg.add(var.set_sun_effect_delay(config[CONF_SUN_EFFECT_DELAY]))
-    cg.add(
-        var.set_day_elevations(
-            config[CONF_SUNRISE_ELEVATION], config[CONF_SUNSET_ELEVATION], config[CONF_DAY_END_ELEVATION]
-        )
-    )
+    cg.add(var.set_day_elevations(config[CONF_SUNRISE_ELEVATION], config[CONF_SUNSET_ELEVATION]))
     if CONF_QUIET_HOURS in config:
         q = config[CONF_QUIET_HOURS]
         cg.add(var.set_quiet_time(await cg.get_variable(q[CONF_TIME])))
@@ -187,7 +180,6 @@ async def to_code(config):
         else:
             cg.add(var.set_growlight_binary(await cg.get_variable(il[CONF_GROWLIGHT])))
         cg.add(var.set_illumination_period(il[CONF_PERIOD]))
-        cg.add(var.set_illumination_split(il[CONF_SPLIT]))
         cg.add(var.set_illumination_full_elevation(il[CONF_FULL_ELEVATION]))
         if CONF_SENSOR in il:
             cg.add(var.set_illumination_sensor(await cg.get_variable(il[CONF_SENSOR])))

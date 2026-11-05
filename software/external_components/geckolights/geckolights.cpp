@@ -10,15 +10,14 @@ namespace geckolights {
 
 static const char *const TAG = "geckolights";
 
-#define SUN_LUT_LEN 7
+#define SUN_LUT_LEN 6
 static uint8_t sun_lut[SUN_LUT_LEN][4] = {
-  {100, 20, 250, 20},
-  {120, 5, 250, 150},
-  {140, 5, 5, 250},
-  {160, 200, 5, 200},
-  {180, 250, 130, 5},
-  {200, 250, 200, 20},
-  {220, 250, 250, 250}};
+  {128, 20, 250, 20},
+  {153, 5, 250, 150},
+  {179, 5, 5, 250},
+  {204, 200, 5, 200},
+  {230, 250, 130, 5},
+  {255, 250, 200, 20}};
 
 // ------------------- SunColorLightEffect -------------------
 
@@ -131,6 +130,7 @@ void GeckoLights::setup() {
   sunset_color->set_inverse(true);
   // Only a sunrise sweep that played to its end starts the day early (see follow_sun_).
   sunrise_color->set_on_stop([this](bool finished) { this->on_scenic_effect_stopped_(finished); });
+  // The sunset ends the day as it starts (see follow_sun_), so its end hands over to the moonlight.
   sunset_color->set_on_stop([this](bool) { this->on_scenic_effect_stopped_(false); });
 
   auto *lightning = new LightningLightEffect("Lightning");
@@ -206,11 +206,15 @@ void GeckoLights::apply_weather_effect_(const std::string &effect) {
 //
 // Day begins once the "Sunrise Color" sweep has played: before that
 // the daylight lamp must not heat, since on a warm morning it would snap on bright in the middle of
-// the sunrise. Normally the sweep itself reports its end (on_scenic_effect_stopped_), so the white
-// fill takes over the scenic RGB seamlessly. Where it doesn't -- after a reboot, or when the sweep
+// the sunrise. Normally the sweep itself reports its end (on_scenic_effect_stopped_), so the growlight
+// takes over from it seamlessly. Where it doesn't -- after a reboot, or when the sweep
 // never ran or was cut short (light automation off, a Lightning weather effect at dawn) -- its end
-// is computed: the sun's crossing of the sunrise elevation plus the sweep's fixed length. Night
-// begins when the setting sun drops below day_end_elevation_.
+// is computed: the sun's crossing of the sunrise elevation plus the sweep's fixed length.
+//
+// Night begins as the "Sunset Color" sweep starts, at sunset_elevation_: from then on the scene is
+// the sunset's, and the bright daylight lamp would wash it out, so the invisible heat lamp takes
+// over the heating right there. The growlight is still lit at that point and cross-fades into the
+// sweep's first colour (release_illumination_), so the terrarium never goes dark in between.
 //
 // Only a change in that verdict writes is_daytime, so the "Daytime" switch overrides
 // until the next hand-over; the first valid sample after boot always counts as a change, which
@@ -229,8 +233,7 @@ void GeckoLights::follow_sun_() {
   ESPTime midnight = ESPTime::from_epoch_utc(now - now % 86400);
   auto rise = this->sun_->sunrise(midnight, this->sunrise_elevation_);
   auto dusk = this->sun_->sunset(midnight, this->sunset_elevation_);
-  auto set = this->sun_->sunset(midnight, this->day_end_elevation_);
-  if (!rise.has_value() || !dusk.has_value() || !set.has_value())
+  if (!rise.has_value() || !dusk.has_value())
     return;
 
   time_t last = this->last_sun_sample_;
@@ -251,13 +254,13 @@ void GeckoLights::follow_sun_() {
   // crossing, which this pass sees up to a minute late.
   time_t sweep_s = SUN_LUT_LEN * this->sun_effect_delay_ + 60;
   bool swept = this->sunrise_swept_ >= rise->timestamp;
-  bool day = (swept || now >= rise->timestamp + sweep_s) && now < set->timestamp;
+  bool day = (swept || now >= rise->timestamp + sweep_s) && now < dusk->timestamp;
   if (this->sun_day_.has_value() && *this->sun_day_ == day)
     return;
   this->sun_day_ = day;
   if (globals::id(this->is_daytime_) == day)
     return;
-  ESP_LOGI(TAG, "%s -> %s", day ? "sunrise sweep done" : "sun set", day ? "DAY" : "NIGHT");
+  ESP_LOGI(TAG, "%s -> %s", day ? "sunrise sweep done" : "sunset begins", day ? "DAY" : "NIGHT");
   globals::id(this->is_daytime_) = day;
 }
 
@@ -273,7 +276,6 @@ void GeckoLights::start_scenic_effect_(const char *name) {
 void GeckoLights::on_scenic_effect_stopped_(bool sunrise_done) {
   if (sunrise_done && this->sun_ != nullptr && this->sun_->get_time() != nullptr)
     this->sunrise_swept_ = this->sun_->get_time()->utcnow().timestamp;
-  this->scenic_dirty_ = true;
   this->defer("scenic_release", [this]() {
     this->follow_sun_();
     if (globals::id(this->is_daytime_)) {
@@ -335,15 +337,14 @@ void GeckoLights::dump_config() {
   ESP_LOGCONFIG(TAG, "GeckoLights:");
   ESP_LOGCONFIG(TAG, "  sun_effect_delay: %u s", this->sun_effect_delay_);
   if (this->sun_ != nullptr)
-    ESP_LOGCONFIG(TAG, "  sun: sunrise sweep at %.0f deg, day from its end; sunset sweep at %.0f deg, night below %.0f deg",
-                  this->sunrise_elevation_, this->sunset_elevation_, this->day_end_elevation_);
+    ESP_LOGCONFIG(TAG, "  sun: sunrise sweep at %.0f deg, day from its end; sunset sweep and night at %.0f deg",
+                  this->sunrise_elevation_, this->sunset_elevation_);
   if (this->quiet_time_ != nullptr)
     ESP_LOGCONFIG(TAG, "  moonlight quiet hours: from %02u:%02u local until sunrise, factor %.2f",
                   this->quiet_start_min_ / 60, this->quiet_start_min_ % 60, this->quiet_factor_);
   if (this->growlight_binary_ != nullptr || this->growlight_light_ != nullptr) {
-    ESP_LOGCONFIG(TAG, "  illumination: growlight %s, split %.0f%%, full elevation %.0f deg",
-                  this->growlight_light_ != nullptr ? "dimmable" : "switched", this->illum_split_ * 100.0f,
-                  this->illum_full_elevation_);
+    ESP_LOGCONFIG(TAG, "  illumination: growlight %s, full elevation %.0f deg",
+                  this->growlight_light_ != nullptr ? "dimmable" : "switched", this->illum_full_elevation_);
     if (this->growlight_light_ == nullptr)
       ESP_LOGCONFIG(TAG, "  illumination slow-PWM period: %u s", this->illum_period_ms_ / 1000);
   }
@@ -430,7 +431,7 @@ void GeckoLights::write_state(float state) {
   // One heater at a time. By day the daylight lamp follows the PID demand 0..100%, all the way
   // down, so a satisfied (or cooling) thermostat lets it go dark; it carries no sunrise/sunset ramp
   // and no cloud dimming -- what the terrarium *looks* like is the growlight's job (illumination
-  // controller below). By night the heat lamp does the same. Each side also switches the other
+  // controller below). By night -- which starts with the sunset sweep -- the heat lamp does the same. Each side also switches the other
   // heater off, so a day/night flip from any source hands over on the next PID cycle.
   float level = clamp(state, 0.0f, 1.0f);
   bool day = globals::id(this->is_daytime_);
@@ -445,30 +446,21 @@ void GeckoLights::write_state(float state) {
 //
 // How bright the terrarium *looks*. This is a separate job from the daylight lamp, which is the
 // daytime heater and now follows the PID demand all the way to zero (a mild, sunny day can leave it
-// dark). The light the animals actually get comes from the growlight LED strip, backed by the
-// scenic RGB run as a plain white fill.
+// dark). The light the animals actually get is the growlight LED strip's, and the growlight's alone:
 //
-// setpoint = weather illumination factor x sun elevation factor, both 0..1:
+//   setpoint = weather illumination factor x sun elevation factor x passing cloud, all 0..1
 //
-//   0 .......... split (50%) .......... 1
-//   |<- scenic white 0..100% ->|<- growlight duty 0..100%, scenic in antiphase ->|
+// A dimmable strip simply holds the setpoint as its level. A switched one is chopped over
+// illum_period_ms_ (5 min by default) at the setpoint as its duty. That chopping is not a metronome:
+// a fixed 5-minute square wave reads as machinery, and real sky does not work that way, so every
+// cycle draws its own length around the nominal period. The draw is symmetric, so the mean duty --
+// and with it the illumination the setpoint asked for -- is preserved; only the rhythm is irregular.
 //
-// Below the split the growlight stays off and the (comparatively weak) scenic white carries the
-// light alone, ramped so it reaches full exactly at the split. Above it the growlight takes over:
-// a switched strip is chopped over illum_period_ms_ (5 min by default) with the scenic white
-// filling the off phases, so the terrarium is never unlit and the perceived average lands between
-// "scenic only" and "growlight only". A dimmable strip skips the chopping and holds the duty as a
-// level, with the scenic white at the complement -- the same time-average, minus the flicker.
-//
-// The chopping is not a metronome. A fixed 5-minute square wave reads as machinery, and real sky
-// does not work that way, so every cycle draws its own length around the nominal period. The draw
-// is symmetric, so the mean duty -- and with it the illumination the setpoint asked for -- is
-// preserved; only the rhythm is irregular.
-//
-// Passing clouds dim the setpoint itself, before the split, so they show across the whole range --
-// on the scenic white alone as much as on the growlight. See the "Passing clouds" section below.
+// The scenic RGB is not daylight. Run as a white fill it lit the low-sun hours as a dim, flat glow
+// that went nearly black before the sunset even began -- and then the sunset's colours flared up out
+// of it. By day it stays dark; it is there for the sunrise/sunset sweeps, Lightning and the moon.
 
-// Cross-fade for the scenic white. Short next to a 5 min cycle, long enough not to snap.
+// Growlight fade between samples. The sun moves it by well under a percent a minute, so short.
 static constexpr uint32_t ILLUM_FADE_MS = 1000;
 static constexpr float ILLUM_CYCLE_VARIANCE = 0.5f;  // cycle length: nominal period +/- 50%
 // Spelled out rather than reusing the Arduino core's DEG_TO_RAD: that one is a double macro,
@@ -477,7 +469,9 @@ static constexpr float ILLUM_DEG_PER_RAD = 3.14159265f / 180.0f;
 
 // Sun elevation -> 0..1. sin(elevation) is the geometric daylight strength (cosine of the zenith
 // angle); normalising it against illum_full_elevation_ lets midday reach a full 100% at this site
-// instead of only in high summer. Below the horizon there is no daylight to render.
+// instead of only in high summer. Below the horizon there is no daylight to render. The day itself
+// ends well above it, at the sunset elevation, with the growlight still lit for the sweep to take
+// over from.
 float GeckoLights::sun_factor_() {
   if (this->sun_ == nullptr)
     return 1.0f;
@@ -497,10 +491,11 @@ void GeckoLights::start_illumination_cycle_(uint32_t now) {
   this->illum_cycle_start_ = now;
   this->illum_cycle_ms_ =
       (uint32_t) ((float) this->illum_period_ms_ * frand(1.0f - ILLUM_CYCLE_VARIANCE, 1.0f + ILLUM_CYCLE_VARIANCE));
-  this->illum_on_ms_ = (uint32_t) (this->illum_duty_ * (float) this->illum_cycle_ms_);
+  this->illum_on_ms_ = (uint32_t) (this->illum_setpoint_ * (float) this->illum_cycle_ms_);
   this->set_timeout("illum_cycle", this->illum_cycle_ms_, [this]() { this->update_illumination_(); });
   this->set_timeout("illum_phase", this->illum_on_ms_, [this]() { this->update_illumination_(); });
-  ESP_LOGD(TAG, "illumination: cycle %us at duty %.0f%%", this->illum_cycle_ms_ / 1000, this->illum_duty_ * 100.0f);
+  ESP_LOGD(TAG, "illumination: cycle %us at duty %.0f%%", this->illum_cycle_ms_ / 1000,
+           this->illum_setpoint_ * 100.0f);
 }
 
 void GeckoLights::set_growlight_(bool on) {
@@ -516,8 +511,7 @@ void GeckoLights::set_growlight_(bool on) {
   } else {
     this->growlight_binary_->turn_off();
   }
-  ESP_LOGD(TAG, "illumination: growlight %s (duty %.0f%%, setpoint %.0f%%)", on ? "ON" : "off",
-           this->illum_duty_ * 100.0f, this->illum_setpoint_ * 100.0f);
+  ESP_LOGD(TAG, "illumination: growlight %s (setpoint %.0f%%)", on ? "ON" : "off", this->illum_setpoint_ * 100.0f);
 }
 
 // Goes through the light entity, so HA shows the real state and the light's own automations (relay
@@ -528,25 +522,6 @@ void GeckoLights::set_growlight_level_(float level, uint32_t fade_ms) {
   level = clamp(level, 0.0f, 1.0f);
   this->illum_growlight_on_ = level > 0.0f;
   drive_lamp_(this->growlight_light_, level, fade_ms);
-}
-
-// The scenic RGB as a white fill. Skipped when the command would not move it.
-void GeckoLights::drive_scenic_white_(float brightness, uint32_t fade_ms, bool force) {
-  brightness = clamp(brightness, 0.0f, 1.0f);
-  bool on = brightness > 0.0f;
-  // `force` covers taking the light back from an effect or the moonlight: they may have left the
-  // brightness where the controller wants it but the colour somewhere else entirely, and brightness
-  // alone wouldn't say so.
-  if (!force && !this->lamp_needs_update_(this->scenic_light_, on, brightness))
-    return;
-  auto call = this->scenic_light_->make_call();
-  call.set_transition_length(fade_ms);
-  call.set_state(on);
-  if (on) {
-    call.set_rgb(1.0f, 1.0f, 1.0f);
-    call.set_brightness(brightness);
-  }
-  call.perform();
 }
 
 void GeckoLights::publish_illumination_() {
@@ -560,12 +535,16 @@ void GeckoLights::publish_illumination_() {
 }
 
 // Night, or the controller was switched off: park the growlight and hand the scenic RGB back to the
-// moon handler, which owns it after dark.
+// moon handler, which owns it after dark. Night normally starts together with the "Sunset Color"
+// sweep, so a dimmable growlight fades out at the sweep's pace while its first colour fades in.
 void GeckoLights::release_illumination_() {
   ESP_LOGD(TAG, "illumination: releasing (night) -> growlight off");
   this->illum_setpoint_ = 0.0f;
-  this->illum_duty_ = 0.0f;
-  this->set_growlight_(false);
+  if (this->growlight_light_ != nullptr) {
+    this->set_growlight_level_(0.0f, this->sweep_step_ms_());
+  } else {
+    this->set_growlight_(false);
+  }
   this->publish_illumination_();
   // Scenic moonlight. on_moon_ keeps out of a running effect, which renders it when it stops.
   if (this->moon_sens_ != nullptr && this->moon_sens_->has_state())
@@ -587,51 +566,40 @@ void GeckoLights::update_illumination_() {
     }
     return;
   }
-  if (!this->illum_active_)
-    this->scenic_dirty_ = true;  // taking the scenic RGB back from the moonlight
-  this->illum_active_ = true;
 
   float sun = this->sun_factor_();
   float sky = globals::id(this->skycond_attenuation_);
   float setpoint = clamp(sky * sun * this->cloud_factor_, 0.0f, 1.0f);
   // While a cloud fades, every render -- the cloud's own and any sample in between -- fades over
-  // what is left of it; a fixed short fade would snap the lamps to the cloud's end state.
+  // what is left of it; a fixed short fade would snap the growlight to the cloud's end state.
   const uint32_t now = millis();
   int32_t fade_left = (int32_t) (this->cloud_fade_end_ - now);
   uint32_t fade = fade_left > (int32_t) ILLUM_FADE_MS ? (uint32_t) fade_left : ILLUM_FADE_MS;
+  // Taking the day over -- typically from the sunrise sweep, which ends on a bright warm amber --
+  // cross-fades at the sweep's own pace: the growlight comes up as the scenic RGB goes down.
+  uint32_t handover = this->sweep_step_ms_();
+  if (!this->illum_active_ && handover > fade)
+    fade = handover;
+  this->illum_active_ = true;
   bool moved = std::fabs(setpoint - this->illum_setpoint_) > 0.01f;
   this->illum_setpoint_ = setpoint;
 
-  float scenic;
-  if (setpoint < this->illum_split_) {
-    this->illum_duty_ = 0.0f;
-    this->set_growlight_(false);
-    scenic = (this->illum_split_ > 0.0f) ? setpoint / this->illum_split_ : 1.0f;
+  if (this->growlight_light_ != nullptr) {
+    this->set_growlight_level_(setpoint, fade);
   } else {
-    this->illum_duty_ = (setpoint - this->illum_split_) / (1.0f - this->illum_split_);
-    if (this->growlight_light_ != nullptr) {
-      // Dimmable strip: hold the level, scenic white at the complement.
-      this->set_growlight_level_(this->illum_duty_, fade);
-      scenic = 1.0f - this->illum_duty_;
-    } else {
-      if (now - this->illum_cycle_start_ >= this->illum_cycle_ms_)
-        this->start_illumination_cycle_(now);
-      bool on = (now - this->illum_cycle_start_) < this->illum_on_ms_;
-      this->set_growlight_(on);
-      scenic = on ? 0.0f : 1.0f;
-    }
+    if (now - this->illum_cycle_start_ >= this->illum_cycle_ms_)
+      this->start_illumination_cycle_(now);
+    this->set_growlight_((now - this->illum_cycle_start_) < this->illum_on_ms_);
   }
 
-  // The scenic RGB is shared: the sunrise/sunset colour sweeps and Lightning own it while they run,
-  // and they are the more interesting thing to look at. Keep out, they hand it back when they stop.
-  if (this->scenic_light_->get_effect_name() == "None") {
-    this->drive_scenic_white_(scenic, fade, this->scenic_dirty_);
-    this->scenic_dirty_ = false;
-  }
+  // The scenic RGB stays dark by day. The sunrise/sunset sweeps and Lightning own it while they run;
+  // keep out of those, and put it out once they hand it back, at the sweep's pace.
+  if (this->scenic_light_->get_effect_name() == "None")
+    drive_lamp_(this->scenic_light_, 0.0f, handover);
 
   if (moved)
-    ESP_LOGD(TAG, "illumination: setpoint %.0f%% (sky %.0f%% x sun %.0f%% x cloud %.0f%%) -> growlight duty %.0f%%",
-             setpoint * 100.0f, sky * 100.0f, sun * 100.0f, this->cloud_factor_ * 100.0f, this->illum_duty_ * 100.0f);
+    ESP_LOGD(TAG, "illumination: growlight %.0f%% (sky %.0f%% x sun %.0f%% x cloud %.0f%%)", setpoint * 100.0f,
+             sky * 100.0f, sun * 100.0f, this->cloud_factor_ * 100.0f);
   this->publish_illumination_();
 }
 
@@ -640,7 +608,7 @@ void GeckoLights::update_illumination_() {
 // Broken cloud drifting across the sun, on top of the steady sky the weather's oktas already set.
 // The weather's `clouds` (0..1) says how much of it there is: the more, the shorter the clear gaps
 // and the deeper the clouds. Each cloud is one event -- it slides in, sits, and slides off again --
-// rendered by fading the illumination setpoint, so the growlight and the scenic white dim together.
+// rendered by fading the illumination setpoint, and with it the growlight.
 // The daylight lamp is not involved: it is the heater and the PID's alone.
 
 static constexpr float CLOUD_MAX_DEPTH = 0.7f;              // deepest cloud at clouds = 100%
