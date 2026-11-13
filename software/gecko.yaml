@@ -118,7 +118,8 @@ switch:
           id(lights_enabled) = false;
 
   # Master enable for the rain/humidification automation. Off stops all automatic pump activity;
-  # the "Let it rain" button still works. Default on.
+  # the "Let it rain" button still works. Default on. Switches itself off when the reservoir is
+  # empty (and refuses to stay on) until "Reservoir refilled" is pressed.
   - platform: template
     name: "Rain Automation"
     id: rain_enabled_switch
@@ -132,6 +133,21 @@ switch:
     turn_off_action:
       - lambda: |-
           id(rain_enabled) = false;
+
+  # Measures the rain pump's reservoir runtime: fill the reservoir, switch on (the pump runs
+  # continuously), switch off once the pump draws air. 95 % of the measured time becomes the
+  # reservoir runtime; then refill and press "Reservoir refilled". Gives up after 30 min.
+  - platform: template
+    name: "Reservoir Calibration"
+    id: reservoir_calibration_switch
+    icon: mdi:timer-play-outline
+    restore_mode: DISABLED      # mirrors geckorain; a boot turn_off_action would end a calibration
+    lambda: |-
+      return id(rain_pump_float).is_calibrating_reservoir();
+    turn_on_action:
+      - lambda: 'id(rain_pump_float).start_reservoir_calibration();'
+    turn_off_action:
+      - lambda: 'id(rain_pump_float).stop_reservoir_calibration();'
 
   - platform: template
     name: "PID Calibration"
@@ -210,14 +226,18 @@ button:
     id: pump_button
     name: "Let it rain"
     icon: "mdi:weather-rainy"
+    # Runs through geckorain so the runtime is deducted from the reservoir; refused when it is empty.
     on_press:
-      - logger.log: "Let it rain: pump ON for 4s"
-      - output.turn_on:
-          id: rain_pump
-      - delay: 4s
-      - output.turn_off:
-          id: rain_pump
-      - logger.log: "Let it rain: pump OFF"
+      - lambda: 'id(rain_pump_float).run_manual(4000);'
+
+  # Press after refilling the rain pump's reservoir: restores the full pump runtime and switches the
+  # rain automation back on if the empty reservoir had switched it off.
+  - platform: template
+    id: reservoir_refilled_button
+    name: "Reservoir refilled"
+    icon: mdi:cup-water
+    on_press:
+      - lambda: 'id(rain_pump_float).refill_reservoir();'
 
 output:
   - platform: ac_dimmer
@@ -273,6 +293,14 @@ output:
     hygrostat: hygrostat
     calibration_target: calibration_target
     enabled: rain_enabled
+    # Pump runtime one filling of the 1 l reservoir bottle lasts, minus a safety margin; every pump
+    # run (rain, misting, calibration, "Let it rain") is deducted from it. When it is used up, the
+    # pump is locked out and the rain automation switches off until "Reservoir refilled" is pressed.
+    # "Reservoir Calibration" measures and replaces it (kept in flash, until this value is edited).
+    # 0s disables reservoir tracking.
+    reservoir_runtime: 1min
+    reservoir_level: reservoir_level
+    reservoir_runtime_sensor: reservoir_runtime
 
 # The WMO weather matrix and the resolved weather state, owned separately from the lights: it is
 # the single answer to "what is the weather doing right now", and its consumers are unrelated to
@@ -663,6 +691,25 @@ sensor:
     id: weather_precipitation
     name: "Rain intensity"
     accuracy_decimals: 0
+
+  # Remaining fill of the rain pump's reservoir, published by geckorain from the pump runtime left.
+  - platform: template
+    id: reservoir_level
+    name: "Reservoir Level"
+    unit_of_measurement: "%"
+    icon: mdi:cup-water
+    accuracy_decimals: 0
+    state_class: measurement
+
+  # Pump runtime one reservoir filling lasts, as configured or as measured by "Reservoir Calibration".
+  - platform: template
+    id: reservoir_runtime
+    name: "Reservoir Runtime"
+    unit_of_measurement: "s"
+    device_class: duration
+    icon: mdi:timer-sand
+    accuracy_decimals: 0
+    entity_category: diagnostic
 
   - platform: homeassistant   # actual historic rain intensity (range 0-5)
     id: weather_windspeed

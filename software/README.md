@@ -23,6 +23,15 @@ Using esphome, the Geckocontroller shows up as a device in your Home Assistant a
 
 ## Calibration
 
+### Rain Pump Reservoir
+
+The rain pump is fed from a 1 l bottle and must not run dry. `reservoir_runtime` of the `geckorain` output in `gecko.yaml` is the pump runtime one filling lasts (`0s` disables the tracking). Measure it instead of guessing:
+
+* fill the bottle and switch on "Reservoir Calibration": the pump runs continuously
+* switch it off as soon as the pump draws air: 95 % of the measured time becomes the reservoir runtime, shown as "Reservoir Runtime" and kept in flash (until `reservoir_runtime` is edited in the YAML)
+* "Reservoir Level" shows the remaining fill in %; at 0 % the pump is locked out and "Rain Automation" switches off
+* after refilling, press "Reservoir refilled": the level returns to 100 % and the automation switches back on
+
 ### HX711 Load Cell
 
 with 0g weight (only coconut)

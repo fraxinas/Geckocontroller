@@ -14,6 +14,9 @@ CONF_HUMIDITY = "humidity"
 CONF_HYGROSTAT = "hygrostat"
 CONF_CALIBRATION_TARGET = "calibration_target"
 CONF_ENABLED = "enabled"
+CONF_RESERVOIR_RUNTIME = "reservoir_runtime"
+CONF_RESERVOIR_LEVEL = "reservoir_level"
+CONF_RESERVOIR_RUNTIME_SENSOR = "reservoir_runtime_sensor"
 
 RainPumpOutput = geckorain_ns.class_("RainPumpOutput", output.FloatOutput, cg.Component)
 
@@ -27,6 +30,10 @@ CONFIG_SCHEMA = output.FLOAT_OUTPUT_SCHEMA.extend(
         cv.Optional(CONF_HYGROSTAT): cv.use_id(pid_climate.PIDClimate),
         cv.Optional(CONF_CALIBRATION_TARGET): cv.use_id(globals.GlobalsComponent),
         cv.Optional(CONF_ENABLED): cv.use_id(globals.GlobalsComponent),
+        # Pump runtime one reservoir filling lasts until calibrated; 0s disables reservoir tracking.
+        cv.Optional(CONF_RESERVOIR_RUNTIME, default="0s"): cv.positive_time_period_milliseconds,
+        cv.Optional(CONF_RESERVOIR_LEVEL): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_RESERVOIR_RUNTIME_SENSOR): cv.use_id(sensor.Sensor),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -38,6 +45,7 @@ async def to_code(config):
 
     cg.add(var.set_pump(await cg.get_variable(config[CONF_PUMP])))
     cg.add(var.set_period(config[CONF_PERIOD]))
+    cg.add(var.set_reservoir_runtime(config[CONF_RESERVOIR_RUNTIME]))
 
     for key, setter in [
         (CONF_WEATHER, var.set_weather_sensor),
@@ -45,6 +53,8 @@ async def to_code(config):
         (CONF_HYGROSTAT, var.set_hygrostat),
         (CONF_CALIBRATION_TARGET, var.set_calibration_target),
         (CONF_ENABLED, var.set_enabled),
+        (CONF_RESERVOIR_LEVEL, var.set_reservoir_level_sensor),
+        (CONF_RESERVOIR_RUNTIME_SENSOR, var.set_reservoir_runtime_sensor),
     ]:
         if key in config:
             cg.add(setter(await cg.get_variable(config[key])))
