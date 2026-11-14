@@ -19,7 +19,7 @@ Using esphome, the Geckocontroller shows up as a device in your Home Assistant a
     offset_hours: 1
 ```
 * `offset_hours` must match `day_shift_hours` in `gecko.yaml`, which shifts the simulated sun by the same amount, so that the weather stays in step with the day cycle
-* temperature and humidity controllers still work without Home Assistant / Historic Weather component and are then using standard values
+* without Home Assistant or the Historic Weather records (connection lost, or a feed `unavailable` for 10 min) a standard day/night cycle stands in: temperature 26 °C by day / 21 °C by night, humidity 65 % / 80 %, a mainly clear sky and a 5 s shower every morning (`fallback:` in the `geckoweather` block of `gecko.yaml`); the "Weather Fallback" sensor shows when it is active
 
 ## Calibration
 

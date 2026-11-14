@@ -117,6 +117,30 @@ switch:
       - lambda: |-
           id(lights_enabled) = false;
 
+  # Weather-driven thermostat setpoint: on = the historic Noumea temperature sets the thermostat
+  # target on every update; off = the target stays where it was set manually (HA / Geckoconsole).
+  # Default on; switching it back on applies the current weather temperature right away.
+  - platform: template
+    name: "Weather Setpoint"
+    id: weather_setpoint_switch
+    icon: mdi:thermometer-auto
+    restore_mode: DISABLED      # mirrors id(weather_setpoint); must not drive it at boot
+    lambda: |-
+      return id(weather_setpoint);
+    turn_on_action:
+      - lambda: |-
+          id(weather_setpoint) = true;
+      - if:
+          condition:
+            lambda: 'return id(weather_temperature_setpoint).has_state();'
+          then:
+            - climate.control:
+                id: thermostat_air
+                target_temperature: !lambda 'return id(weather_temperature_setpoint).state;'
+    turn_off_action:
+      - lambda: |-
+          id(weather_setpoint) = false;
+
   # Master enable for the rain/humidification automation. Off stops all automatic pump activity;
   # the "Let it rain" button still works. Default on. Switches itself off when the reservoir is
   # empty (and refuses to stay on) until "Reservoir refilled" is pressed.
@@ -310,8 +334,36 @@ output:
 geckoweather:
   id: gecko_weather
   code_sensor: weather_code
+  temperature_sensor: weather_temperature
+  humidity_sensor: weather_humidity
+  temperature_setpoint: weather_temperature_setpoint
+  humidity_setpoint: weather_humidity_setpoint
   precipitation: weather_precipitation
   attenuation: skycond_attenuation
+  # Standard day/night cycle for when the historic feed is missing -- HA unreachable, or no record
+  # for this hour ("unavailable"). Without it the terrarium would sit on whatever HA sent last, a hot
+  # afternoon or a cold night, for as long as HA is gone. Per feed: once lost for `timeout`, the
+  # fallback stands in until HA sends a valid value again ("Weather Fallback" shows it).
+  # Hours are solar hours at the sun's longitude below, so the cycle runs with the simulated day.
+  fallback:
+    time_id: esptime
+    timeout: 10min
+    longitude: ${ local_longitude - 15 * day_shift_hours }   # same as the sun's
+    # Cosine over the day: day values at warmest_hour, night values twelve hours later.
+    warmest_hour: 15
+    temperature: { day: 26, night: 21 }
+    humidity: { day: 65, night: 80 }
+    code: 1                                     # mainly clear, a few passing clouds
+    # With the weather code lost there is no rain at all, so give a short shower once a day -- in
+    # the morning, so the simulated sun dries the excess water rather than it staying damp overnight.
+    # Through geckorain, so it honours "Rain Automation" and the reservoir lockout.
+    rain_hour: 8
+    on_rain:
+      - if:
+          condition:
+            lambda: 'return id(rain_enabled);'
+          then:
+            - lambda: 'id(rain_pump_float).run_manual(5000);'
   # WMO weather-code matrix: maps each Open-Meteo weather_code to cloud cover in oktas, rain
   # intensity (0..5, published to weather_precipitation for the pump) and an optional light effect.
   #
@@ -655,19 +707,43 @@ sensor:
     name: Sun Elevation
     type: elevation
 
+  # Historic temperature/humidity from HA. Not applied directly: geckoweather passes valid values
+  # on to the setpoint sensors below, or its fallback cycle while HA does not provide them.
   - platform: homeassistant   # actual historic temperature
     id: weather_temperature
     entity_id: sensor.temperature_in_france_noumea_182_days_ago
-    on_value:
-      then:
-        - climate.control:
-              id: thermostat_air
-              target_temperature: !lambda |-
-                return x;
 
   - platform: homeassistant   # actual historic humidity
     id: weather_humidity
     entity_id: sensor.humidity_in_france_noumea_182_days_ago
+
+  # The temperature/humidity the climates follow, published by geckoweather: the historic value, or
+  # the standard day/night cycle while the feed is lost (see "Weather Fallback").
+  - platform: template
+    id: weather_temperature_setpoint
+    name: "Weather Temperature"
+    unit_of_measurement: "°C"
+    device_class: temperature
+    icon: mdi:thermometer-auto
+    accuracy_decimals: 1
+    on_value:
+      then:
+        - if:
+            condition:
+              lambda: 'return id(weather_setpoint);'   # "Weather Setpoint" switch
+            then:
+              - climate.control:
+                  id: thermostat_air
+                  target_temperature: !lambda |-
+                    return x;
+
+  - platform: template
+    id: weather_humidity_setpoint
+    name: "Weather Humidity"
+    unit_of_measurement: "%"
+    device_class: humidity
+    icon: mdi:water-percent
+    accuracy_decimals: 0
     on_value:
       then:
         - climate.control:
@@ -907,6 +983,13 @@ globals:
      restore_value: no          # always ENABLED on power-on (see esphome.on_boot comment)
      initial_value: 'true'
 
+   # Weather setpoint enable: true = the weather feed sets the thermostat target,
+   # false = manual target (from HA or the Geckoconsole).
+   - id: weather_setpoint
+     type: bool
+     restore_value: no          # always ENABLED on power-on (see esphome.on_boot comment)
+     initial_value: 'true'
+
    # Rain automation enable: true = weather/humidity arbitration drives the pump,
    # false = no automatic rain/humidification (the "Let it rain" button still works).
    - id: rain_enabled
@@ -920,6 +1003,13 @@ globals:
      type: int
      restore_value: no
      initial_value: '0'
+
+binary_sensor:
+  # On while geckoweather's standard day/night cycle stands in for any lost historic weather feed.
+  - platform: template
+    name: "Weather Fallback"
+    icon: mdi:weather-cloudy-alert
+    lambda: 'return id(gecko_weather).in_fallback();'
 
 status_led:
   pin: GPIO12
