@@ -1,18 +1,24 @@
+# Geckoconsole: wall console for the Geckocontroller. 2.4" ILI9341 320x240 SPI display with
+# XPT2046 touch, rotary encoder with push button, a second button, buzzer, 6 RGB status LEDs
+# (CO2 level) and an MH-Z19 CO2 sensor. Talks to the controller through Home Assistant.
+#
+# The UI (navigation, pages, region-based rendering) lives in external_components/gecko_console.h;
+# this file wires sensors, inputs and Home Assistant to it.
+#
+# The console changes controller settings through Home Assistant actions (scripts ha_* below):
+# in HA, enable "Allow the device to perform Home Assistant actions" for this device.
+#
+# Display/touch wiring (MSP2402 module -> Geckoconsole J31 / J1, see display-demo.yaml):
+#   CS GPIO15, RESET GPIO21, DC GPIO22, MOSI GPIO23, SCK GPIO18, LED GPIO32,
+#   T_CS GPIO17, T_DO (MISO) GPIO12, T_IRQ GPIO35; SDO unconnected.
+
 esphome:
   name: geckoconsole
-  platform: ESP32
-  board: nodemcu-32s
-  # includes:
-  #   - custom_components/vcnl4040/vcnl4040.h
-  # libraries:
-  #  - "Adafruit BusIO@^1.11.1"
-  #  - "Adafruit VCNL4040@^1.0.1"
+  includes:
+    - external_components/gecko_console.h
   on_boot:
     priority: 250
     then:
-      - sensor.rotary_encoder.set_value:
-          id: rotary_dial
-          value: 0
       - light.turn_on:
           id: rgb_leds
           red: 28%
@@ -26,392 +32,140 @@ esphome:
       - binary_sensor.template.publish:
           id: api_connected
           state: ON
-      - lambda: |-
-            id(rtttlplayer).play("Turn_on:d=32,o=6,b=150:c,e,g,c7");
+      - rtttl.play: "Turn_on:d=32,o=6,b=150:c,e,g,c7"
 
-  includes:
-    - custom_components/gecko_common.h
-    - custom_components/gecko_console.h
+esp32:
+  board: nodemcu-32s
+  framework:
+    type: esp-idf
 
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
-
-  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  # Fallback hotspot (captive portal) in case the wifi connection fails
   ap:
     ssid: "Geckocontrol Fallback Hotspot"
     password: !secret fallback_password
 
-# Enable logging
+captive_portal:
+
 logger:
   level: DEBUG
 
-# Enable Home Assistant API
 api:
-  services:
-    - service: play_rtttl
+  actions:
+    - action: play_rtttl
       variables:
         song_str: string
       then:
         - rtttl.play:
             rtttl: !lambda 'return song_str;'
-    - service: mhz19_calibrate_zero
+    - action: mhz19_calibrate_zero
       then:
         - mhz19.calibrate_zero: co2_sensor
 
 ota:
-
-substitutions:
-  menuSize: '7'
+  - platform: esphome
 
 globals:
-# Wait indicator
+  # Connection wait indicator (0..16)
   - id: wi
     type: unsigned char
     initial_value: '0'
 
-# Blank screen
-  - id: s_blank
-    type: bool
-    initial_value: 'false'
-
-# Menu helpers
-  - id: menu_current_node
-    type: unsigned char
-    initial_value: '0'
-
-  - id: menu_current_label
-    type: char *
-
-  - id: menu_current_value
-    type: float
-
-  - id: menu_current_percentage
-    type: float
-
-  - id: menu_target_value
-    type: float
-
-  - id: menu_weather_value
-    type: float
-
-  - id: menu_no_hass_updates
-    type: bool
-    initial_value: 'false'
-
-    # subpage_t
-  - id: menu_subpage
-    type: unsigned char
-    initial_value: '0'
-
-  - id: menu_labels
-    type: char * [${menuSize}]
-    initial_value: '{"Overview","Thermostat","Hygrostat","CO2 LEDs","Scenic Light","Fogger","Rain"}'
-
-  - id: menu_units
-    type: char * [${menuSize}]
-    initial_value: '{"","°C","%","","HSV","\U0000F67E","\U0000F683"}'
-
-  # function_t
-  - id: menu_functions
-    type: unsigned char[${menuSize}]
-    initial_value: '{0,FUNC_CLIMATE,FUNC_CLIMATE,FUNC_SLIDER,FUNC_COLORPICKER,FUNC_BUTTON,FUNC_BUTTON}'
-
-    # The range maximum value
-  - id: menu_rotary_ticks
-    type: int [${menuSize}]
-    initial_value: '{4,0,50,50,COLORPICKER_V_TICKS,1,1}'
-
-  - id: menu_increment
-    type: float [${menuSize}]
-    initial_value: '{0,0.5,2.,2.,5.12,0,0}'
-
-  - id: thermostat_diff
-    type: float
-
-  - id: hygrostat_diff
-    type: float
-
-  - id: previous_hue
-    type: int
-    initial_value: '0'
-
-  - id: send_code
-    type: std::string
-    initial_value: ''
-  - id: last_fan_direction
-    type: bool
-    initial_value: 'false'
-  - id: codemap
-    type: std::map<std::string, std::string>
-    initial_value: '{
-      {"stop",    "000001111101"},
-      {"reverse", "000001111011"},
-      {"light",   "000001111110"},
-      {"button_released", "000001111111"}
-      }'
-  - id: speed_codes
-    type: std::array<std::string, 7>
-    initial_value: '{
-      "000001111101", /* stop     */
-      "000001110101", /* speed 1  */
-      "000001110101", /* speed 2  */
-      "000001101111", /* speed 3  */
-      "000001100111", /* speed 4  */
-      "000001011101", /* speed 5  */
-      "000001011111"  /* speed 6  */
-      }'
-
-
 script:
-# What value to display for each menu item
-  - id: menu_maxvals
+  # Home Assistant calls made by the UI (gecko_console.h)
+  - id: ha_call   # action on an entity without data: switch.turn_on/off, button.press, light.turn_off
+    mode: queued
+    max_runs: 10
+    parameters:
+      action: string
+      entity: string
     then:
-      - lambda: |-
-          id(menu_rotary_ticks)[1] = round((id(thermostat_max_temperature).state-id(thermostat_min_temperature).state)/id(menu_increment)[1]);
-          id(menu_rotary_ticks)[2] = round((id(hygrostat_max_humidity).state-id(hygrostat_min_humidity).state)/id(menu_increment)[2]);
-
-  - id: menu_values
+      - homeassistant.action:
+          action: !lambda 'return action;'
+          data:
+            entity_id: !lambda 'return entity;'
+  - id: ha_number
+    mode: queued
+    max_runs: 5
+    parameters:
+      entity: string
+      value: float
     then:
-      - lambda: |-
-          switch(id(menu_current_node)) {
-            case 1:
-              id(menu_current_value) = id(thermostat_current_temperature).state;
-              id(menu_target_value) = id(thermostat_target_temperature).state;
-              id(menu_weather_value) = id(weather_temperature).state;
-              id(menu_current_percentage) = (id(menu_target_value) - id(thermostat_min_temperature).state) / (id(thermostat_max_temperature).state - id(thermostat_min_temperature).state);
-              ESP_LOGV(TAG, "read temperatures current: %.2f°C, target: %.2f°C (ticks=%d) weather: %.2f°C, percentage: %.2f%%", id(menu_current_value), id(menu_target_value), id(menu_rotary_ticks)[1], id(menu_weather_value), id(menu_current_percentage)*100.);
-              break;
-            case 2:
-              id(menu_current_value) = id(hygrostat_current_humidity).state;
-              id(menu_target_value) = id(hygrostat_target_humidity).state;
-              id(menu_weather_value) = id(weather_humidity).state;
-              id(menu_current_percentage) = (id(menu_target_value) - id(hygrostat_min_humidity).state) / (id(hygrostat_max_humidity).state - id(hygrostat_min_humidity).state);
-              ESP_LOGV(TAG, "read humidity current: %.0f, target: %.0f (ticks=%d) weather: %.0f, percentage: %.2f%%", id(menu_current_value), id(menu_target_value), id(menu_rotary_ticks)[2], id(menu_weather_value), id(menu_current_percentage)*100.);
-              break;
-            case 3:
-              float b;
-              id(rgb_leds).current_values_as_brightness(&b);
-              id(menu_current_value) = b*100.f;
-              id(menu_current_percentage) = b;
-              ESP_LOGV(TAG, "read brightness: %f -> menu_current_value: %.2f / percentage: %.2f", b, id(menu_current_value), id(menu_current_percentage));
-              break;
-          }
-
-# What value to set rotary encoder to for each menu item setting
-  - id: menu_set_rotary
+      - homeassistant.action:
+          action: number.set_value
+          data:
+            entity_id: !lambda 'return entity;'
+            value: !lambda 'return str_sprintf("%.0f", value);'
+  - id: ha_climate_temperature
+    mode: queued
+    max_runs: 5
+    parameters:
+      entity: string
+      temperature: float
     then:
-      - lambda: |-
-          int rot_val = 0;
-          if (id(menu_functions)[id(menu_current_node)] == FUNC_COLORPICKER) // colorpicker
-          {
-            int h;
-            float s, v;
-            Color c = id(color_scenic_light);
-            rgb_to_hsv(c.r, c.g, c.b, h, s, v);
-            switch (id(menu_subpage)) {
-              case PAGE_VIEW: // browse menu
-                return;
-              case PAGE_SET: // set brightness
-                rot_val = round(v / COLORPICKER_V_MAX * COLORPICKER_V_TICKS);
-                ESP_LOGD(TAG, "menu_set_rotary colorpicker brightness v=%.2f => %d", v, rot_val);
-                break;
-              case PAGE_SET_HUE: // set hue
-                rot_val = round(h / COLORPICKER_H_MAX * COLORPICKER_H_TICKS);
-                ESP_LOGD(TAG, "menu_set_rotary colorpicker hue=%d => %d", h, rot_val);
-                break;
-              case PAGE_SET_SATURATION: // set saturation
-                s *= 100.;
-                rot_val = round(s / COLORPICKER_S_MAX * COLORPICKER_S_TICKS);
-                ESP_LOGD(TAG, "menu_set_rotary colorpicker saturation=%.2f => %d", s, rot_val);
-                break;
-            }
-            id(rotary_dial).set_value(rot_val);
-          } else {
-            rot_val = round(id(menu_current_percentage) * id(menu_rotary_ticks)[id(menu_current_node)]);
-            ESP_LOGV(TAG, "menu_set_rotary current_percentage=%.2f%% * ticks[%d]=%d = %d", id(menu_current_percentage)*100., id(menu_current_node), id(menu_rotary_ticks)[id(menu_current_node)], rot_val);
-            id(rotary_dial).set_value(rot_val);
-          }
-
-# Actions for each menu item setting
-  - id: menu_actions
+      - homeassistant.action:
+          action: climate.set_temperature
+          data:
+            entity_id: !lambda 'return entity;'
+            temperature: !lambda 'return str_sprintf("%.1f", temperature);'
+  - id: ha_light_brightness
+    mode: queued
+    max_runs: 5
+    parameters:
+      entity: string
+      pct: int
     then:
-      - if:
-          condition:
-            lambda: 'return id(menu_current_node) == 1;'
-          then:
-            homeassistant.service:
-              service: climate.set_temperature
-              variables:
-                x: |-
-                  double rot_val = id(rotary_dial).state;
-                  double set_val = id(menu_increment)[1] * rot_val + id(thermostat_min_temperature).state;
-                  ESP_LOGD(TAG, "rotary val=%.2f -> change temp setpoint to %.2f°C", rot_val, set_val);
-                  id(thermostat_target_temperature).state = set_val;
-                  return set_val;
-              data_template:
-                entity_id: climate.thermostat_air
-                temperature: '{{ x }}'
-      - if:
-          condition:
-            lambda: 'return id(menu_current_node) == 2;'
-          then:
-            homeassistant.service:
-              service: climate.set_temperature
-              variables:
-                x: |-
-                  double rot_val = id(rotary_dial).state;
-                  double set_val = id(menu_increment)[2] * rot_val + id(hygrostat_min_humidity).state;
-                  ESP_LOGD(TAG, "rotary val=%.2f -> change hygro setpoint to %.0f%%", rot_val, set_val);
-                  id(hygrostat_target_humidity).state = set_val;
-                  return set_val;
-              data_template:
-                entity_id: climate.hygrostat
-                temperature: '{{ x }}'
-      - if:
-          condition:
-            lambda: 'return id(menu_current_node) == 3;'
-          then:
-            - lambda: |-
-                auto call = id(rgb_leds).make_call();
-                float b = id(rotary_dial).state;
-                ESP_LOGD(TAG, "change brightness to %.2f", b);
-                if (b > 0.)
-                  call = id(rgb_leds).turn_on();
-                call.set_brightness(b/id(menu_rotary_ticks)[id(menu_current_node)]);
-                call.perform();
-      - if:
-          condition:
-            lambda: 'return (id(menu_functions)[id(menu_current_node)] == FUNC_COLORPICKER);'
-          then:
-            - if:
-                condition:
-                  lambda: 'return (id(menu_subpage) == PAGE_SET);'
-                then:
-                  homeassistant.service:
-                    service: light.turn_on
-                    variables:
-                      b: |-
-                        float b = id(rotary_dial).state * COLORPICKER_V_MAX / COLORPICKER_V_TICKS;
-                        ESP_LOGD(TAG, "menu_actions colorpicker send brightness=%.0f", b);
-                        UpdateBrightnessToEsphomeColor(b, &id(color_scenic_light));
-                        return b;
-                    data_template:
-                      entity_id: light.scenic_light
-                      brightness: '{{ b }}'
-            - if:
-                condition:
-                  lambda: 'return (id(menu_subpage) >= PAGE_SET_HUE);'
-                then:
-                  homeassistant.service:
-                    service: light.turn_on
-                    variables:
-                      hs_color_text: |-
-                        return HSColorFromRotary(id(rotary_dial).state, id(menu_subpage), &id(color_scenic_light));
-                    data_template:
-                      entity_id: light.scenic_light
-                      hs_color: '{{ hs_color_text }}'
-      - if:
-          condition:
-            lambda: 'return id(menu_current_node) == 5;'
-          then:
-            homeassistant.service:
-              service: button.press
-              data:
-                entity_id: button.sleepy_hollow
-      - if:
-          condition:
-            lambda: 'return id(menu_current_node) == 6;'
-          then:
-            homeassistant.service:
-              service: button.press
-              data:
-                entity_id: button.let_it_rain
-
-  - id: thermostat_hass_update
+      - homeassistant.action:
+          action: light.turn_on
+          data:
+            entity_id: !lambda 'return entity;'
+            brightness_pct: !lambda 'return to_string(pct);'
+  - id: ha_light_hs
+    mode: queued
+    max_runs: 5
+    parameters:
+      entity: string
+      hue: float
+      sat: float
+      brightness: int
     then:
-      - if:
-          condition:
-            lambda: 'return id(menu_no_hass_updates) == false;'
-          then:
-            - script.execute: menu_values
-            - script.execute: menu_set_rotary
-            - lambda: |-
-                float diff = id(thermostat_current_temperature).state-id(thermostat_target_temperature).state;
-                int r = round(clamp(+85.f*diff, 0.f, 255.f));
-                int g = round(clamp(255-28.f*diff*diff, 0.f, 255.f));
-                int b = round(clamp(-85.f*diff, 0.f, 255.f));
-                id(color_thermostat) = Color(r, g, b);
-                id(thermostat_diff) = diff;
-                ESP_LOGD(TAG, "thermostat_hass_update current: %.2f, target: %.2f, diff: %.2f", id(thermostat_current_temperature).state, id(thermostat_target_temperature).state, id(thermostat_diff));
-            - component.update: gecko_display
-
-  - id: hygrostat_hass_update
-    then:
-      - if:
-          condition:
-            lambda: 'return id(menu_no_hass_updates) == false;'
-          then:
-            - script.execute: menu_values
-            - script.execute: menu_set_rotary
-            - lambda: |-
-                float diff = id(hygrostat_current_humidity).state-id(hygrostat_target_humidity).state;
-                int r = round(clamp(-36.4f*diff, 0.f, 255.f));
-                int g = round(clamp(255-5.2f*diff*diff, 0.f, 255.f));
-                int b = round(clamp(+36.4f*diff, 0.f, 255.f));
-                id(color_hygrostat) = Color(r, g, b);
-                id(hygrostat_diff) = diff;
-                ESP_LOGD(TAG, "hygrostat_hass_update current: %.0f, target: %.0f, diff: %.0f", id(hygrostat_current_humidity).state, id(hygrostat_target_humidity).state, id(hygrostat_diff));
-            - component.update: gecko_display
-
-  - id: overview_timeout
-    mode: restart
-    then:
-      - delay: 1min
-      - lambda: >-
-          id(menu_current_node) = 0;
-          id(menu_subpage) = PAGE_VIEW;
-          id(rotary_dial).set_value(0);
-      - component.update: gecko_display
-
-  - id: menu_hass_updates_timeout
-    mode: restart
-    then:
-      - delay: 1s
-      - lambda: >-
-          id(menu_no_hass_updates) = false;
+      - homeassistant.action:
+          action: light.turn_on
+          data:
+            entity_id: !lambda 'return entity;'
+            brightness: !lambda 'return to_string(brightness);'
+          data_template:
+            hs_color: '[{{ h }}, {{ s }}]'
+          variables:
+            h: 'return hue;'
+            s: 'return sat;'
 
   - id: co2_warning_action
     then:
       - if:
           condition:
-            lambda: 'return (id(api_connected).state);'
+            and:
+              - binary_sensor.is_on: api_connected
+              - switch.is_on: co2_warning_sound
           then:
-            - lambda: |-
-                id(rtttlplayer).play("GoodBad:d=4,o=5,b=56:32p,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,d#,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,c#6,32a#,32d#6,32a#,32d#6,8a#.,16f#.,32f.,32d#.,c#,32a#,32d#6,32a#,32d#6,8a#.,16g#.,d#,1p,1p,1p,1p,1p,1p");
+            - rtttl.play: "GoodBad:d=4,o=5,b=56:32p,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,d#,32a#,32d#6,32a#,32d#6,8a#.,16f#.,16g#.,c#6,32a#,32d#6,32a#,32d#6,8a#.,16f#.,32f.,32d#.,c#,32a#,32d#6,32a#,32d#6,8a#.,16g#.,d#,1p,1p,1p,1p,1p,1p"
             - delay: 45s
-
-  - id: send_came_12bit
-    then:
-      - remote_transmitter.transmit_rc_switch_raw:
-          protocol:
-            pulse_length: 340
-            sync: [36, 1]
-            zero: [1, 2]
-            one: [2, 1]
-            inverted: true
-          code: !lambda 'return id(send_code);'
-          repeat:
-            times: 4
-            wait_time: 0s
 
 time:
   - platform: homeassistant
     id: ha_time
 
 spi:
+  # Display and touch share the bus. MISO on GPIO12 is not a native VSPI pin, so the bus runs
+  # through the GPIO matrix; fine for 40 MHz writes (the display is never read, touch runs at 2 MHz).
+  interface: spi3
   clk_pin: GPIO18
   mosi_pin: GPIO23
+  miso_pin:
+    number: GPIO12
+    ignore_strapping_warning: true   # MISO idles low/floating at boot, as GPIO12 requires
 
 uart:
   rx_pin: GPIO33
@@ -419,207 +173,116 @@ uart:
   baud_rate: 9600
 
 i2c:
-  sda: 25
-  scl: 26
-  scan: True
+  sda: GPIO25
+  scl: GPIO26
+  scan: true
   id: bus_a
+
+switch:
+  # Mutes the CO2 alarm melody; also available in Home Assistant.
+  - platform: template
+    id: co2_warning_sound
+    name: "CO2 Warning Sound"
+    icon: mdi:bell-ring
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    on_turn_on:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_CO2_SOUND);'
+    on_turn_off:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_CO2_SOUND);'
 
 binary_sensor:
   - platform: gpio
     id: rotary_dial_push
     name: "Rotary Button"
+    internal: true
     pin:
       number: GPIO34
       inverted: true
-    internal: true
     on_press:
-      then:
-        - if:
-            condition:
-              api.connected
-            then:
-              - if:
-                  condition:
-                    # Set mode for continuous or binary setting
-                    lambda: |-
-                        return (id(menu_functions)[id(menu_current_node)] != FUNC_OVERVIEW &&
-                                id(menu_functions)[id(menu_current_node)] != FUNC_BUTTON);
-                  then:
-                    - lambda: |-
-                        //toggle subpage
-                        switch (id(menu_subpage)) {
-                          case 0:
-                            id(menu_subpage) = PAGE_SET;
-                            break;
-                          case 1: {
-                            if (id(menu_functions)[id(menu_current_node)] == FUNC_COLORPICKER) {
-                              id(menu_subpage) = PAGE_SET_HUE;
-                              break;
-                            }
-                            id(menu_subpage) = PAGE_VIEW;
-                            break;
-                          }
-                          case 2:
-                          case 4:
-                            id(menu_subpage) = PAGE_VIEW;
-                            break;
-                          case 3:
-                            id(menu_subpage) = PAGE_SET_SATURATION;
-                            break;
-                        }
-
-              - if:
-                  condition:
-                    # Button action
-                    lambda: 'return id(menu_functions)[id(menu_current_node)] == FUNC_BUTTON;'
-                  then:
-                     - script.execute: menu_actions
-
-              # If set mode, set rotary
-              - if:
-                  condition:
-                    lambda: 'return (id(menu_subpage) >= PAGE_SET);'
-                  then:
-                    - lambda: 'id(menu_no_hass_updates) = true;'
-                    - script.execute: menu_set_rotary
-                    - script.execute: menu_hass_updates_timeout
-
-              # Display entities value for each menu item
-              - script.execute: menu_values
-              - script.execute: overview_timeout
-              - component.update: gecko_display
+      - lambda: 'gecko_ui::ui.push();'
 
   - platform: gpio
     id: button_2
-    pin:
-      number: GPIO05
-      inverted: true
     internal: true
+    pin:
+      number: GPIO5
+      inverted: true
+      ignore_strapping_warning: true
     on_press:
-      then:
-        - lambda: |-
-            switch (id(menu_subpage)) {
-              case PAGE_VIEW:
-              case PAGE_SET: {
-                if (id(menu_functions)[id(menu_current_node)] == FUNC_COLORPICKER)
-                  id(menu_subpage) = PAGE_VIEW;
-                else
-                  id(menu_subpage) = PAGE_GRAPH;
-                break;
-              }
-              case PAGE_GRAPH:
-                id(menu_subpage) = PAGE_VIEW;
-                id(menu_current_node) = 0;
-                //reset rotary to 0
-                id(rotary_dial).set_value(0);
-                break;
-              case PAGE_SET_HUE:
-                id(menu_subpage) = PAGE_SET;
-                break;
-              case PAGE_SET_SATURATION:
-                id(menu_subpage)--;
-                break;
-            }
-        - script.execute: menu_set_rotary
-        - script.execute: menu_hass_updates_timeout
-        - script.execute: overview_timeout
-        - component.update: gecko_display
+      - lambda: 'gecko_ui::ui.back();'
 
   - platform: template
     id: api_connected
+    on_state:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_CONNECTION);'
+
+  # Controller automation switches and light states (read from Home Assistant)
+  - platform: homeassistant
+    id: rain_automation
+    entity_id: switch.geckocontrol_rain_automation
+    on_state:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_RAIN_AUTO);'
+  - platform: homeassistant
+    id: light_automation
+    entity_id: switch.geckocontrol_light_automation
+    on_state:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_LIGHT_AUTO);'
+  - platform: homeassistant
+    id: multifan_auto
+    entity_id: switch.geckocontrol_multifan_auto
+    on_state:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_WIND_AUTO);'
+  - platform: homeassistant
+    id: weather_setpoint
+    entity_id: switch.geckocontrol_weather_setpoint
+    on_state:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_WEATHER_SET);'
+  # Heater shown on the Thermo page: daylight lamp by day, heat lamp at night
+  - platform: homeassistant
+    id: daytime
+    entity_id: switch.geckocontrol_daytime
+    on_state:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_HEATER);'
+  - platform: homeassistant
+    id: daylight_on
+    entity_id: light.geckocontrol_dimmer_daylight
+    on_state:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_HEATER);'
+  - platform: homeassistant
+    id: heat_lamp_on
+    entity_id: light.geckocontrol_heat_lamp
+    on_state:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_HEATER);'
+  - platform: homeassistant
+    id: grow_light_on
+    entity_id: light.geckocontrol_grow_light
+    on_state:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_GROW);'
+  - platform: homeassistant
+    id: scenic_light_on
+    entity_id: light.geckocontrol_scenic_light
+    on_state:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_SCENIC);'
 
 sensor:
   - platform: rotary_encoder
     id: rotary_dial
     name: "Rotary Encoder"
+    internal: true
     pin_a: GPIO27
     pin_b: GPIO14
-    filters:
-      - lambda: |-
-          int maxval = 0;
-          if(id(menu_subpage) == PAGE_SET) { //if set mode, rotary should go from 0 to according setting
-            switch(id(menu_functions)[id(menu_current_node)]){
-              case FUNC_SLIDER:
-              case FUNC_CLIMATE:
-              case FUNC_COLORPICKER:
-                maxval = id(menu_rotary_ticks)[id(menu_current_node)] + 1; break; // continuous
-              case FUNC_SWITCH: maxval = 2; break;  // binary
-            }
-          } else if (id(menu_subpage) == PAGE_SET_HUE) { // colorpicker set hue, work endlessly
-            maxval = id(menu_rotary_ticks)[id(menu_current_node)];
-            float res = x;
-            if (x > maxval)
-              res = std::fmod(x, maxval);
-            else if (x < 0)
-              res = maxval-std::fmod(-1.*x, maxval);
-            ESP_LOGD(TAG, "color picker rotary x=%f maxval=%d res=%f", x, maxval, res);
-            return res;
-          } else if (id(menu_subpage) == PAGE_SET_SATURATION) { // colorpicker set saturation
-            maxval = COLORPICKER_S_TICKS + 1;
-          }
-          ESP_LOGD(TAG, "rotary x=%f maxval=%d", x, maxval);
-          //if rotary is over length, set to length
-          if(maxval && x >= maxval) {
-            id(rotary_dial).set_value(maxval-1);
-            return maxval-1;
-          } else if (x < 0) {
-            id(rotary_dial).set_value(0);
-            return 0;
-          }
-          return x;
     resolution: 2
-    min_value: -48
-    internal: true
     on_clockwise:
-      then:
-        - if:
-            condition:
-              lambda: 'return (id(menu_subpage) == PAGE_VIEW);'
-            then:
-              - lambda: |-
-                  if (id(menu_current_node) < ${menuSize}-1)
-                    id(menu_current_node)++;
-                  else
-                    id(menu_current_node) = 0;
+      - lambda: 'gecko_ui::ui.turn(+1);'
     on_anticlockwise:
-      then:
-        - if:
-            condition:
-              lambda: 'return (id(menu_subpage) == PAGE_VIEW);'
-            then:
-              - lambda: |-
-                  if (id(menu_current_node) >= 1)
-                    id(menu_current_node)--;
-                  else
-                    id(menu_current_node) = ${menuSize}-1;
-    on_value:
-      then:
-        - if:
-            condition:
-              api.connected
-            then:
-              - if:
-                  # Modify values
-                  condition:
-                    lambda: 'return (id(menu_subpage) >= PAGE_SET);'
-                  then:
-                    - lambda: 'id(menu_no_hass_updates) = true;'
-                    - script.execute: menu_actions
-                # Update value
-              - script.execute: menu_values
-              - script.execute: overview_timeout
-              - component.update: gecko_display
+      - lambda: 'gecko_ui::ui.turn(-1);'
 
   - platform: wifi_signal
     id: wifisignal
     update_interval: 20s
-
-  - platform: template
-    id: wifistep
-    update_interval: 20s
-    lambda: |-
-      if(isnan(id(wifisignal).state)) return 0;
-      else return round((id(wifisignal).state+100)/10);
+    on_value:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_WIFI);'
 
   - platform: mhz19
     id: co2_sensor
@@ -632,457 +295,455 @@ sensor:
               if (!id(api_connected).state)
                 return;
               auto call = id(rgb_leds).make_call();
-              double r=0.0, g=0.0, b=0.0;
-              g = clamp(1.6-0.001*x, 0., 1.);
-              r = clamp(-0.5+0.001*x, 0., 1.);
-              call.set_rgb(r,g,b);
+              float g = clamp(1.6f - 0.001f * x, 0.f, 1.f);
+              float r = clamp(-0.5f + 0.001f * x, 0.f, 1.f);
+              call.set_rgb(r, g, 0.f);
               call.perform();
-              id(color_co2) = Color(r*255., g*255., 0.);
-              if (x > 1800) {
+              id(color_co2) = Color(r * 255, g * 255, 0);
+              if (x > 1800)
                 id(co2_warning_action).execute();
-              }
-          - component.update: gecko_display
+          - lambda: 'gecko_ui::ui.changed(gecko_ui::F_CO2);'
     temperature:
       name: "MH-Z19 Temperature"
       id: temp_val
     update_interval: 20s
     automatic_baseline_calibration: false
 
-# Climate Controls from Home Assistant
-  - platform: homeassistant
-    id: thermostat_target_temperature
-    entity_id: climate.thermostat_air
-    attribute: temperature
-    internal: true
-    on_value:
-      then:
-        - script.execute: thermostat_hass_update
+  # --- Controller values from Home Assistant ---
+  # Thermostat (the weather feed drives its target)
   - platform: homeassistant
     id: thermostat_current_temperature
-    entity_id: climate.thermostat_air
+    entity_id: climate.geckocontrol_thermostat_air
     attribute: current_temperature
-    internal: true
     on_value:
-      then:
-        - script.execute: thermostat_hass_update
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_TEMP);'
   - platform: homeassistant
-    id: thermostat_min_temperature
-    entity_id: climate.thermostat_air
-    attribute: min_temp
-    internal: true
+    id: thermostat_target_temperature
+    entity_id: climate.geckocontrol_thermostat_air
+    attribute: temperature
     on_value:
-      then:
-        - script.execute: menu_maxvals
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_TEMP);'
+  # Humidity: the hygrostat itself is internal to the controller; current value is the combined
+  # ceiling/ground humidity, the setpoint is the "Target Humidity" number.
   - platform: homeassistant
-    id: thermostat_max_temperature
-    entity_id: climate.thermostat_air
-    attribute: max_temp
-    internal: true
+    id: humidity_current
+    entity_id: sensor.geckocontrol_combined_humidity
     on_value:
-      then:
-        - script.execute: menu_maxvals
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_HUM);'
+  - platform: homeassistant
+    id: humidity_target
+    entity_id: number.geckocontrol_target_humidity
+    on_value:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_HUM);'
   - platform: homeassistant
     id: ground_temperature
-    entity_id: sensor.ground_temperature
-    internal: true
+    entity_id: sensor.geckocontrol_ground_temperature
+    on_value:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_TEMP);'
+  - platform: homeassistant
+    id: ceiling_humidity
+    entity_id: sensor.geckocontrol_ceiling_humidity
+    on_value:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_HUM);'
+  - platform: homeassistant
+    id: ground_humidity
+    entity_id: sensor.geckocontrol_ground_humidity
+    on_value:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_HUM);'
+  # Historic weather the controller follows
   - platform: homeassistant
     id: weather_temperature
     entity_id: sensor.temperature_in_france_noumea_182_days_ago
-    internal: true
     on_value:
-      then:
-        - script.execute: hygrostat_hass_update
-  - platform: homeassistant
-    id: hygrostat_target_humidity
-    entity_id: climate.hygrostat
-    attribute: temperature
-    internal: true
-    on_value:
-      then:
-        - script.execute: hygrostat_hass_update
-  - platform: homeassistant
-    id: hygrostat_current_humidity
-    entity_id: climate.hygrostat
-    attribute: current_temperature
-    internal: true
-    on_value:
-      then:
-        - script.execute: hygrostat_hass_update
-  - platform: homeassistant
-    id: hygrostat_min_humidity
-    entity_id: climate.hygrostat
-    attribute: min_temp
-    internal: true
-    on_value:
-      then:
-        - script.execute: menu_maxvals
-  - platform: homeassistant
-    id: hygrostat_max_humidity
-    entity_id: climate.hygrostat
-    attribute: max_temp
-    internal: true
-    on_value:
-      then:
-        - script.execute: menu_maxvals
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_TEMP);'
   - platform: homeassistant
     id: weather_humidity
     entity_id: sensor.humidity_in_france_noumea_182_days_ago
-    internal: true
     on_value:
-      then:
-        - script.execute: thermostat_hass_update
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_HUM);'
+  # Rain reservoir
   - platform: homeassistant
-    id: ceiling_humidity
-    entity_id: sensor.ceiling_humidity
-    internal: true
+    id: reservoir_level
+    entity_id: sensor.geckocontrol_reservoir_level
+    on_value:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_RESERVOIR);'
+  # Lights
   - platform: homeassistant
-    id: ground_humidity
-    entity_id: sensor.ground_humidity
-    internal: true
-  - platform: homeassistant
-    id: scenic_light_b
-    entity_id: light.scenic_light
+    id: grow_light_brightness
+    entity_id: light.geckocontrol_grow_light
     attribute: brightness
-    internal: true
     on_value:
-      then:
-        - lambda: |-
-            if (id(menu_no_hass_updates))
-              return;
-            UpdateBrightnessToEsphomeColor(id(scenic_light_b).state, &id(color_scenic_light));
-            ESP_LOGD(TAG, "scenic_light brightness updated to %.2f. Color=%d %d %d", id(scenic_light_b).state, id(color_scenic_light).r, id(color_scenic_light).g, id(color_scenic_light).b);
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_GROW);'
+  - platform: homeassistant
+    id: illumination
+    entity_id: sensor.geckocontrol_illumination
+    on_value:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_GROW);'
+  - platform: homeassistant
+    id: scenic_light_brightness
+    entity_id: light.geckocontrol_scenic_light
+    attribute: brightness
+    on_value:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_SCENIC);'
+  # Wind (terrarium Multifan) and the weather wind (km/h) that bounds its speed
+  - platform: homeassistant
+    id: weather_windspeed
+    entity_id: sensor.windspeed_in_france_noumea_182_days_ago
+    on_value:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_WIND);'
+  - platform: homeassistant
+    id: multifan_percentage
+    entity_id: fan.geckocontrol_gecko_multifan_status
+    attribute: percentage
+    on_value:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_WIND);'
+  - platform: homeassistant
+    id: fan_manual_speed
+    entity_id: number.geckocontrol_fan_manual_speed
+    on_value:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_WIND);'
+  - platform: homeassistant
+    id: fan_tacho
+    entity_id: sensor.geckocontrol_fan_tacho
+    on_value:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_WIND);'
+  - platform: homeassistant
+    id: daylight_brightness
+    entity_id: light.geckocontrol_dimmer_daylight
+    attribute: brightness
+    on_value:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_HEATER);'
+  - platform: homeassistant
+    id: heat_lamp_brightness
+    entity_id: light.geckocontrol_heat_lamp
+    attribute: brightness
+    on_value:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_HEATER);'
+
+  # --- Graph samplers ---
+  # graph only records a sample when its sensor publishes; Home Assistant values only arrive when
+  # they change, which leaves long gaps. These republish every graph value every 5 s (one graph
+  # pixel is 15 min / 158 px = 5.7 s).
+  - platform: template
+    id: g_temp_now
+    update_interval: 5s
+    lambda: 'return id(thermostat_current_temperature).state;'
+  - platform: template
+    id: g_temp_ground
+    update_interval: 5s
+    lambda: 'return id(ground_temperature).state;'
+  - platform: template
+    id: g_temp_target
+    update_interval: 5s
+    lambda: 'return id(thermostat_target_temperature).state;'
+  - platform: template
+    id: g_hum_now
+    update_interval: 5s
+    lambda: 'return id(humidity_current).state;'
+  - platform: template
+    id: g_hum_weather
+    update_interval: 5s
+    lambda: 'return id(weather_humidity).state;'
+  - platform: template
+    id: g_hum_ceiling
+    update_interval: 5s
+    lambda: 'return id(ceiling_humidity).state;'
+  - platform: template
+    id: g_hum_ground
+    update_interval: 5s
+    lambda: 'return id(ground_humidity).state;'
+  - platform: template
+    id: g_reservoir
+    update_interval: 5s
+    lambda: 'return id(reservoir_level).state;'
+  - platform: template
+    id: g_wind
+    update_interval: 5s
+    lambda: 'return id(multifan_percentage).state;'
+  - platform: template
+    id: g_wind_weather
+    update_interval: 5s
+    lambda: 'return id(weather_windspeed).state;'
+  - platform: template
+    id: g_co2
+    update_interval: 5s
+    lambda: |-
+      if (id(co2_sensor).status_has_warning())
+        return NAN;
+      return id(co2_val).state;
 
 text_sensor:
   - platform: homeassistant
     id: scenic_light_hs
-    entity_id: light.scenic_light
+    entity_id: light.geckocontrol_scenic_light
     attribute: hs_color
-    internal: true
     on_value:
-      then:
-        - lambda: |-
-            if (id(menu_no_hass_updates))
-              return;
-            HassHSColorTextToEsphomeColor(id(scenic_light_hs).state, &id(color_scenic_light));
-            ESP_LOGD(TAG, "scenic_light hs_color ('%s') updated. Color=%d %d %d", id(scenic_light_hs).state.c_str(), id(color_scenic_light).r, id(color_scenic_light).g, id(color_scenic_light).b);
-
-# Climate Controls from Home Assistant
-
-  # - platform: custom
-  #   lambda: |-
-  #     auto MyVCNL4040_sensor = new MyVCNL4040();
-  #     App.register_component(MyVCNL4040_sensor);
-  #     return {MyVCNL4040_sensor->prox_sensor, MyVCNL4040_sensor->lux_sensor, MyVCNL4040_sensor->rawLight_sensor};
-  #   sensors:
-  #   - name: "Proximity sensor"
-  #   - name: "Lux sensor"
-  #   - name: "Raw Light sensor"
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_SCENIC);'
 
 output:
+  # LEDC channels share a timer in pairs (0/1, 2/3, ...). RTTTL retunes the buzzer's timer for every
+  # note, which also changes its resolution, so the backlight needs a timer of its own.
   - platform: ledc
-    pin: GPIO16
     id: buzzer
-
-  - platform: template
-    id: fan_speed_out
-    type: float
-    write_action:
-      - lambda: |-
-          if (state >= 0.0 && state <= 1.0) {
-            int index = state * 6.5; // add half a step to avoid off-by-one
-            ESP_LOGD("fan_debug", "Setting speed: value: %5.3f, index: %d", state, index);
-            id(send_code) = id(speed_codes)[index].c_str();
-          }
-      - script.execute: send_came_12bit
-  - platform: template
-    id: fan_dir_out
-    type: binary
-    write_action:
-      - delay: 500ms
-      - lambda: |-
-          if (state != id(last_fan_direction)) {
-            id(last_fan_direction) = state;
-            ESP_LOGD("fan_debug", "Reversing");
-            id(send_code) = id(codemap)["reverse"].c_str();
-            id(send_came_12bit).execute();
-          }
+    pin: GPIO16
+    channel: 0
+  - platform: ledc
+    id: backlight_pwm
+    pin: GPIO32
+    channel: 2
 
 light:
-  - platform: neopixelbus
-    method:
-      type: esp32_i2s
-    variant: WS2812
-    pin: GPIO04
-    num_leds: 6
-    type: GRB
+  - platform: esp32_rmt_led_strip
     id: rgb_leds
     name: "RGB LEDs"
+    pin: GPIO4
+    num_leds: 6
+    chipset: WS2812
+    rgb_order: GRB
     default_transition_length: 0s
     color_correct: [50%, 50%, 50%]
     restore_mode: RESTORE_DEFAULT_ON
-  # - platform: monochromatic
-  #   output: buzzer
-  #   name: "Buzzer"
+    on_state:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_CO2_LEDS);'
+  - platform: monochromatic
+    id: backlight
+    name: "Display Backlight"
+    output: backlight_pwm
+    restore_mode: ALWAYS_ON
+    default_transition_length: 250ms
 
 rtttl:
-  output: buzzer
-  on_prepare_playback:
-    - logger.log: 'preparing rtttl playback!'
-  on_finished_playback:
-    - logger.log: 'Song ended!'
   id: rtttlplayer
+  output: buzzer
 
 status_led:
-  pin: GPIO02
+  pin:
+    number: GPIO2
+    ignore_strapping_warning: true
 
 interval:
-  - interval: 0.2s
+  # Performs pending redraws. Never call component.update on the display directly.
+  - interval: 20ms
+    then:
+      - lambda: 'gecko_ui::ui.flush(id(gecko_display));'
+  # Idle timeout back to the overview
+  - interval: 1s
+    then:
+      - lambda: 'gecko_ui::ui.tick();'
+  # Connection wait animation
+  - interval: 200ms
     then:
       - if:
           condition:
-            lambda: 'return (!id(api_connected).state);'
+            binary_sensor.is_off: api_connected
           then:
-            - lambda: 'id(wi) = ++id(wi) > 16 ? 0 : id(wi); // connect indicator logic'
-            - component.update: gecko_display
+            - lambda: |-
+                id(wi) = id(wi) >= 16 ? 0 : id(wi) + 1;
+                gecko_ui::ui.changed(gecko_ui::F_CONNECTION);
+  # Header clock
   - interval: 60s
     then:
       - lambda: |-
           if (id(co2_sensor).status_has_warning()) {
-            id(color_co2) = Color(64,64,64);
+            id(color_co2) = Color(64, 64, 64);
+            gecko_ui::ui.changed(gecko_ui::F_CO2);
           }
-      - component.update: gecko_display
+          gecko_ui::ui.changed(gecko_ui::F_CLOCK);
 
 font:
   - file: "/usr/share/fonts/TTF/OpenSans-Regular.ttf"
     id: big_font
     size: 40
-    glyphs: ">-+:%°0123456789ACHSaonetigpms. "
-
+    glyphsets: [GF_Latin_Kernel]
+    glyphs: "°₂"
   - file: "/usr/share/fonts/TTF/OpenSans-Light.ttf"
     id: small_font
     size: 26
-    glyphs: ">-+:/%&!°0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz ."
-
+    glyphsets: [GF_Latin_Kernel]
+    glyphs: "°₂"
+  - file: "/usr/share/fonts/TTF/OpenSans-Regular.ttf"
+    id: mid_font
+    size: 22
+    glyphsets: [GF_Latin_Kernel]
+    glyphs: "°₂"
   - file: "/usr/share/fonts/TTF/OpenSans-Light.ttf"
     id: tiny_font
-    size: 19
-    glyphs: ":-+0123456789AGCHSonecktrlig.pma "
-
-  - file: '../resources/materialdesignicons-webfont.ttf'
+    size: 17
+    glyphsets: [GF_Latin_Kernel]
+    glyphs: "°₂"
+  # Material Design Icons, downloaded once at build time and cached in .esphome/. The version is
+  # pinned: codepoints differ between mdi releases.
+  - file:
+      type: web
+      url: https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/fonts/materialdesignicons-webfont.ttf
     id: icon_font
-    size: 40
-    glyphs: [
-      "\U0000F67E", # mdi-weather-fog
-      "\U0000F683", # mdi-weather-rain
+    size: 32
+    glyphs: &icons [
+      "\U000F050F",  # thermometer
+      "\U000F058E",  # water-percent
+      "\U000F07E4",  # molecule-co2
+      "\U000F0597",  # weather-rainy
+      "\U000F01AB",  # cup-water
+      "\U000F059D",  # weather-windy
+      "\U000F0E66",  # sprout
+      "\U000F03D8",  # palette
+      "\U000F009E",  # bell-ring
+      "\U000F009B",  # bell-off
+      "\U000F004D",  # arrow-left
       ]
-
-display:
-  - platform: st7789v
-    id: gecko_display
-    dc_pin: GPIO22
-    reset_pin: GPIO21
-    backlight_pin: GPIO32
-    dimensions: 240x240
-    update_interval: never
-    rotation: 0
-    lambda: |-
-      if (!id(api_connected).state){
-        // Header Background
-        it.filled_rectangle(0, 0, 240, 16, color_dark_purple);
-        it.printf(0, 6, id(tiny_font), COLOR_ON, TextAlign::CENTER_LEFT, "Connecting to HASS");
-        it.image(22, 26, id(gecko_logo));
-        // Little animation before API is online
-        it.filled_rectangle(200, 4, 2*id(wi), 9);
-        it.printf(120, 240, id(small_font), COLOR_ON, TextAlign::BASELINE_CENTER, "Geckocontrol V1.0");
-      } else {
-        // Header Background
-        it.filled_rectangle(0, 0, 240, 16, color_dark_purple);
-        // Header time
-        it.strftime(0, 6, id(tiny_font), COLOR_ON, TextAlign::CENTER_LEFT, "%H:%M", id(ha_time).now());
-        // Header CO2
-        it.printf(200, 6, id(tiny_font), COLOR_ON, TextAlign::CENTER_RIGHT, "%.0fppm", id(co2_val).state);
-        // Header wifi
-        for(int i=0; i<5; i++) if(i<id(wifistep).state) it.filled_rectangle(216+i*5,8-i*2,4,i*2+4); else it.rectangle(216+i*5,8-i*2,4,i*2+4);
-        // Header menu level
-        // y-coord start of the menu pos display
-        int b = 80 - (2 * ${menuSize});
-        for(int i=0; i<${menuSize}; i++) {
-          int itb = b + i*4;
-          if(id(menu_current_node) == i)
-            it.filled_rectangle(itb, 6, 6, 6);
-          else
-            it.filled_rectangle(itb+2, 8, 2, 2);
-        };
-
-        // Overview
-        if(id(menu_current_node) == 0) {
-          it.filled_rectangle(10, 60, 220, 54, id(color_thermostat));
-          if (id(thermostat_current_temperature).has_state()) {
-            it.printf(120, 60, id(big_font), COLOR_OFF, TextAlign::TOP_CENTER, "%.1f°C", id(thermostat_current_temperature).state);
-            it.printf(224, 84, id(tiny_font), COLOR_OFF, TextAlign::TOP_RIGHT, "%+.1f", id(thermostat_diff));
-          }
-          it.filled_rectangle(10, 120, 220, 54, id(color_hygrostat));
-          if (id(hygrostat_current_humidity).has_state()) {
-            it.printf(120, 120, id(big_font), COLOR_OFF, TextAlign::TOP_CENTER, "%.0f%%", id(hygrostat_current_humidity).state);
-            it.printf(220, 142, id(tiny_font), COLOR_OFF, TextAlign::TOP_RIGHT, "%+.0f", id(hygrostat_diff));
-          }
-          it.filled_rectangle(10, 180, 220, 54, id(color_co2));
-          if (id(co2_val).has_state() && !id(co2_sensor).status_has_warning()) {
-            it.printf(120, 180, id(big_font), COLOR_OFF, TextAlign::TOP_CENTER, "%.0fppm", id(co2_val).state);
-          }
-          return;
-        }
-        else if(id(menu_functions)[id(menu_current_node)] == FUNC_COLORPICKER) { // color_picker
-          it.color_picker(30, 30, id(color_picker), id(color_scenic_light), id(menu_subpage));
-          return;
-        }
-
-        // Show label
-        bool s = (id(menu_subpage) == PAGE_VIEW) &&
-                 (id(menu_functions)[id(menu_current_node)] != FUNC_OVERVIEW &&
-                  id(menu_functions)[id(menu_current_node)] != FUNC_BUTTON);
-        it.printf(120, 24, id(small_font), TextAlign::TOP_CENTER, "%s%s", id(menu_labels)[id(menu_current_node)], s ? " >" : "" );
-
-        if(id(menu_subpage) <= PAGE_SET) {
-          switch(id(menu_functions)[id(menu_current_node)]){
-            case FUNC_SLIDER: {
-              // Setting progressbar, outline rectangle
-              it.rectangle(8, 58, 224, 54, color_gray);
-              // Inner fill
-              int x_pos = round(id(menu_current_percentage) * 220.d);
-              it.filled_rectangle(10, 60, x_pos, 50, color_brown);
-              // Value
-              it.printf(120, 60, id(big_font), COLOR_ON, TextAlign::TOP_CENTER, "%.2f%s", id(menu_current_value), id(menu_units)[id(menu_current_node)]);
-              break;
-            }
-            case FUNC_SWITCH:
-              // Labels
-              it.printf(42, 12, id(small_font), TextAlign::TOP_RIGHT, "Off");
-              it.printf(86, 12, id(small_font), TextAlign::TOP_LEFT, "On");
-              // Switch, outline rectangle
-              it.rectangle(52, 20, 24, 12);
-              // Inner toggle
-              it.filled_rectangle(54 + id(rotary_dial).state*10, 22, 10, 8);
-              break;
-            case FUNC_BUTTON: { // show button
-              if(id(rotary_dial_push).state == 1) {
-                it.filled_rectangle(20, 100, 200, 80, color_gray);
-              } else {
-                it.rectangle(20, 100, 200, 80, color_gray);
-              }
-              it.printf(120, 120, id(icon_font), COLOR_ON, TextAlign::TOP_CENTER, "%s", id(menu_units)[id(menu_current_node)]);
-              break;
-            }
-            case FUNC_CLIMATE: // Climate control
-              it.gauge(120, 140, 80, id(menu_current_percentage), color_gray, color_green, id(menu_subpage) == PAGE_SET);
-              it.printf(120, 90, id(big_font), COLOR_ON, TextAlign::TOP_CENTER, "%.1f", id(menu_current_value));
-              it.printf(120, 132, id(small_font), COLOR_ON, TextAlign::TOP_CENTER, "%.1f", id(menu_target_value));
-              it.printf(230, 200, id(small_font), COLOR_ON, TextAlign::TOP_RIGHT, "%.0f%s", id(menu_weather_value), id(menu_units)[id(menu_current_node)]);
-              break;
-          }
-        } else {
-          // Show value only if Display or Setting
-          switch(id(menu_functions)[id(menu_current_node)]){
-            case FUNC_SLIDER:
-              it.printf(120, 60, id(big_font), COLOR_ON, TextAlign::TOP_CENTER, "%.2f", id(menu_current_value));
-              break;
-            case FUNC_SWITCH:
-              it.printf(64, 12, id(small_font), TextAlign::TOP_LEFT, "%s", id(menu_current_value) == 0 ? "Off" : "On");
-              break;
-            case FUNC_CLIMATE: {
-              switch(id(menu_current_node)) {
-                case 1:
-                    it.graph(6, 60, id(temperature_graph), color_gray);
-                    break;
-                case 2:
-                    it.graph(6, 60, id(humidity_graph), color_gray);
-                    break;
-              }
-            }
-          }
-        }
-      }
+  - file:
+      type: web
+      url: https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/fonts/materialdesignicons-webfont.ttf
+    id: icon_small
+    size: 20
+    glyphs: *icons
 
 color:
-  - id: color_red
-    red: 100%
-  - id: color_blue
-    color: [0, 50, 255]
-  - id: color_green
-    green: 100%
-  - id: color_yellow
-    color: [255, 255, 0]
   - id: color_dark_purple
-    color: [50, 0, 127]
+    red_int: 50
+    green_int: 0
+    blue_int: 127
   - id: color_gray
-    color: [72, 72, 72]
-  - id: color_brown
-    color: [100, 72, 0]
-  - id: color_thermostat
-    color: [64, 64, 64]
-  - id: color_hygrostat
-    color: [64, 64, 64]
+    red_int: 72
+    green_int: 72
+    blue_int: 72
   - id: color_co2
-    color: [64, 64, 64]
-  - id: color_scenic_light
+    red_int: 64
+    green_int: 64
+    blue_int: 64
+  # Graph traces; must match the T_* colours in gecko_console.h (they double as the legend)
+  - id: color_now
+    red_int: 255
+    green_int: 100
+    blue_int: 100
+  - id: color_weather
+    red_int: 255
+    green_int: 230
+    blue_int: 60
+  - id: color_target
+    red_int: 80
+    green_int: 220
+    blue_int: 100
+  - id: color_level
+    red_int: 60
+    green_int: 200
+    blue_int: 230
+  - id: color_ceiling
+    red_int: 70
+    green_int: 120
+    blue_int: 255
+  - id: color_ground
+    red_int: 230
+    green_int: 90
+    blue_int: 200
 
-image:
-  - file: "custom_components/geckocontrol-logo.png"
-    id: gecko_logo
-    type: RGB24
-
-colorpicker:
-    id: color_picker
-    dimensions: 180x180
-
+# 15-minute histories. All graphs share one size and position (GRAPH_BOX in gecko_console.h).
 graph:
   - id: temperature_graph
     duration: 15min
-    x_grid: 1min
-    y_grid: 1.0     # degC/div
-    width: 228
-    height: 180
+    x_grid: 5min
+    y_grid: 1.0     # K/div
+    width: 158
+    height: 94
     traces:
-      - sensor: thermostat_current_temperature
-        line_type: SOLID
+      - sensor: g_temp_now
         line_thickness: 2
-        color: color_red
-      - sensor: weather_temperature
-        line_type: SOLID
-        line_thickness: 2
-        color: color_yellow
+        color: color_now
+      - sensor: g_temp_target
+        color: color_target
+      - sensor: g_temp_ground
+        color: color_ground
   - id: humidity_graph
     duration: 15min
-    x_grid: 1min
-    y_grid: 1.0     # degC/div
-    width: 228
-    height: 180
+    x_grid: 5min
+    y_grid: 10.0    # %/div
+    width: 158
+    height: 94
     traces:
-      - sensor: hygrostat_current_humidity
-        line_type: SOLID
+      - sensor: g_hum_now
         line_thickness: 2
-        color: color_red
-      - sensor: weather_humidity
-        line_type: SOLID
+        color: color_now
+      - sensor: g_hum_weather
+        color: color_weather
+      - sensor: g_hum_ceiling
+        color: color_ceiling
+      - sensor: g_hum_ground
+        color: color_ground
+      - sensor: g_reservoir
+        color: color_level
+  - id: wind_graph
+    duration: 15min
+    x_grid: 5min
+    y_grid: 20.0    # % (fan) or km/h (weather) per div
+    width: 158
+    height: 94
+    traces:
+      - sensor: g_wind
         line_thickness: 2
-        color: color_yellow
-      - sensor: ceiling_humidity
-        line_type: SOLID
-        line_thickness: 1
-        color: color_blue
-      - sensor: ground_humidity
-        line_type: SOLID
-        line_thickness: 1
-        color: color_green
+        color: color_level
+      - sensor: g_wind_weather
+        color: color_weather
+  - id: co2_graph
+    duration: 15min
+    x_grid: 5min
+    y_grid: 200.0   # ppm/div
+    width: 158
+    height: 94
+    traces:
+      - sensor: g_co2
+        line_thickness: 2
+        color: color_level
 
-remote_transmitter:
-  pin: GPIO17
-  carrier_duty_percent: 100%
+image:
+  - file: "external_components/geckocontrol-logo.png"
+    id: gecko_logo
+    type: RGB
+  # Scenic light colour wheel, rendered by tools/gen_colorwheel.py; looked up per pixel by the UI
+  - file: "external_components/colorwheel.png"
+    id: colorwheel
+    type: RGB565
 
-fan:
-  - platform: speed
-    id: ceiling_fan
-    name: "Deckenventilator"
-    speed_count: 6
-    output: fan_speed_out
-    direction_output: fan_dir_out
+display:
+  - platform: mipi_spi
+    id: gecko_display
+    model: ILI9341
+    cs_pin:
+      number: GPIO15
+      ignore_strapping_warning: true   # idles high like its boot pull-up
+    dc_pin: GPIO22
+    reset_pin: GPIO21
+    data_rate: 40MHz
+    rotation: 90        # landscape, 320x240
+    # 16-bit color without PSRAM: 2 stripes of 77 KB; the lambda runs once per stripe.
+    buffer_size: 50%
+    # No implicit clear: only what the lambda draws is sent (needed for partial redraws later).
+    auto_clear_enabled: false
+    update_interval: never   # redraws are driven by gecko_ui::ui.flush()
+    lambda: 'gecko_ui::ui.draw(it);'
+
+touchscreen:
+  - platform: xpt2046
+    id: touch
+    display: gecko_display
+    cs_pin: GPIO17
+    interrupt_pin: GPIO35   # input-only pin, relies on a pull-up on T_IRQ
+    # Pressure needed to count as a touch (default 400). Measured: fingertip taps z 2000-2400;
+    # untouched, the panel gives single noise readings at z 420-460 every 10-60 s (ghost taps).
+    threshold: 1000
+    calibration:
+      x_min: 280
+      x_max: 3810
+      y_min: 360
+      y_max: 3840
+    transform:
+      swap_xy: true
+      mirror_x: true
+      mirror_y: false
+    on_touch:
+      - lambda: 'gecko_ui::ui.touch_down(touch.x, touch.y);'
+    on_update:
+      - lambda: |-
+          for (auto &tp : touches)
+            gecko_ui::ui.touch_move(tp.x, tp.y);
+    on_release:
+      - lambda: 'gecko_ui::ui.touch_up();'

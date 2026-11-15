@@ -1,103 +1,1675 @@
-// Gecko common
+// Geckoconsole UI: navigation, input handling and region-based rendering for the 320x240
+// ILI9341 (mipi_spi, 2-stripe buffer) of gecko-console.yaml.
+//
+// Included by gecko-console.yaml via `esphome: includes:`. ESPHome adds includes at the end of
+// the generated main.cpp, after all component and global declarations, so this file can use id()
+// (which returns a reference here; inside YAML lambdas id() yields the pointer).
+//
+// Rendering model
+// ---------------
+// Nothing draws directly. State changes mark areas dirty (invalidate()) or the whole screen
+// (invalidate_all()); flush() -- called from a short interval -- turns that into display updates:
+//  * full redraw: one update(); the display lambda runs once per buffer stripe and draws the page,
+//    clipped by hand to the stripe (shapes are drawn pixel by pixel, so off-stripe drawing costs
+//    as much as real drawing).
+//  * region redraw: one update() per dirty box; the lambda draws the page clipped to the box.
+//    mipi_spi only sends the bounding box of the pixels actually drawn. Requires
+//    auto_clear_enabled: false.
+//    mipi_spi quirk: update() stops at the first stripe in which nothing was drawn. A box lying
+//    entirely in a later stripe would never be sent, so in such an earlier stripe one pixel of the
+//    page (redrawn with its correct content) keeps the update going.
+//    mipi_spi stride quirk (ESPHome 2026.5): for a dirty box not starting at x = 0 it advances
+//    the buffer pointer by (width - x_low) instead of the full width per row, shearing the rows.
+//    Every region is therefore widened to start at x = 0 (its right edge stays), which makes the
+//    step equal the buffer width. Fast-changing elements (the colour wheel) sit at the left edge.
+//
+// Interaction model
+// -----------------
+// Overview -> Menu (3x2 tiles) -> subpage. On a subpage the encoder moves the focus between its
+// controls and the header's back arrow; push goes back, toggles/presses, or enters edit mode for sliders and the colour wheel (turn
+// changes the value, push confirms; the wheel edits hue, then saturation). Touch acts directly:
+// tap toggles/presses, drag on a slider or the wheel sets the value, a horizontal swipe switches
+// to the neighbouring subpage. Back (button 2 / header arrow) leaves edit mode, then the page.
+// Values set locally are shown immediately and held for a few seconds while Home Assistant
+// echoes them back; sends while dragging/turning are throttled.
+#pragma once
 
+#include "esphome.h"
+#include <algorithm>
+#include <cmath>
 #include <string>
-#include <sstream>
-#include "gecko_common.h"
-#include "esphome/core/color.h"
-static const char *TAG = "geckoconsole";
+#include <vector>
 
-#define LCD_UPDATE_INTERVAL 500
-#define COLORPICKER_H_MAX   360.
-#define COLORPICKER_V_MAX   255.
-#define COLORPICKER_S_MAX   100.
-#define COLORPICKER_H_TICKS 48
-#define COLORPICKER_V_TICKS 50
-#define COLORPICKER_S_TICKS 25
-
-typedef enum {
-    FUNC_OVERVIEW,
-    FUNC_BUTTON,
-    FUNC_SWITCH,
-    FUNC_SLIDER,
-    FUNC_CLIMATE,
-    FUNC_COLORPICKER
-} function_t;
-
-typedef enum {
-    PAGE_VIEW,
-    PAGE_SET,
-    PAGE_GRAPH,
-    PAGE_SET_HUE,
-    PAGE_SET_SATURATION
-} subpage_t;
+namespace gecko_ui {
 
 using namespace esphome;
+using display::Display;
+using display::TextAlign;
 
-float ColorStringToF(const std::string &Text)
-{
-    std::istringstream ss(Text);
-    float result;
-    return ss >> result ? result : 0;
+static const char *const TAG = "gecko_ui";
+
+static constexpr int W = 320;
+static constexpr int H = 240;
+static constexpr int STRIPES = 2;  // keep in sync with buffer_size of the display (50%)
+static constexpr int HEADER_H = 26;
+static constexpr uint32_t IDLE_TIMEOUT_MS = 60000;
+static constexpr uint32_t HOLD_MS = 4000;       // show a locally set value this long
+static constexpr uint32_t SEND_INTERVAL_MS = 300;  // throttle HA calls while dragging/turning
+static constexpr uint32_t CONFIRM_MS = 3000;
+static constexpr uint32_t GRAPH_REFRESH_MS = 10000;
+static constexpr int SWIPE_MIN_DX = 60;
+
+// Home Assistant entities of the Geckocontroller
+static const char *const E_RAIN_AUTO = "switch.geckocontrol_rain_automation";
+static const char *const E_LIGHT_AUTO = "switch.geckocontrol_light_automation";
+static const char *const E_WIND_AUTO = "switch.geckocontrol_multifan_auto";
+static const char *const E_LET_IT_RAIN = "button.geckocontrol_let_it_rain";
+static const char *const E_REFILLED = "button.geckocontrol_reservoir_refilled";
+static const char *const E_GROW_LIGHT = "light.geckocontrol_grow_light";
+static const char *const E_SCENIC_LIGHT = "light.geckocontrol_scenic_light";
+static const char *const E_WIND_SPEED = "number.geckocontrol_fan_manual_speed";
+static const char *const E_WEATHER_SET = "switch.geckocontrol_weather_setpoint";
+static const char *const E_THERMOSTAT = "climate.geckocontrol_thermostat_air";
+
+// Material Design Icons 7.4.47 codepoints (see icon fonts in gecko-console.yaml)
+#define ICON_THERMOMETER "\U000F050F"
+#define ICON_WATER_PERCENT "\U000F058E"
+#define ICON_MOLECULE_CO2 "\U000F07E4"
+#define ICON_WEATHER_RAINY "\U000F0597"
+#define ICON_CUP_WATER "\U000F01AB"
+#define ICON_WEATHER_WINDY "\U000F059D"
+#define ICON_SPROUT "\U000F0E66"
+#define ICON_PALETTE "\U000F03D8"
+#define ICON_BELL_RING "\U000F009E"
+#define ICON_BELL_OFF "\U000F009B"
+#define ICON_ARROW_LEFT "\U000F004D"
+
+// Theme
+static const Color BG(8, 12, 16);
+static const Color HEADER_BG(50, 0, 127);
+static const Color TILE_BG(30, 36, 44);
+static const Color FOCUS(255, 190, 40);
+static const Color EDIT(60, 200, 255);
+static const Color TEXT(235, 238, 240);
+static const Color TEXT_DIM(150, 160, 170);
+static const Color DISABLED(70, 76, 84);
+static const Color NO_DATA(64, 64, 64);
+static const Color ON_GREEN(60, 190, 90);
+static const Color WARN(255, 70, 50);
+static const Color ARMED(230, 120, 20);
+// Graph trace colours; must match the color: entries used by the graphs in gecko-console.yaml.
+// Value labels on the pages use them as the legend.
+static const Color T_NOW(255, 100, 100);    // color_now
+static const Color T_WEATHER(255, 230, 60);  // color_weather
+static const Color T_TARGET(80, 220, 100);   // color_target
+static const Color T_LEVEL(60, 200, 230);    // color_level (reservoir, wind speed, CO2)
+static const Color T_CEILING(70, 120, 255);  // color_ceiling
+static const Color T_GROUND(230, 90, 200);   // color_ground
+
+struct Box {
+  int x{0}, y{0}, w{0}, h{0};
+  bool empty() const { return w <= 0 || h <= 0; }
+  bool contains(int px, int py) const { return px >= x && px < x + w && py >= y && py < y + h; }
+  Box intersect(const Box &o) const {
+    const int x0 = std::max(x, o.x), y0 = std::max(y, o.y);
+    const int x1 = std::min(x + w, o.x + o.w), y1 = std::min(y + h, o.y + o.h);
+    return Box{x0, y0, x1 - x0, y1 - y0};
+  }
+  bool intersects(const Box &o) const { return !intersect(o).empty(); }
+};
+
+enum class Page : uint8_t { OVERVIEW, MENU, THERMO, HYGRO, WIND, GROW, SCENIC, CO2 };
+
+// Menu grid, row-major (3x2). The two light pages sit next to each other.
+static const Page MENU_PAGES[6] = {Page::THERMO, Page::HYGRO, Page::WIND, Page::GROW, Page::SCENIC, Page::CO2};
+static constexpr int MENU_COUNT = 6;
+
+// Which value changed (sensor callbacks -> invalidate the boxes showing it on the current page)
+enum Field : uint8_t {
+  F_CONNECTION,
+  F_CLOCK,
+  F_WIFI,
+  F_TEMP,
+  F_HUM,
+  F_CO2,
+  F_RESERVOIR,
+  F_RAIN_AUTO,
+  F_GROW,
+  F_SCENIC,
+  F_LIGHT_AUTO,
+  F_WIND,
+  F_WIND_AUTO,
+  F_CO2_SOUND,
+  F_CO2_LEDS,
+  F_HEATER,
+  F_WEATHER_SET,
+};
+
+// Controls on the subpages
+enum Ctl : uint8_t {
+  C_RAIN_AUTO,
+  C_LET_IT_RAIN,
+  C_REFILLED,
+  C_WIND_AUTO,
+  C_WIND_SPEED,
+  C_GROW_AUTO,
+  C_GROW_LEVEL,
+  C_SCENIC_AUTO,
+  C_SCENIC_WHEEL,
+  C_SCENIC_BRI,
+  C_CO2_SOUND,
+  C_CO2_LEDS,
+  C_WEATHER_SET,
+  C_THERMO_SET,
+  C_COUNT,
+  C_NONE = 0xFF,
+};
+enum class Kind : uint8_t { TOGGLE, BUTTON, CONFIRM, SLIDER, WHEEL };
+
+struct Control {
+  Ctl id;
+  Kind kind;
+  Box box;
+};
+
+// ------------------------------------------------------------------ layout
+// One layout for all subpages with a history graph (Thermo, Hygro & Rain, Wind, CO2): values on the
+// left, the graph on the right (every graph is 158x94, see gecko-console.yaml), controls below.
+// Grow light uses the same rows without the graph; Scenic light has its own layout.
+static constexpr Box VALUES_LEFT{0, 30, 152, 104};
+static constexpr int GRAPH_X = 156, GRAPH_Y = 32;
+static constexpr Box GRAPH_BOX{GRAPH_X, GRAPH_Y, 158, 94};
+static constexpr Box VALUES_BOX{8, 32, W - 16, 96};  // full width (Grow light)
+static constexpr Box TOGGLE_ROW{8, 134, W - 16, 32};
+static constexpr int SLIDER_LABEL_Y = 180;
+static constexpr Box SLIDER_BOX{8, 190, W - 16, 44};
+static constexpr Box RESERVOIR_ROW{8, 168, W - 16, 26};
+
+// Scenic light: the wheel sits at the left edge and everything that changes with the cursor stays
+// out of its rows (hue/sat values and the brightness slider, filled with the colour, in the bottom
+// row), so a cursor move only redraws a small strip around the cursor plus the bottom row. The wheel itself is a pre-rendered RGB565 image in flash
+// (tools/gen_colorwheel.py -> colorwheel.png, WHEEL_R must match).
+static constexpr Box WHEEL_BOX{4, 30, 176, 172};
+static constexpr int WHEEL_CX = 4 + 88, WHEEL_CY = 30 + 86, WHEEL_R = 80;
+static constexpr Box SCENIC_VALUES{186, 206, 130, 32};  // hue / sat numbers, right of the slider
+static constexpr int SCENIC_HUE_X = 218, SCENIC_SAT_X = 284;  // column centres
+
+static const Control THERMO_CONTROLS[] = {
+    {C_WEATHER_SET, Kind::TOGGLE, TOGGLE_ROW},
+    {C_THERMO_SET, Kind::SLIDER, SLIDER_BOX},
+};
+static const Control HYGRO_CONTROLS[] = {
+    {C_RAIN_AUTO, Kind::TOGGLE, TOGGLE_ROW},
+    {C_LET_IT_RAIN, Kind::BUTTON, {8, 200, 148, 36}},
+    {C_REFILLED, Kind::CONFIRM, {164, 200, 148, 36}},
+};
+static const Control WIND_CONTROLS[] = {
+    {C_WIND_AUTO, Kind::TOGGLE, TOGGLE_ROW},
+    {C_WIND_SPEED, Kind::SLIDER, SLIDER_BOX},
+};
+static const Control GROW_CONTROLS[] = {
+    {C_GROW_AUTO, Kind::TOGGLE, TOGGLE_ROW},
+    {C_GROW_LEVEL, Kind::SLIDER, SLIDER_BOX},
+};
+static const Control SCENIC_CONTROLS[] = {
+    {C_SCENIC_AUTO, Kind::TOGGLE, {186, 32, 130, 34}},
+    {C_SCENIC_WHEEL, Kind::WHEEL, WHEEL_BOX},
+    {C_SCENIC_BRI, Kind::SLIDER, {4, 206, 176, 32}},
+};
+static const Control CO2_CONTROLS[] = {
+    {C_CO2_SOUND, Kind::TOGGLE, TOGGLE_ROW},
+    {C_CO2_LEDS, Kind::SLIDER, SLIDER_BOX},
+};
+
+inline float sval(sensor::Sensor *s) { return s->has_state() ? s->state : NAN; }
+
+// Parses HA's hs_color attribute, e.g. "(210.0, 80.0)" or "[210.0, 80.0]".
+inline bool parse_hs(const std::string &txt, float &h, float &s) {
+  const char *p = txt.c_str();
+  float v[2];
+  for (int i = 0; i < 2; i++) {
+    while (*p && !(std::isdigit((unsigned char) *p) || *p == '-' || *p == '.'))
+      p++;
+    if (!*p)
+      return false;
+    char *end;
+    v[i] = strtof(p, &end);
+    if (end == p)
+      return false;
+    p = end;
+  }
+  h = v[0];
+  s = v[1] / 100.f;
+  return true;
 }
 
-void HassHSColorTextToEsphomeColor(std::string text, Color *color)
-{
-    int h;
-    float s, v, r, g, b;
-    rgb_to_hsv(color->r, color->g, color->b, h, s, v);
-
-    ESP_LOGD(TAG, "HassHSColorTextToEsphomeColor text='%s' prev rgb=[%3d,%3d,%3d] hsv=(%3d,%.2f,%3.0f)", text.c_str(), color->r, color->g, color->b, h, s, v);
-
-    int p1 = text.find(",");
-    int p2 = text.find(")");
-    std::string h_str = text.substr(1, p1-1).erase(0, text.find_first_not_of(" "));
-    std::string s_str = text.substr(p1+2, p2-p1-2);
-
-    h = ColorStringToF(h_str);
-    s = ColorStringToF(s_str) / COLORPICKER_S_MAX;
-    hsv_to_rgb(h, s, v, r, g, b);
-
-    *color = Color(uint8_t (round(r)), uint8_t (round(g)), uint8_t (round(b)));
-    ESP_LOGD(TAG, "HassHSColorTextToEsphomeColor h='%s' s='%s' rgb=[%3d,%3d,%3d] hsv=(%3d, %.2f, %3.0f)", h_str.c_str(), s_str.c_str(), color->r, color->g, color->b, h, s, v);
+inline Color hsv_color(float hue, float sat, float val) {
+  float r, g, b;
+  hsv_to_rgb((int) std::lround(hue) % 360, sat, val, r, g, b);
+  return Color(r * 255, g * 255, b * 255);
 }
 
-void UpdateBrightnessToEsphomeColor(double brightness, Color *color)
-{
-    int h;
-    float s, v, r, g, b;
-    rgb_to_hsv(color->r, color->g, color->b, h, s, v);
+class UI {
+ public:
+  // ---------------------------------------------------------------- redraw management
+  void invalidate_all() {
+    this->full_dirty_ = true;
+    this->dirty_.clear();
+  }
+  void invalidate(const Box &b) {
+    if (!this->full_dirty_ && !b.empty())
+      this->dirty_.push_back(b);
+  }
 
-    ESP_LOGD(TAG, "UpdateBrightnessToEsphomeColor b=%3.2f prev rgb=[%3d,%3d,%3d] hsv=(%3d, %.2f, %3.0f)", brightness, color->r, color->g, color->b, h, s, v);
-    hsv_to_rgb(h, s, brightness, r, g, b);
-    *color = Color(uint8_t (round(r)), uint8_t (round(g)), uint8_t (round(b)));
-    ESP_LOGD(TAG, "UpdateBrightnessToEsphomeColor new rgb=[%3d,%3d,%3d] hsv=(%3d,%.2f,%3.0f)", color->r, color->g, color->b, h, s, brightness);
-}
+  // Called from a 20 ms interval: sends throttled values, performs pending redraws.
+  void flush(Display *d) {
+    this->send_due_();
+    if (this->full_dirty_) {
+      this->full_dirty_ = false;
+      this->dirty_.clear();
+      this->partial_ = false;
+      this->pass_ = 0;
+      d->update();
+      return;
+    }
+    if (this->dirty_.empty())
+      return;
+    // Anchor every box at x = 0 (keep the right edge, see the stride quirk in the header comment),
+    // then merge boxes whose rows overlap, e.g. the old and new colour wheel cursor.
+    std::vector<Box> boxes;
+    for (auto &d : this->dirty_) {
+      Box b = d.intersect(Box{0, 0, W, H});
+      if (b.empty())
+        continue;
+      b.w += b.x;
+      b.x = 0;
+      boxes.push_back(b);
+    }
+    this->dirty_.clear();
+    std::sort(boxes.begin(), boxes.end(), [](const Box &a, const Box &b) { return a.y < b.y; });
+    std::vector<Box> merged;
+    for (auto &b : boxes) {
+      if (!merged.empty() && b.y <= merged.back().y + merged.back().h) {
+        Box &m = merged.back();
+        const int bottom = std::max(m.y + m.h, b.y + b.h);
+        m.w = std::max(m.w, b.w);
+        m.h = bottom - m.y;
+      } else {
+        merged.push_back(b);
+      }
+    }
+    for (auto &b : merged) {
+      this->region_ = b;
+      this->partial_ = true;
+      this->pass_ = 0;
+      d->update();
+    }
+    this->partial_ = false;
+  }
 
-std::string HSColorFromRotary(float rotary_state, unsigned char subpage, Color *color)
-{
-    int h;
-    float s, v, r, g, b;
-    rgb_to_hsv(color->r, color->g, color->b, h, s, v);
+  // Display lambda entry point; runs once per buffer stripe.
+  void draw(Display &it) {
+    const int sh = H / STRIPES;
+    const int p = std::min(this->pass_++, STRIPES - 1);
+    const Box stripe{0, p * sh, W, p == STRIPES - 1 ? H - p * sh : sh};
 
-    ESP_LOGD(TAG, "HSColorFromRotary prev rgb=[%3d,%3d,%3d] hsv=(%3d, %.2f, %3.0f),rot=%.2f,subpage=%d", color->r, color->g, color->b, h, s, v, rotary_state, subpage);
-
-    if (subpage == PAGE_SET_HUE) {
-        h = round(rotary_state * COLORPICKER_H_MAX / COLORPICKER_H_TICKS);
-        id(previous_hue) = h;
-    } else if (subpage == PAGE_SET_SATURATION) {
-        if (s == 0 && id(previous_hue) != 0)
-            h = id(previous_hue);
-        s = rotary_state / COLORPICKER_S_TICKS;
+    if (!this->partial_) {
+      this->area_ = stripe;
+      it.fill(BG);  // fast path: fills the stripe buffer directly (no clipping active)
+      this->draw_page_(it);
+      return;
     }
 
-    hsv_to_rgb(h, s, v, r, g, b);
-    *color = Color(uint8_t (round(r)), uint8_t (round(g)), uint8_t (round(b)));
+    this->area_ = this->region_.intersect(stripe);
+    if (this->area_.empty()) {
+      if (this->region_.y < stripe.y + stripe.h)
+        return;  // region done; the driver stops at this empty stripe
+      // Region lies in a later stripe: redraw one pixel of this stripe so the driver does not
+      // abort the update here (see header comment).
+      this->area_ = Box{this->region_.x, stripe.y + stripe.h - 1, 1, 1};
+    }
+    it.start_clipping(display::Rect(this->area_.x, this->area_.y, this->area_.w, this->area_.h));
+    this->fill_(it, this->area_, BG);
+    this->draw_page_(it);
+    it.end_clipping();
+  }
 
-    std::ostringstream oss;
-    oss.precision(0);
-    oss << std::fixed << "(" << h << ", " << s*COLORPICKER_S_MAX << ")";
-    std::string out = oss.str();
+  // ---------------------------------------------------------------- data changes
+  void changed(Field f) {
+    if (f == F_CONNECTION || !id(api_connected).state) {
+      this->invalidate_all();
+      return;
+    }
+    if (f == F_CLOCK && this->page_ == Page::OVERVIEW)
+      this->invalidate(Box{0, 0, 80, HEADER_H});
+    if (f == F_WIFI)
+      this->invalidate(Box{W - 34, 0, 34, HEADER_H});
 
-    ESP_LOGD(TAG, "HSColorFromRotary new  rgb=[%3d,%3d,%3d] hsv=(%3d, %.2f, %3.0f) -> '%s' (previous_hue=%3d)", color->r, color->g, color->b, h, s, v, out.c_str(), id(previous_hue));
-    return out;
-}
+    switch (this->page_) {
+      case Page::OVERVIEW:
+        switch (f) {
+          case F_TEMP: this->invalidate(OV_ROWS[0]); break;
+          case F_HUM: this->invalidate(OV_ROWS[1]); break;
+          case F_CO2: this->invalidate(OV_ROWS[2]); break;
+          case F_RESERVOIR: case F_RAIN_AUTO: case F_GROW: case F_WIND: this->invalidate(OV_STATUS); break;
+          default: break;
+        }
+        break;
+      case Page::MENU: {
+        int tile = -1;
+        switch (f) {
+          case F_TEMP: tile = 0; break;
+          case F_HUM: tile = 1; break;
+          case F_WIND: tile = 2; break;
+          case F_GROW: tile = 3; break;
+          case F_SCENIC: tile = 4; break;
+          case F_CO2: tile = 5; break;
+          default: break;
+        }
+        if (tile >= 0)
+          this->invalidate(menu_tile_box(tile));
+        break;
+      }
+      case Page::THERMO:
+        if (f == F_TEMP) {
+          this->invalidate(VALUES_LEFT);
+          if (!this->held_(C_THERMO_SET))
+            this->invalidate_ctl_(C_THERMO_SET);
+        } else if (f == F_HEATER) {
+          this->invalidate(VALUES_LEFT);
+        } else if (f == F_WEATHER_SET) {
+          this->invalidate_all();  // slider enabled state changes
+        }
+        break;
+      case Page::HYGRO:
+        if (f == F_HUM)
+          this->invalidate(VALUES_LEFT);
+        else if (f == F_RESERVOIR)
+          this->invalidate(RESERVOIR_ROW);
+        else if (f == F_RAIN_AUTO)
+          this->invalidate_ctl_(C_RAIN_AUTO);
+        break;
+      case Page::WIND:
+        if (f == F_WIND) {
+          this->invalidate(VALUES_LEFT);
+          if (!this->held_(C_WIND_SPEED))
+            this->invalidate_ctl_(C_WIND_SPEED);
+        } else if (f == F_WIND_AUTO) {
+          this->invalidate_all();  // slider enabled state changes
+        }
+        break;
+      case Page::GROW:
+        if (f == F_GROW) {
+          this->invalidate(VALUES_BOX);
+          if (!this->held_(C_GROW_LEVEL))
+            this->invalidate_ctl_(C_GROW_LEVEL);
+        } else if (f == F_LIGHT_AUTO) {
+          this->invalidate_all();
+        }
+        break;
+      case Page::SCENIC:
+        if (f == F_SCENIC) {
+          this->scenic_refresh_();
+          if (!this->held_(C_SCENIC_BRI))
+            this->invalidate_ctl_(C_SCENIC_BRI);
+        } else if (f == F_LIGHT_AUTO) {
+          this->invalidate_all();
+        }
+        break;
+      case Page::CO2:
+        if (f == F_CO2)
+          this->invalidate(VALUES_LEFT);
+        else if (f == F_CO2_SOUND)
+          this->invalidate_ctl_(C_CO2_SOUND);
+        else if (f == F_CO2_LEDS && !this->held_(C_CO2_LEDS))
+          this->invalidate_ctl_(C_CO2_LEDS);
+        break;
+    }
+  }
+
+  // ---------------------------------------------------------------- input
+  void turn(int dir) {
+    this->activity_();
+    switch (this->page_) {
+      case Page::OVERVIEW:
+        this->go_(Page::MENU);
+        return;
+      case Page::MENU: {
+        const int old = this->menu_focus_;
+        this->menu_focus_ = (this->menu_focus_ + dir + MENU_COUNT) % MENU_COUNT;
+        this->invalidate(menu_tile_box(old));
+        this->invalidate(menu_tile_box(this->menu_focus_));
+        return;
+      }
+      default:
+        break;
+    }
+    int n;
+    const Control *cs = controls(this->page_, n);
+    if (n == 0) {
+      this->swipe_(dir);  // nothing to focus (Thermo): turning flips pages
+      return;
+    }
+    if (this->editing_ && this->focus_ >= 0) {
+      this->edit_turn_(cs[this->focus_].id, dir);
+      return;
+    }
+    // move focus to the next enabled control; -1 is the header's back arrow
+    int f = this->focus_;
+    for (int i = 0; i <= n; i++) {
+      f += dir;
+      if (f >= n)
+        f = -1;
+      else if (f < -1)
+        f = n - 1;
+      if (f == -1 || this->enabled_(cs[f].id))
+        break;
+    }
+    this->set_focus_(f);
+  }
+
+  void push() {
+    this->activity_();
+    switch (this->page_) {
+      case Page::OVERVIEW:
+        this->go_(Page::MENU);
+        return;
+      case Page::MENU:
+        this->go_(MENU_PAGES[this->menu_focus_]);
+        return;
+      default:
+        break;
+    }
+    int n;
+    const Control *cs = controls(this->page_, n);
+    if (n == 0 || this->focus_ < 0) {
+      this->back();
+      return;
+    }
+    if (!this->enabled_(cs[this->focus_].id))
+      return;
+    const Control &c = cs[this->focus_];
+    switch (c.kind) {
+      case Kind::SLIDER:
+        this->editing_ = !this->editing_;
+        if (!this->editing_)
+          this->send_now_(c.id);
+        this->invalidate_ctl_(c.id);
+        break;
+      case Kind::WHEEL:
+        if (!this->editing_) {
+          this->editing_ = true;
+          this->wheel_part_ = 0;
+        } else if (this->wheel_part_ == 0) {
+          this->wheel_part_ = 1;
+          this->invalidate(cursor_box(this->shown_h_, this->shown_s_));  // circle -> square
+        } else {
+          this->editing_ = false;
+          this->send_now_(c.id);
+          this->invalidate_ctl_(c.id);
+        }
+        this->invalidate(SCENIC_VALUES);
+        this->invalidate(this->focus_frame_box_(c));
+        break;
+      default:
+        this->activate_(c);
+        break;
+    }
+  }
+
+  void back() {
+    this->activity_();
+    if (this->editing_) {
+      int n;
+      const Control *cs = controls(this->page_, n);
+      this->editing_ = false;
+      if (n > 0 && this->focus_ >= 0) {
+        this->send_now_(cs[this->focus_].id);
+        this->invalidate_ctl_(cs[this->focus_].id);
+        if (cs[this->focus_].kind == Kind::WHEEL)
+          this->invalidate(SCENIC_VALUES);
+      }
+      return;
+    }
+    switch (this->page_) {
+      case Page::OVERVIEW:
+        break;
+      case Page::MENU:
+        this->go_(Page::OVERVIEW);
+        break;
+      default:
+        this->go_(Page::MENU);
+        break;
+    }
+  }
+
+  void touch_down(int x, int y) {
+    this->activity_();
+    this->t_x0_ = this->t_x_ = x;
+    this->t_y0_ = this->t_y_ = y;
+    this->t_down_ = true;
+    this->drag_ = C_NONE;
+    // Pressing an enabled slider or the wheel starts a drag right away.
+    int n;
+    const Control *cs = controls(this->page_, n);
+    for (int i = 0; i < n; i++) {
+      const Control &c = cs[i];
+      if ((c.kind == Kind::SLIDER || c.kind == Kind::WHEEL) && c.box.contains(x, y) && this->enabled_(c.id)) {
+        if (c.kind == Kind::WHEEL && !this->wheel_hit_(x, y))
+          continue;
+        if (this->editing_ && i != this->focus_)
+          this->editing_ = false;
+        this->set_focus_(i);
+        this->drag_ = c.id;
+        this->drag_to_(c, x, y);
+        return;
+      }
+    }
+  }
+  void touch_move(int x, int y) {
+    if (!this->t_down_)
+      return;
+    this->t_x_ = x;
+    this->t_y_ = y;
+    if (this->drag_ != C_NONE) {
+      this->activity_();
+      int n;
+      const Control *cs = controls(this->page_, n);
+      for (int i = 0; i < n; i++)
+        if (cs[i].id == this->drag_)
+          this->drag_to_(cs[i], x, y);
+    }
+  }
+  void touch_up() {
+    if (!this->t_down_)
+      return;
+    this->t_down_ = false;
+    this->activity_();
+    if (this->drag_ != C_NONE) {
+      this->send_now_(this->drag_);
+      this->drag_ = C_NONE;
+      return;
+    }
+    const int dx = this->t_x_ - this->t_x0_, dy = this->t_y_ - this->t_y0_;
+    if (std::abs(dx) >= SWIPE_MIN_DX && std::abs(dx) > 2 * std::abs(dy)) {
+      this->swipe_(dx < 0 ? +1 : -1);
+      return;
+    }
+    if (std::abs(dx) < 20 && std::abs(dy) < 20)
+      this->tap_(this->t_x0_, this->t_y0_);
+  }
+
+  // Called every second: idle timeout, expired holds/confirmations, graph refresh.
+  void tick() {
+    const uint32_t now = millis();
+    if (this->page_ != Page::OVERVIEW && now - this->last_activity_ > IDLE_TIMEOUT_MS) {
+      this->editing_ = false;
+      this->go_(Page::OVERVIEW);
+      return;
+    }
+    for (int c = 0; c < C_COUNT; c++) {
+      if (this->hold_until_[c] != 0 && (int32_t) (now - this->hold_until_[c]) >= 0) {
+        this->hold_until_[c] = 0;
+        if (c == C_SCENIC_WHEEL)
+          this->scenic_refresh_();
+        else
+          this->invalidate_ctl_((Ctl) c);
+      }
+    }
+    if (this->armed_until_ != 0 && (int32_t) (now - this->armed_until_) >= 0) {
+      this->armed_until_ = 0;
+      this->invalidate_ctl_(C_REFILLED);
+    }
+    if (now - this->last_graph_ >= GRAPH_REFRESH_MS) {
+      this->last_graph_ = now;
+      if (this->page_ == Page::THERMO || this->page_ == Page::HYGRO || this->page_ == Page::WIND ||
+          this->page_ == Page::CO2)
+        this->invalidate(GRAPH_BOX);
+    }
+  }
+
+ protected:
+  // ---------------------------------------------------------------- layout helpers
+  static constexpr Box OV_ROWS[3] = {{8, 32, W - 16, 54}, {8, 92, W - 16, 54}, {8, 152, W - 16, 54}};
+  static constexpr Box OV_STATUS = {8, 212, W - 16, 26};
+  static constexpr Box BACK_BOX = {0, 0, 150, HEADER_H};     // tap target
+static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus frame
+
+  static Box menu_tile_box(int i) {
+    const int gap = 6, tw = (W - 4 * gap) / 3, th = (H - HEADER_H - 3 * gap) / 2;
+    return Box{gap + (i % 3) * (tw + gap), HEADER_H + gap + (i / 3) * (th + gap), tw, th};
+  }
+
+  static const Control *controls(Page p, int &n) {
+    switch (p) {
+      case Page::THERMO: n = 2; return THERMO_CONTROLS;
+      case Page::HYGRO: n = 3; return HYGRO_CONTROLS;
+      case Page::WIND: n = 2; return WIND_CONTROLS;
+      case Page::GROW: n = 2; return GROW_CONTROLS;
+      case Page::SCENIC: n = 3; return SCENIC_CONTROLS;
+      case Page::CO2: n = 2; return CO2_CONTROLS;
+      default: n = 0; return nullptr;
+    }
+  }
+  const Control *find_ctl_(Ctl id) const {
+    int n;
+    const Control *cs = controls(this->page_, n);
+    for (int i = 0; i < n; i++)
+      if (cs[i].id == id)
+        return &cs[i];
+    return nullptr;
+  }
+  void invalidate_ctl_(Ctl id) {
+    const Control *c = this->find_ctl_(id);
+    if (c != nullptr)
+      this->invalidate(c->kind == Kind::WHEEL ? WHEEL_BOX : c->box);
+  }
+  // The focus frame is drawn on the control's box edge; for the wheel just around the circle.
+  Box focus_frame_box_(const Control &c) const { return c.box; }
+
+  // ---------------------------------------------------------------- navigation
+  void go_(Page p) {
+    if (p == Page::MENU && this->page_ != Page::OVERVIEW && this->page_ != Page::MENU) {
+      for (int i = 0; i < MENU_COUNT; i++)  // back from a subpage: focus its tile
+        if (MENU_PAGES[i] == this->page_)
+          this->menu_focus_ = i;
+    }
+    if (p != this->page_) {
+      this->editing_ = false;
+      this->armed_until_ = 0;
+      this->drag_ = C_NONE;
+      // focus the first enabled control (the back arrow if there is none)
+      this->focus_ = -1;
+      int n;
+      const Control *cs = controls(p, n);
+      for (int i = 0; i < n; i++) {
+        if (this->enabled_after_(p, cs[i].id)) {
+          this->focus_ = i;
+          break;
+        }
+      }
+    }
+    this->page_ = p;
+    if (p == Page::SCENIC)
+      this->scenic_current_(this->shown_h_, this->shown_s_);
+    this->invalidate_all();
+  }
+
+  void swipe_(int dir) {
+    if (this->page_ == Page::OVERVIEW || this->page_ == Page::MENU)
+      return;
+    for (int i = 0; i < MENU_COUNT; i++) {
+      if (MENU_PAGES[i] == this->page_) {
+        this->go_(MENU_PAGES[(i + dir + MENU_COUNT) % MENU_COUNT]);
+        return;
+      }
+    }
+  }
+
+  void tap_(int x, int y) {
+    if (this->page_ != Page::OVERVIEW && BACK_BOX.contains(x, y)) {
+      this->back();
+      return;
+    }
+    switch (this->page_) {
+      case Page::OVERVIEW:
+        if (OV_ROWS[0].contains(x, y))
+          this->go_(Page::THERMO);
+        else if (OV_ROWS[1].contains(x, y))
+          this->go_(Page::HYGRO);
+        else if (OV_ROWS[2].contains(x, y))
+          this->go_(Page::CO2);
+        else
+          this->go_(Page::MENU);
+        return;
+      case Page::MENU:
+        for (int i = 0; i < MENU_COUNT; i++) {
+          if (menu_tile_box(i).contains(x, y)) {
+            this->menu_focus_ = i;
+            this->go_(MENU_PAGES[i]);
+            return;
+          }
+        }
+        return;
+      default:
+        break;
+    }
+    int n;
+    const Control *cs = controls(this->page_, n);
+    for (int i = 0; i < n; i++) {
+      const Control &c = cs[i];
+      if (!c.box.contains(x, y) || !this->enabled_(c.id))
+        continue;
+      if (c.kind == Kind::TOGGLE || c.kind == Kind::BUTTON || c.kind == Kind::CONFIRM) {
+        this->editing_ = false;
+        this->set_focus_(i);
+        this->activate_(c);
+      }
+      return;
+    }
+  }
+
+  void set_focus_(int f) {
+    if (f == this->focus_)
+      return;
+    this->invalidate(this->focus_box_(this->focus_));
+    this->focus_ = f;
+    this->invalidate(this->focus_box_(f));
+  }
+  Box focus_box_(int f) const {
+    int n;
+    const Control *cs = controls(this->page_, n);
+    if (f < 0 || f >= n)
+      return BACK_FOCUS;
+    return this->focus_frame_box_(cs[f]);
+  }
+
+  void activity_() { this->last_activity_ = millis(); }
+
+  // ---------------------------------------------------------------- control state
+  bool enabled_(Ctl c) const { return this->enabled_after_(this->page_, c); }
+  bool enabled_after_(Page, Ctl c) const {
+    switch (c) {
+      case C_WIND_SPEED: return !id(multifan_auto).state;
+      case C_THERMO_SET: return !id(weather_setpoint).state;
+      case C_GROW_LEVEL: case C_SCENIC_WHEEL: case C_SCENIC_BRI: return !id(light_automation).state;
+      default: return true;
+    }
+  }
+
+  bool held_(Ctl c) const { return this->hold_until_[c] != 0; }
+  void hold_(Ctl c) { this->hold_until_[c] = millis() + HOLD_MS; }
+
+  // Value range of a slider: touch snaps to `step`, the encoder moves by `enc_step`.
+  // While disabled (its automation owns the value) a slider still shows the value, greyed, with
+  // `fmt_auto`.
+  struct SliderSpec {
+    float min, max, step, enc_step;
+    const char *fmt, *fmt_auto;
+  };
+  static SliderSpec slider_spec(Ctl c) {
+    switch (c) {
+      case C_THERMO_SET:  // thermostat visual range
+        return {12.f, 36.f, 0.5f, 0.5f, "%.1f°C", "%.1f°C (weather)"};
+      case C_WIND_SPEED:  // number step 5
+        return {0.f, 100.f, 5.f, 5.f, "%.0f%%", "%.0f%% (auto)"};
+      default:
+        return {0.f, 100.f, 1.f, 5.f, "%.0f%%", "%.0f%% (auto)"};
+    }
+  }
+
+  // Current value of a slider (in its unit), the held local value while one is active.
+  float slider_value_(Ctl c) const {
+    if (this->held_(c))
+      return this->local_[c];
+    switch (c) {
+      case C_THERMO_SET: {
+        const float v = sval(&id(thermostat_target_temperature));
+        return std::isnan(v) ? slider_spec(c).min : v;
+      }
+      case C_WIND_SPEED: {
+        const float v = sval(&id(fan_manual_speed));
+        return std::isnan(v) ? 0.f : v;
+      }
+      case C_GROW_LEVEL: {
+        const float b = sval(&id(grow_light_brightness));
+        return id(grow_light_on).state && !std::isnan(b) ? b / 2.55f : 0.f;
+      }
+      case C_SCENIC_BRI: {
+        const float b = sval(&id(scenic_light_brightness));
+        return id(scenic_light_on).state && !std::isnan(b) ? b / 2.55f : 0.f;
+      }
+      case C_CO2_LEDS: {
+        auto &v = id(rgb_leds).remote_values;
+        return v.is_on() ? v.get_brightness() * 100.f : 0.f;
+      }
+      default:
+        return 0.f;
+    }
+  }
+  void set_slider_(Ctl c, float v) {
+    const SliderSpec sp = slider_spec(c);
+    v = clamp(std::round(v / sp.step) * sp.step, sp.min, sp.max);
+    if (this->held_(c) && this->local_[c] == v)
+      return;
+    this->local_[c] = v;
+    this->hold_(c);
+    this->send_pending_[c] = true;
+    this->invalidate_ctl_(c);
+    if (c == C_SCENIC_BRI)
+      this->invalidate(SCENIC_VALUES);
+  }
+
+  // Current scenic hue (deg) / saturation (0-1) as shown.
+  void scenic_current_(float &h, float &s) const {
+    if (this->held_(C_SCENIC_WHEEL)) {
+      h = this->local_h_;
+      s = this->local_s_;
+      return;
+    }
+    h = 0.f;
+    s = 0.f;
+    if (id(scenic_light_hs).has_state())
+      parse_hs(id(scenic_light_hs).state, h, s);
+  }
+
+  static Box cursor_box(float h, float s) {
+    const float a = h * (float) M_PI / 180.f;
+    const int px = WHEEL_CX + (int) std::lround(std::cos(a) * s * WHEEL_R);
+    const int py = WHEEL_CY + (int) std::lround(std::sin(a) * s * WHEEL_R);
+    return Box{px - 10, py - 10, 21, 21};
+  }
+
+  // Redraw only what moved: the wheel under the old cursor, the new cursor, the header values
+  // and the brightness slider (whose fill shows the colour).
+  void scenic_refresh_() {
+    if (this->page_ != Page::SCENIC)
+      return;
+    float h, s;
+    this->scenic_current_(h, s);
+    if (h != this->shown_h_ || s != this->shown_s_) {
+      this->invalidate(cursor_box(this->shown_h_, this->shown_s_));
+      this->invalidate(cursor_box(h, s));
+      this->shown_h_ = h;
+      this->shown_s_ = s;
+      this->invalidate_ctl_(C_SCENIC_BRI);
+    }
+    this->invalidate(SCENIC_VALUES);
+  }
+
+  void set_hs_(float h, float s) {
+    h = std::fmod(h + 360.f, 360.f);
+    s = clamp(s, 0.f, 1.f);
+    this->local_h_ = h;
+    this->local_s_ = s;
+    this->hold_(C_SCENIC_WHEEL);
+    this->send_pending_[C_SCENIC_WHEEL] = true;
+    this->scenic_refresh_();
+  }
+
+  bool editing_sat_() const {
+    return this->editing_ && this->wheel_part_ == 1 && this->page_ == Page::SCENIC && this->focus_ >= 0 &&
+           SCENIC_CONTROLS[this->focus_].id == C_SCENIC_WHEEL;
+  }
+
+  bool wheel_hit_(int x, int y) const {
+    const int dx = x - WHEEL_CX, dy = y - WHEEL_CY;
+    return dx * dx + dy * dy <= (WHEEL_R + 8) * (WHEEL_R + 8);
+  }
+
+  void drag_to_(const Control &c, int x, int y) {
+    if (c.kind == Kind::SLIDER) {
+      const SliderSpec sp = slider_spec(c.id);
+      const float frac = (x - c.box.x - 6) / (float) (c.box.w - 12);
+      this->set_slider_(c.id, sp.min + frac * (sp.max - sp.min));
+    } else if (c.kind == Kind::WHEEL) {
+      const float dx = x - WHEEL_CX, dy = y - WHEEL_CY;
+      float h = std::atan2(dy, dx) * 180.f / (float) M_PI;
+      if (h < 0)
+        h += 360.f;
+      this->set_hs_(h, std::sqrt(dx * dx + dy * dy) / WHEEL_R);
+    }
+  }
+
+  void edit_turn_(Ctl c, int dir) {
+    if (c == C_SCENIC_WHEEL) {
+      float h, s;
+      this->scenic_current_(h, s);
+      if (this->wheel_part_ == 0)
+        // 48 steps per hue circle. Hue grows clockwise on the wheel, so a clockwise encoder turn
+        // raises it and the cursor follows the knob.
+        this->set_hs_(h + dir * 7.5f, s);
+      else
+        this->set_hs_(h, s + dir * 0.04f);
+      return;
+    }
+    this->set_slider_(c, this->slider_value_(c) + dir * slider_spec(c).enc_step);
+  }
+
+  void activate_(const Control &c) {
+    switch (c.id) {
+      case C_RAIN_AUTO:
+        this->ha_switch_(E_RAIN_AUTO, !id(rain_automation).state);
+        break;
+      case C_WIND_AUTO:
+        this->ha_switch_(E_WIND_AUTO, !id(multifan_auto).state);
+        break;
+      case C_WEATHER_SET:
+        this->ha_switch_(E_WEATHER_SET, !id(weather_setpoint).state);
+        break;
+      case C_GROW_AUTO:
+      case C_SCENIC_AUTO:
+        this->ha_switch_(E_LIGHT_AUTO, !id(light_automation).state);
+        break;
+      case C_CO2_SOUND:
+        id(co2_warning_sound).toggle();
+        break;
+      case C_LET_IT_RAIN:
+        id(ha_call).execute(std::string("button.press"), std::string(E_LET_IT_RAIN));
+        break;
+      case C_REFILLED:
+        if (this->armed_until_ == 0) {
+          this->armed_until_ = millis() + CONFIRM_MS;
+        } else {
+          this->armed_until_ = 0;
+          id(ha_call).execute(std::string("button.press"), std::string(E_REFILLED));
+        }
+        this->invalidate_ctl_(C_REFILLED);
+        break;
+      default:
+        break;
+    }
+  }
+
+  void ha_switch_(const char *entity, bool on) {
+    id(ha_call).execute(std::string(on ? "switch.turn_on" : "switch.turn_off"), std::string(entity));
+  }
+
+  // ---------------------------------------------------------------- sending values
+  void send_due_() {
+    const uint32_t now = millis();
+    for (int c = 0; c < C_COUNT; c++)
+      if (this->send_pending_[c] && now - this->last_send_[c] >= SEND_INTERVAL_MS)
+        this->send_now_((Ctl) c);
+  }
+
+  void send_now_(Ctl c) {
+    if (!this->send_pending_[c])
+      return;
+    this->send_pending_[c] = false;
+    this->last_send_[c] = millis();
+    this->hold_(c);
+    switch (c) {
+      case C_WIND_SPEED:
+        id(ha_number).execute(std::string(E_WIND_SPEED), this->local_[c]);
+        break;
+      case C_THERMO_SET:
+        id(ha_climate_temperature).execute(std::string(E_THERMOSTAT), this->local_[c]);
+        break;
+      case C_GROW_LEVEL:
+        if (this->local_[c] > 0)
+          id(ha_light_brightness).execute(std::string(E_GROW_LIGHT), (int) std::lround(this->local_[c]));
+        else
+          id(ha_call).execute(std::string("light.turn_off"), std::string(E_GROW_LIGHT));
+        break;
+      case C_SCENIC_WHEEL:
+      case C_SCENIC_BRI: {
+        float h, s;
+        this->scenic_current_(h, s);
+        const float bri = this->slider_value_(C_SCENIC_BRI);
+        // a colour pick on a dark light turns it on at full brightness
+        const float b = (c == C_SCENIC_WHEEL && bri <= 0.f) ? 100.f : bri;
+        if (b > 0)
+          id(ha_light_hs).execute(std::string(E_SCENIC_LIGHT), h, s * 100.f, (int) std::lround(b * 2.55f));
+        else
+          id(ha_call).execute(std::string("light.turn_off"), std::string(E_SCENIC_LIGHT));
+        break;
+      }
+      case C_CO2_LEDS: {
+        auto call = this->local_[c] > 0 ? id(rgb_leds).turn_on() : id(rgb_leds).turn_off();
+        if (this->local_[c] > 0)
+          call.set_brightness(this->local_[c] / 100.f);
+        call.perform();
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  // ---------------------------------------------------------------- drawing primitives
+  // All primitives clip to area_ (the stripe, or the stripe part of the redraw region).
+  bool vis_(const Box &b) const { return this->area_.intersects(b); }
+
+  void fill_(Display &it, const Box &b, Color c) {
+    const Box i = b.intersect(this->area_);
+    if (!i.empty())
+      it.filled_rectangle(i.x, i.y, i.w, i.h, c);
+  }
+
+  void frame_(Display &it, const Box &b, Color c, int t) {
+    this->fill_(it, Box{b.x, b.y, b.w, t}, c);
+    this->fill_(it, Box{b.x, b.y + b.h - t, b.w, t}, c);
+    this->fill_(it, Box{b.x, b.y, t, b.h}, c);
+    this->fill_(it, Box{b.x + b.w - t, b.y, t, b.h}, c);
+  }
+
+  void text_(Display &it, int x, int y, font::Font *f, Color c, TextAlign a, const char *s) {
+    int bx, by, bw, bh;
+    it.get_text_bounds(x, y, s, f, a, &bx, &by, &bw, &bh);
+    if (this->vis_(Box{bx, by, bw, bh}))
+      it.print(x, y, f, c, a, s);
+  }
+
+  // ---------------------------------------------------------------- widgets
+  void draw_focus_(Display &it, const Control &c) {
+    if (this->page_ == Page::OVERVIEW || this->page_ == Page::MENU)
+      return;
+    int n;
+    const Control *cs = controls(this->page_, n);
+    if (this->focus_ < 0 || this->focus_ >= n || cs[this->focus_].id != c.id)
+      return;
+    this->frame_(it, c.box, this->editing_ ? EDIT : FOCUS, this->editing_ ? 3 : 2);
+  }
+
+  void draw_toggle_(Display &it, const Control &c, const char *icon, const char *label, bool on) {
+    if (!this->vis_(c.box))
+      return;
+    const int cy = c.box.y + c.box.h / 2;
+    int x = c.box.x + 8;
+    if (icon != nullptr) {
+      this->text_(it, x, cy, &id(icon_small), on ? TEXT : TEXT_DIM, TextAlign::CENTER_LEFT, icon);
+      x += 26;
+    }
+    this->text_(it, x, cy, &id(tiny_font), TEXT, TextAlign::CENTER_LEFT, label);
+    const Box pill{c.box.x + c.box.w - 62, cy - 12, 54, 24};
+    this->fill_(it, pill, on ? ON_GREEN : DISABLED);
+    const Box knob{on ? pill.x + pill.w - 22 : pill.x + 2, pill.y + 2, 20, 20};
+    this->fill_(it, knob, TEXT);
+    this->draw_focus_(it, c);
+  }
+
+  void draw_button_(Display &it, const Control &c, const char *icon, const char *label, Color bg) {
+    if (!this->vis_(c.box))
+      return;
+    this->fill_(it, Box{c.box.x + 3, c.box.y + 3, c.box.w - 6, c.box.h - 6}, bg);
+    const int cy = c.box.y + c.box.h / 2;
+    int bx, by, bw, bh;
+    it.get_text_bounds(0, 0, label, &id(tiny_font), TextAlign::TOP_LEFT, &bx, &by, &bw, &bh);
+    const int total = (icon != nullptr ? 26 : 0) + bw;
+    int x = c.box.x + (c.box.w - total) / 2;
+    if (icon != nullptr) {
+      this->text_(it, x, cy, &id(icon_small), TEXT, TextAlign::CENTER_LEFT, icon);
+      x += 26;
+    }
+    this->text_(it, x, cy, &id(tiny_font), TEXT, TextAlign::CENTER_LEFT, label);
+    this->draw_focus_(it, c);
+  }
+
+  void draw_slider_(Display &it, const Control &c, Color fill = Color(90, 70, 20)) {
+    if (!this->vis_(c.box))
+      return;
+    const bool en = this->enabled_(c.id);
+    const float v = this->slider_value_(c.id);
+    const SliderSpec sp = slider_spec(c.id);
+    const Box track{c.box.x + 4, c.box.y + 4, c.box.w - 8, c.box.h - 8};
+    this->fill_(it, track, TILE_BG);
+    const int fw = (int) std::lround(track.w * clamp((v - sp.min) / (sp.max - sp.min), 0.f, 1.f));
+    const Color fill_c = en ? fill : DISABLED;
+    const Box filled{track.x, track.y, fw, track.h};
+    const Box rest{track.x + fw, track.y, track.w - fw, track.h};
+    this->fill_(it, filled, fill_c);
+    char buf[24];
+    snprintf(buf, sizeof(buf), en ? sp.fmt : sp.fmt_auto, v);
+    // Inverted text: over the filled part black or white by the fill's luminance, over the dark
+    // track white, split exactly at the fill edge.
+    const int tx = track.x + track.w / 2, ty = track.y + track.h / 2;
+    const Color on_track = en ? TEXT : TEXT_DIM;
+    this->text_clipped_(it, filled, tx, ty, &id(tiny_font), en ? contrast_text(fill_c) : on_track, buf);
+    this->text_clipped_(it, rest, tx, ty, &id(tiny_font), on_track, buf);
+    this->draw_focus_(it, c);
+  }
+
+  // Black on light backgrounds, white on dark ones (perceived luminance).
+  static Color contrast_text(Color bg) {
+    return (299 * bg.r + 587 * bg.g + 114 * bg.b) / 1000 > 140 ? Color::BLACK : TEXT;
+  }
+
+  // Centred text, drawn only inside box b.
+  void text_clipped_(Display &it, const Box &b, int x, int y, font::Font *f, Color c, const char *s) {
+    const Box clip = b.intersect(this->area_);
+    if (clip.empty())
+      return;
+    it.start_clipping(display::Rect(clip.x, clip.y, clip.w, clip.h));
+    this->text_(it, x, y, f, c, TextAlign::CENTER, s);
+    it.end_clipping();
+  }
+
+  void draw_slider_label_(Display &it, const char *label) {
+    this->text_(it, 12, SLIDER_LABEL_Y, &id(tiny_font), TEXT_DIM, TextAlign::CENTER_LEFT, label);
+  }
+
+  // Colour wheel: hue = angle (0 deg = red at the right, clockwise like Home Assistant's wheel),
+  // saturation = radius.
+  // Computed per pixel for exactly the area being redrawn, so a cursor move costs ~2x 21x21 px.
+  void draw_wheel_(Display &it, const Control &c) {
+    if (!this->vis_(c.box))
+      return;
+    const bool en = this->enabled_(c.id);
+    const int x0 = WHEEL_CX - WHEEL_R, y0 = WHEEL_CY - WHEEL_R;
+    const Box b = Box{x0, y0, 2 * WHEEL_R + 1, 2 * WHEEL_R + 1}.intersect(this->area_);
+    auto &img = id(colorwheel);
+    for (int y = b.y; y < b.y + b.h; y++) {
+      const int dy = WHEEL_CY - y;
+      for (int x = b.x; x < b.x + b.w; x++) {
+        const int dx = x - WHEEL_CX;
+        if (dx * dx + dy * dy > WHEEL_R * WHEEL_R)
+          continue;
+        Color px = img.get_pixel(x - x0, y - y0);
+        if (!en)  // dimmed while the light automation owns the scenic light
+          px = Color(px.r * 3 / 8, px.g * 3 / 8, px.b * 3 / 8);
+        it.draw_pixel_at(x, y, px);
+      }
+    }
+    // cursor
+    float h, s;
+    this->scenic_current_(h, s);
+    const Box cb = cursor_box(h, s);
+    if (this->vis_(cb)) {
+      const int px = cb.x + 10, py = cb.y + 10;
+      if (this->editing_sat_()) {  // square while the encoder edits saturation
+        it.rectangle(px - 8, py - 8, 17, 17, Color::BLACK);
+        it.rectangle(px - 7, py - 7, 15, 15, Color::WHITE);
+        it.rectangle(px - 6, py - 6, 13, 13, Color::WHITE);
+        it.rectangle(px - 5, py - 5, 11, 11, Color::BLACK);
+      } else {
+        it.circle(px, py, 8, Color::BLACK);
+        it.circle(px, py, 7, Color::WHITE);
+        it.circle(px, py, 6, Color::WHITE);
+        it.circle(px, py, 5, Color::BLACK);
+      }
+    }
+    this->draw_focus_(it, c);
+  }
+
+  // ---------------------------------------------------------------- pages
+  void draw_page_(Display &it) {
+    if (!id(api_connected).state) {
+      this->draw_connecting_(it);
+      return;
+    }
+    switch (this->page_) {
+      case Page::OVERVIEW:
+        this->draw_header_(it, nullptr);
+        this->draw_overview_(it);
+        break;
+      case Page::MENU:
+        this->draw_header_(it, "Menu");
+        for (int i = 0; i < MENU_COUNT; i++)
+          this->draw_menu_tile_(it, i);
+        break;
+      case Page::THERMO:
+        this->draw_header_(it, page_title(this->page_));
+        this->draw_thermo_(it);
+        break;
+      case Page::HYGRO:
+        this->draw_header_(it, page_title(this->page_));
+        this->draw_hygro_(it);
+        break;
+      case Page::WIND:
+        this->draw_header_(it, page_title(this->page_));
+        this->draw_wind_(it);
+        break;
+      case Page::GROW:
+        this->draw_header_(it, page_title(this->page_));
+        this->draw_grow_(it);
+        break;
+      case Page::SCENIC:
+        this->draw_header_(it, page_title(this->page_));
+        this->draw_scenic_(it);
+        break;
+      case Page::CO2:
+        this->draw_header_(it, page_title(this->page_));
+        this->draw_co2_(it);
+        break;
+    }
+  }
+
+  static const char *page_title(Page p) {
+    switch (p) {
+      case Page::THERMO: return "Thermo";
+      case Page::HYGRO: return "Hygro & Rain";
+      case Page::WIND: return "Wind";
+      case Page::GROW: return "Grow light";
+      case Page::SCENIC: return "Scenic light";
+      case Page::CO2: return "CO₂";
+      default: return "";
+    }
+  }
+
+  void draw_connecting_(Display &it) {
+    const Box hdr{0, 0, W, HEADER_H};
+    this->fill_(it, hdr, HEADER_BG);
+    this->text_(it, 6, HEADER_H / 2, &id(tiny_font), TEXT, TextAlign::CENTER_LEFT, "Connecting to HASS");
+    this->fill_(it, Box{W - 6 - 4 * 16, 9, 4 * id(wi), 8}, TEXT);
+    if (this->vis_(Box{(W - 190) / 2, 30, 190, 184}))
+      it.image((W - 190) / 2, 30, &id(gecko_logo));
+    this->text_(it, W / 2, H - 4, &id(tiny_font), TEXT, TextAlign::BASELINE_CENTER, "Geckocontrol V2.0");
+  }
+
+  // Header: back arrow + title on menu/subpages, clock on the overview, wifi bars always.
+  void draw_header_(Display &it, const char *title) {
+    const Box hdr{0, 0, W, HEADER_H};
+    if (!this->vis_(hdr))
+      return;
+    this->fill_(it, hdr, HEADER_BG);
+    if (title != nullptr) {
+      this->text_(it, 8, HEADER_H / 2, &id(icon_small), TEXT, TextAlign::CENTER_LEFT, ICON_ARROW_LEFT);
+      this->text_(it, 36, HEADER_H / 2, &id(tiny_font), TEXT, TextAlign::CENTER_LEFT, title);
+      if (this->page_ != Page::MENU && this->focus_ < 0)
+        this->frame_(it, BACK_FOCUS, FOCUS, 2);
+    } else {
+      auto now = id(ha_time).now();
+      if (now.is_valid()) {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%02d:%02d", now.hour, now.minute);
+        this->text_(it, 8, HEADER_H / 2, &id(tiny_font), TEXT, TextAlign::CENTER_LEFT, buf);
+      }
+    }
+    const float dbm = sval(&id(wifisignal));
+    const int bars = std::isnan(dbm) ? 0 : (int) std::lround((dbm + 100.f) / 10.f);
+    for (int i = 0; i < 5; i++) {
+      const Box b{W - 30 + i * 5, 15 - i * 2, 4, i * 2 + 4};
+      if (!this->vis_(b))
+        continue;
+      if (i < bars)
+        this->fill_(it, b, TEXT);
+      else
+        it.rectangle(b.x, b.y, b.w, b.h, TEXT_DIM);
+    }
+  }
+
+  // Colours: green on target, red/blue for too warm/cold (too dry/wet)
+  static Color temp_color(float d) {
+    if (std::isnan(d))
+      return NO_DATA;
+    return Color(clamp(85.f * d, 0.f, 255.f), clamp(255.f - 28.f * d * d, 0.f, 255.f), clamp(-85.f * d, 0.f, 255.f));
+  }
+  static Color hum_color(float d) {
+    if (std::isnan(d))
+      return NO_DATA;
+    return Color(clamp(-36.4f * d, 0.f, 255.f), clamp(255.f - 5.2f * d * d, 0.f, 255.f), clamp(36.4f * d, 0.f, 255.f));
+  }
+  static const char *co2_status(float ppm) {
+    if (ppm < 1000)
+      return "good";
+    if (ppm < 1800)
+      return "elevated";
+    return "alarm";
+  }
+
+  void draw_overview_(Display &it) {
+    char value[24], diff[16];
+    auto row = [&](const Box &b, Color bg, const char *icon) {
+      this->fill_(it, b, bg);
+      if (!this->vis_(b))
+        return;
+      const int cy = b.y + b.h / 2;
+      this->text_(it, b.x + 10, cy, &id(icon_font), Color::BLACK, TextAlign::CENTER_LEFT, icon);
+      if (value[0])
+        this->text_(it, b.x + b.w / 2, cy, &id(big_font), Color::BLACK, TextAlign::CENTER, value);
+      if (diff[0])
+        this->text_(it, b.x + b.w - 10, cy, &id(tiny_font), Color::BLACK, TextAlign::CENTER_RIGHT, diff);
+    };
+
+    {
+      const float cur = sval(&id(thermostat_current_temperature));
+      const float d = cur - sval(&id(thermostat_target_temperature));
+      value[0] = diff[0] = 0;
+      if (!std::isnan(cur))
+        snprintf(value, sizeof(value), "%.1f°C", cur);
+      if (!std::isnan(d))
+        snprintf(diff, sizeof(diff), "%+.1f", d);
+      row(OV_ROWS[0], temp_color(d), ICON_THERMOMETER);
+    }
+    {
+      const float cur = sval(&id(humidity_current));
+      const float d = cur - sval(&id(humidity_target));
+      value[0] = diff[0] = 0;
+      if (!std::isnan(cur))
+        snprintf(value, sizeof(value), "%.0f%%", cur);
+      if (!std::isnan(d))
+        snprintf(diff, sizeof(diff), "%+.0f", d);
+      row(OV_ROWS[1], hum_color(d), ICON_WATER_PERCENT);
+    }
+    {
+      value[0] = diff[0] = 0;
+      if (id(co2_val).has_state() && !id(co2_sensor).status_has_warning())
+        snprintf(value, sizeof(value), "%.0f ppm", id(co2_val).state);
+      row(OV_ROWS[2], id(color_co2), ICON_MOLECULE_CO2);
+    }
+
+    // Status row: reservoir, rain automation, grow light, wind
+    if (!this->vis_(OV_STATUS))
+      return;
+    const int cy = OV_STATUS.y + OV_STATUS.h / 2;
+    char buf[16];
+    int x = OV_STATUS.x;
+    auto item = [&](const char *icon, Color ic, const char *txt, int width) {
+      this->text_(it, x, cy, &id(icon_small), ic, TextAlign::CENTER_LEFT, icon);
+      this->text_(it, x + 24, cy, &id(tiny_font), TEXT, TextAlign::CENTER_LEFT, txt);
+      x += width;
+    };
+    const float res = sval(&id(reservoir_level));
+    if (std::isnan(res))
+      snprintf(buf, sizeof(buf), "-");
+    else
+      snprintf(buf, sizeof(buf), "%.0f%%", res);
+    item(ICON_CUP_WATER, !std::isnan(res) && res < 20.f ? WARN : TEXT, buf, 76);
+    item(ICON_WEATHER_RAINY, id(rain_automation).state ? TEXT : TEXT_DIM, id(rain_automation).state ? "auto" : "off",
+         72);
+    const float gb = sval(&id(grow_light_brightness));
+    if (id(grow_light_on).state && !std::isnan(gb))
+      snprintf(buf, sizeof(buf), "%.0f%%", gb / 2.55f);
+    else
+      snprintf(buf, sizeof(buf), "off");
+    item(ICON_SPROUT, id(grow_light_on).state ? TEXT : TEXT_DIM, buf, 76);
+    const float wp = sval(&id(multifan_percentage));
+    if (std::isnan(wp))
+      snprintf(buf, sizeof(buf), "-");
+    else
+      snprintf(buf, sizeof(buf), "%.0f%%", wp);
+    item(ICON_WEATHER_WINDY, TEXT, buf, 76);
+  }
+
+  void draw_menu_tile_(Display &it, int i) {
+    const Box b = menu_tile_box(i);
+    if (!this->vis_(b))
+      return;
+    const bool focused = i == this->menu_focus_;
+    this->fill_(it, b, focused ? FOCUS : TILE_BG);
+    this->fill_(it, Box{b.x + 3, b.y + 3, b.w - 6, b.h - 6}, TILE_BG);
+
+    const int cx = b.x + b.w / 2;
+    char value[24] = "";
+    const char *icon = "";
+    Color ic = TEXT;
+    switch (MENU_PAGES[i]) {
+      case Page::THERMO: {
+        icon = ICON_THERMOMETER;
+        const float t = sval(&id(thermostat_current_temperature));
+        if (!std::isnan(t))
+          snprintf(value, sizeof(value), "%.1f°C", t);
+        ic = temp_color(t - sval(&id(thermostat_target_temperature)));
+        break;
+      }
+      case Page::HYGRO: {
+        icon = ICON_WATER_PERCENT;
+        const float h = sval(&id(humidity_current));
+        if (!std::isnan(h))
+          snprintf(value, sizeof(value), "%.0f%%", h);
+        ic = hum_color(h - sval(&id(humidity_target)));
+        break;
+      }
+      case Page::WIND: {
+        icon = ICON_WEATHER_WINDY;
+        const float p = sval(&id(multifan_percentage));
+        if (!std::isnan(p))
+          snprintf(value, sizeof(value), "%.0f%%", p);
+        break;
+      }
+      case Page::GROW: {
+        icon = ICON_SPROUT;
+        const float g = sval(&id(grow_light_brightness));
+        if (id(grow_light_on).state && !std::isnan(g))
+          snprintf(value, sizeof(value), "%.0f%%", g / 2.55f);
+        else
+          snprintf(value, sizeof(value), "off");
+        ic = id(grow_light_on).state ? Color(120, 230, 90) : TEXT_DIM;
+        break;
+      }
+      case Page::SCENIC: {
+        icon = ICON_PALETTE;
+        const float s = sval(&id(scenic_light_brightness));
+        if (id(scenic_light_on).state && !std::isnan(s))
+          snprintf(value, sizeof(value), "%.0f%%", s / 2.55f);
+        else
+          snprintf(value, sizeof(value), "off");
+        if (id(scenic_light_on).state) {
+          float h, sat;
+          this->scenic_current_(h, sat);
+          ic = hsv_color(h, sat, 1.f);
+        } else {
+          ic = TEXT_DIM;
+        }
+        break;
+      }
+      case Page::CO2: {
+        icon = ICON_MOLECULE_CO2;
+        if (id(co2_val).has_state() && !id(co2_sensor).status_has_warning())
+          snprintf(value, sizeof(value), "%.0f ppm", id(co2_val).state);
+        ic = id(color_co2);
+        break;
+      }
+      default:
+        break;
+    }
+    this->text_(it, cx, b.y + 28, &id(icon_font), ic, TextAlign::CENTER, icon);
+    this->text_(it, cx, b.y + 58, &id(tiny_font), TEXT_DIM, TextAlign::CENTER, page_title(MENU_PAGES[i]));
+    if (value[0])
+      this->text_(it, cx, b.y + 84, &id(mid_font), TEXT, TextAlign::CENTER, value);
+  }
+
+  // A labelled value line: label left (in its graph trace colour = legend), value right
+  void value_line_(Display &it, int y, const char *label, Color lc, const char *value) {
+    this->text_(it, 12, y, &id(tiny_font), lc, TextAlign::CENTER_LEFT, label);
+    this->text_(it, VALUES_LEFT.w - 10, y, &id(tiny_font), TEXT, TextAlign::CENTER_RIGHT, value);
+  }
+
+  // Values next to a graph: big current value with a legend dot in its trace colour, a status bar,
+  // up to three labelled lines. Shared by Thermo, Hygro & Rain, Wind and CO2.
+  void draw_values_left_(Display &it, const char *big, const char *unit, Color dot, Color bar, float bar_frac) {
+    it.filled_circle(12, 52, 4, dot);
+    this->text_(it, 80, 52, &id(big_font), TEXT, TextAlign::CENTER, big);
+    if (unit != nullptr) {
+      int bx, by, bw, bh;
+      it.get_text_bounds(80, 52, big, &id(big_font), TextAlign::CENTER, &bx, &by, &bw, &bh);
+      this->text_(it, bx + bw + 4, 58, &id(tiny_font), TEXT_DIM, TextAlign::CENTER_LEFT, unit);
+    }
+    const Box track{12, 76, VALUES_LEFT.w - 22, 5};
+    if (bar_frac >= 0.f) {  // level bar
+      this->fill_(it, track, TILE_BG);
+      this->fill_(it, Box{track.x, track.y, (int) std::lround(track.w * clamp(bar_frac, 0.f, 1.f)), track.h}, bar);
+    } else {  // status colour
+      this->fill_(it, track, bar);
+    }
+  }
+  static constexpr int LINE_Y[3] = {94, 110, 126};
+
+  void draw_thermo_(Display &it) {
+    if (this->vis_(VALUES_LEFT)) {
+      const float cur = sval(&id(thermostat_current_temperature));
+      const float tgt = sval(&id(thermostat_target_temperature));
+      const float wx = sval(&id(weather_temperature));
+      char buf[24];
+      snprintf(buf, sizeof(buf), std::isnan(cur) ? "-" : "%.1f°", cur);
+      this->draw_values_left_(it, buf, nullptr, T_NOW, temp_color(cur - tgt), -1.f);
+      // The target is shown by the setpoint slider (and the green graph trace) only.
+      const float gnd = sval(&id(ground_temperature));
+      snprintf(buf, sizeof(buf), std::isnan(gnd) ? "-" : "%.1f°C", gnd);
+      this->value_line_(it, LINE_Y[0], "ground", T_GROUND, buf);
+      // Weather only while the setpoint is manual; otherwise it equals the target.
+      if (!id(weather_setpoint).state) {
+        snprintf(buf, sizeof(buf), std::isnan(wx) ? "-" : "%.1f°C", wx);
+        this->value_line_(it, LINE_Y[2], "weather", T_WEATHER, buf);
+      }
+      // the active heater: daylight lamp by day, heat lamp at night
+      const bool day = id(daytime).state;
+      const bool on = day ? id(daylight_on).state : id(heat_lamp_on).state;
+      const float b = sval(day ? &id(daylight_brightness) : &id(heat_lamp_brightness));
+      if (on && !std::isnan(b))
+        snprintf(buf, sizeof(buf), "%.0f%%", b / 2.55f);
+      else
+        snprintf(buf, sizeof(buf), "off");
+      this->value_line_(it, LINE_Y[1], day ? "daylight" : "heat lamp", TEXT_DIM, buf);
+    }
+    if (this->vis_(GRAPH_BOX))
+      it.graph(GRAPH_X, GRAPH_Y, &id(temperature_graph), TEXT_DIM);
+    this->draw_toggle_(it, THERMO_CONTROLS[0], ICON_THERMOMETER, "Weather setpoint", id(weather_setpoint).state);
+    this->draw_slider_label_(it, "Setpoint");
+    this->draw_slider_(it, THERMO_CONTROLS[1]);
+  }
+
+  void draw_hygro_(Display &it) {
+    if (this->vis_(VALUES_LEFT)) {
+      const float cur = sval(&id(humidity_current));
+      const float tgt = sval(&id(humidity_target));
+      char buf[24];
+      snprintf(buf, sizeof(buf), std::isnan(cur) ? "-" : "%.0f%%", cur);
+      this->draw_values_left_(it, buf, nullptr, T_NOW, hum_color(cur - tgt), -1.f);
+      // The controller sets the hygrostat target from the weather humidity, so one line (in the
+      // weather trace colour) covers both.
+      snprintf(buf, sizeof(buf), std::isnan(tgt) ? "-" : "%.0f%%", tgt);
+      this->value_line_(it, LINE_Y[0], "target", T_WEATHER, buf);
+      const float ceil = sval(&id(ceiling_humidity)), gnd = sval(&id(ground_humidity));
+      snprintf(buf, sizeof(buf), std::isnan(ceil) ? "-" : "%.0f%%", ceil);
+      this->value_line_(it, LINE_Y[1], "ceiling", T_CEILING, buf);
+      snprintf(buf, sizeof(buf), std::isnan(gnd) ? "-" : "%.0f%%", gnd);
+      this->value_line_(it, LINE_Y[2], "ground", T_GROUND, buf);
+    }
+    if (this->vis_(GRAPH_BOX))
+      it.graph(GRAPH_X, GRAPH_Y, &id(humidity_graph), TEXT_DIM);
+
+    this->draw_toggle_(it, HYGRO_CONTROLS[0], ICON_WEATHER_RAINY, "Rain automation", id(rain_automation).state);
+
+    if (this->vis_(RESERVOIR_ROW)) {
+      const float lvl = sval(&id(reservoir_level));
+      const bool low = !std::isnan(lvl) && lvl < 20.f;
+      const int cy = RESERVOIR_ROW.y + RESERVOIR_ROW.h / 2;
+      this->text_(it, 16, cy, &id(icon_small), low ? WARN : TEXT, TextAlign::CENTER_LEFT, ICON_CUP_WATER);
+      this->text_(it, 42, cy, &id(tiny_font), T_LEVEL, TextAlign::CENTER_LEFT, "Reservoir");
+      const Box bar{130, cy - 7, 120, 14};
+      this->fill_(it, bar, TILE_BG);
+      if (!std::isnan(lvl))
+        this->fill_(it, Box{bar.x, bar.y, (int) std::lround(bar.w * clamp(lvl, 0.f, 100.f) / 100.f), bar.h},
+                    low ? WARN : T_LEVEL);
+      char buf[12];
+      snprintf(buf, sizeof(buf), std::isnan(lvl) ? "-" : "%.0f%%", lvl);
+      this->text_(it, W - 12, cy, &id(tiny_font), low ? WARN : TEXT, TextAlign::CENTER_RIGHT, buf);
+    }
+
+    this->draw_button_(it, HYGRO_CONTROLS[1], ICON_WEATHER_RAINY, "Let it rain", TILE_BG);
+    const bool armed = this->armed_until_ != 0;
+    this->draw_button_(it, HYGRO_CONTROLS[2], armed ? nullptr : ICON_CUP_WATER, armed ? "Confirm?" : "Refilled",
+                       armed ? ARMED : TILE_BG);
+  }
+
+  void draw_wind_(Display &it) {
+    if (this->vis_(VALUES_LEFT)) {
+      const float p = sval(&id(multifan_percentage));
+      char buf[24];
+      snprintf(buf, sizeof(buf), std::isnan(p) ? "-" : (p > 0 ? "%.0f%%" : "off"), p);
+      this->draw_values_left_(it, buf, nullptr, T_LEVEL, T_LEVEL, std::isnan(p) ? 0.f : p / 100.f);
+      const float rpm = sval(&id(fan_tacho));
+      snprintf(buf, sizeof(buf), std::isnan(rpm) ? "-" : "%.0f rpm", rpm);
+      this->value_line_(it, LINE_Y[0], "fan", TEXT_DIM, buf);
+      this->value_line_(it, LINE_Y[1], "mode", TEXT_DIM, id(multifan_auto).state ? "automatic" : "manual");
+      const float wx = sval(&id(weather_windspeed));
+      snprintf(buf, sizeof(buf), std::isnan(wx) ? "-" : "%.0f km/h", wx);
+      this->value_line_(it, LINE_Y[2], "weather", T_WEATHER, buf);
+    }
+    if (this->vis_(GRAPH_BOX))
+      it.graph(GRAPH_X, GRAPH_Y, &id(wind_graph), TEXT_DIM);
+    this->draw_toggle_(it, WIND_CONTROLS[0], ICON_WEATHER_WINDY, "Automatic", id(multifan_auto).state);
+    this->draw_slider_label_(it, "Manual speed");
+    this->draw_slider_(it, WIND_CONTROLS[1]);
+  }
+
+  void draw_grow_(Display &it) {
+    if (this->vis_(VALUES_BOX)) {
+      const int cy = VALUES_BOX.y + VALUES_BOX.h / 2;
+      const bool on = id(grow_light_on).state;
+      this->text_(it, 20, cy, &id(icon_font), on ? Color(120, 230, 90) : TEXT_DIM, TextAlign::CENTER_LEFT,
+                  ICON_SPROUT);
+      const float b = sval(&id(grow_light_brightness));
+      char buf[24];
+      if (on && !std::isnan(b))
+        snprintf(buf, sizeof(buf), "%.0f%%", b / 2.55f);
+      else
+        snprintf(buf, sizeof(buf), "off");
+      this->text_(it, 150, cy, &id(big_font), TEXT, TextAlign::CENTER, buf);
+      const float ill = sval(&id(illumination));
+      if (!std::isnan(ill)) {
+        snprintf(buf, sizeof(buf), "sun %.0f%%", ill);
+        this->text_(it, W - 12, cy, &id(tiny_font), TEXT_DIM, TextAlign::CENTER_RIGHT, buf);
+      }
+    }
+    this->draw_toggle_(it, GROW_CONTROLS[0], nullptr, "Light automation", id(light_automation).state);
+    this->draw_slider_label_(it, "Brightness");
+    this->draw_slider_(it, GROW_CONTROLS[1]);
+  }
+
+  void draw_scenic_(Display &it) {
+    float h, s;
+    this->scenic_current_(h, s);
+    this->draw_wheel_(it, SCENIC_CONTROLS[1]);
+    this->draw_slider_(it, SCENIC_CONTROLS[2], hsv_color(h, s, 1.f));
+    this->draw_toggle_(it, SCENIC_CONTROLS[0], nullptr, "Auto", id(light_automation).state);
+    // static texts (in rows no value change touches)
+    this->text_(it, 192, 96, &id(tiny_font), TEXT_DIM, TextAlign::CENTER_LEFT, "drag the wheel,");
+    this->text_(it, 192, 116, &id(tiny_font), TEXT_DIM, TextAlign::CENTER_LEFT, "or push + turn:");
+    this->text_(it, 192, 136, &id(tiny_font), TEXT_DIM, TextAlign::CENTER_LEFT, "hue, then sat");
+    this->text_(it, SCENIC_HUE_X, 192, &id(tiny_font), TEXT_DIM, TextAlign::CENTER, "Hue");
+    this->text_(it, SCENIC_SAT_X, 192, &id(tiny_font), TEXT_DIM, TextAlign::CENTER, "Sat");
+    if (this->vis_(SCENIC_VALUES))
+      this->draw_scenic_values_(it);
+  }
+
+  // Hue / sat numbers right of the brightness slider; the one the encoder edits is framed.
+  void draw_scenic_values_(Display &it) {
+    float h, s;
+    this->scenic_current_(h, s);
+    const bool edit = this->editing_ && this->focus_ >= 0 && SCENIC_CONTROLS[this->focus_].id == C_SCENIC_WHEEL;
+    char buf[12];
+    const int cy = SCENIC_VALUES.y + 14;
+    snprintf(buf, sizeof(buf), "%.0f°", h);
+    this->text_(it, SCENIC_HUE_X, cy, &id(mid_font), TEXT, TextAlign::CENTER, buf);
+    snprintf(buf, sizeof(buf), "%.0f%%", s * 100.f);
+    this->text_(it, SCENIC_SAT_X, cy, &id(mid_font), TEXT, TextAlign::CENTER, buf);
+    if (edit)  // same frame as an edited slider
+      this->frame_(it, Box{(this->wheel_part_ == 0 ? SCENIC_HUE_X : SCENIC_SAT_X) - 31, SCENIC_VALUES.y, 62, 32}, EDIT,
+                   3);
+  }
+
+  void draw_co2_(Display &it) {
+    if (this->vis_(VALUES_LEFT)) {
+      const bool ok = id(co2_val).has_state() && !id(co2_sensor).status_has_warning();
+      char buf[24];
+      snprintf(buf, sizeof(buf), ok ? "%.0f" : "-", id(co2_val).state);
+      this->draw_values_left_(it, buf, ok ? "ppm" : nullptr, T_LEVEL, id(color_co2), -1.f);
+      this->value_line_(it, LINE_Y[0], "status", TEXT_DIM, ok ? co2_status(id(co2_val).state) : "no data");
+      this->value_line_(it, LINE_Y[1], "alarm at", TEXT_DIM, "1800 ppm");
+    }
+    if (this->vis_(GRAPH_BOX))
+      it.graph(GRAPH_X, GRAPH_Y, &id(co2_graph), TEXT_DIM);
+    const bool sound = id(co2_warning_sound).state;
+    this->draw_toggle_(it, CO2_CONTROLS[0], sound ? ICON_BELL_RING : ICON_BELL_OFF, "Warning sound", sound);
+    this->draw_slider_label_(it, "LED brightness");
+    this->draw_slider_(it, CO2_CONTROLS[1]);
+  }
+
+  // ---------------------------------------------------------------- state
+  Page page_{Page::OVERVIEW};
+  int menu_focus_{0};
+  int focus_{0};
+  bool editing_{false};
+  uint8_t wheel_part_{0};  // 0 = hue, 1 = saturation
+  uint32_t last_activity_{0};
+  uint32_t armed_until_{0};
+  uint32_t last_graph_{0};
+
+  // locally set values (sliders 0-100, wheel hue/sat) held while HA catches up
+  float local_[C_COUNT]{};
+  float local_h_{0}, local_s_{0};
+  uint32_t hold_until_[C_COUNT]{};
+  bool send_pending_[C_COUNT]{};
+  uint32_t last_send_[C_COUNT]{};
+  float shown_h_{0}, shown_s_{0};  // cursor position currently on screen
+
+  // touch gesture tracking
+  bool t_down_{false};
+  int t_x0_{0}, t_y0_{0}, t_x_{0}, t_y_{0};
+  Ctl drag_{C_NONE};
+
+  // rendering
+  bool full_dirty_{true};
+  std::vector<Box> dirty_;
+  bool partial_{false};
+  Box region_;
+  Box area_;
+  int pass_{0};
+};
+
+inline UI ui;
+
+}  // namespace gecko_ui
