@@ -208,6 +208,8 @@ enum Ctl : uint8_t {
   C_SCENIC_BRI,
   C_CO2_SOUND,
   C_CO2_LEDS,
+  C_CO2_CALIBRATE,
+  C_CO2_ALARM,
   C_WEATHER_SET,
   C_THERMO_SET,
   C_GRAPH,  // the history graph: push/tap cycles its time range
@@ -269,9 +271,13 @@ static const Control SCENIC_CONTROLS[] = {
     {C_SCENIC_WHEEL, Kind::WHEEL, WHEEL_BOX},
     {C_SCENIC_BRI, Kind::SLIDER, {4, 206, 176, 32}},
 };
+// The alarm threshold is a compact slider in the values column, below the status line.
+static constexpr Box CO2_ALARM_BOX{8, 104, VALUES_LEFT.w - 8, 30};
 static const Control CO2_CONTROLS[] = {
+    {C_CO2_ALARM, Kind::SLIDER, CO2_ALARM_BOX},
     {C_CO2_SOUND, Kind::TOGGLE, TOGGLE_ROW},
-    {C_CO2_LEDS, Kind::SLIDER, SLIDER_BOX},
+    {C_CO2_LEDS, Kind::SLIDER, {8, 190, 152, 44}},
+    {C_CO2_CALIBRATE, Kind::CONFIRM, {164, 190, 148, 44}},
     {C_GRAPH, Kind::BUTTON, GRAPH_BOX},
 };
 
@@ -473,7 +479,7 @@ class UI {
       case Page::CO2:
         if (f == F_CO2) {
           this->invalidate(VALUES_LEFT);
-        } else if (f == F_CO2_ALARM) {
+        } else if (f == F_CO2_ALARM && !this->held_(C_CO2_ALARM)) {
           this->invalidate(VALUES_LEFT);
           this->invalidate(GRAPH_BOX);
         } else if (f == F_CO2_SOUND) {
@@ -676,7 +682,7 @@ class UI {
     }
     if (this->armed_until_ != 0 && (int32_t) (now - this->armed_until_) >= 0) {
       this->armed_until_ = 0;
-      this->invalidate_ctl_(C_REFILLED);
+      this->invalidate_ctl_(this->armed_ctl_);
     }
     // Redraw the graph only when its range has completed a pixel (every 5.7 s at 15 min, every
     // 18 min at 48 h).
@@ -707,7 +713,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case Page::WIND: n = 3; return WIND_CONTROLS;
       case Page::GROW: n = 2; return GROW_CONTROLS;
       case Page::SCENIC: n = 3; return SCENIC_CONTROLS;
-      case Page::CO2: n = 3; return CO2_CONTROLS;
+      case Page::CO2: n = 5; return CO2_CONTROLS;
       default: n = 0; return nullptr;
     }
   }
@@ -853,6 +859,8 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         return {12.f, 36.f, 0.5f, 0.5f, "%.1f°C", "%.1f°C (weather)"};
       case C_WIND_SPEED:  // number step 5
         return {0.f, 100.f, 5.f, 5.f, "%.0f%%", "%.0f%% (auto)"};
+      case C_CO2_ALARM:  // co2_alarm_threshold number range
+        return {800.f, 5000.f, 50.f, 50.f, "alarm %.0f ppm", "alarm %.0f ppm"};
       default:
         return {0.f, 100.f, 1.f, 5.f, "%.0f%%", "%.0f%% (auto)"};
     }
@@ -871,6 +879,8 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         const float v = sval(&id(fan_manual_speed));
         return std::isnan(v) ? 0.f : v;
       }
+      case C_CO2_ALARM:
+        return id(co2_alarm_threshold).state;
       case C_GROW_LEVEL: {
         const float b = sval(&id(grow_light_brightness));
         return id(grow_light_on).state && !std::isnan(b) ? b / 2.55f : 0.f;
@@ -898,6 +908,8 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
     this->invalidate_ctl_(c);
     if (c == C_SCENIC_BRI)
       this->invalidate(SCENIC_VALUES);
+    if (c == C_CO2_ALARM)
+      this->invalidate(GRAPH_BOX);  // the threshold line follows
   }
 
   // Current scenic hue (deg) / saturation (0-1) as shown.
@@ -1013,18 +1025,30 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         id(ha_call).execute(std::string("button.press"), std::string(E_LET_IT_RAIN));
         break;
       case C_REFILLED:
-        if (this->armed_until_ == 0) {
-          this->armed_until_ = millis() + CONFIRM_MS;
-        } else {
-          this->armed_until_ = 0;
+        if (this->confirmed_(C_REFILLED))
           id(ha_call).execute(std::string("button.press"), std::string(E_REFILLED));
-        }
-        this->invalidate_ctl_(C_REFILLED);
+        break;
+      case C_CO2_CALIBRATE:
+        if (this->confirmed_(C_CO2_CALIBRATE))
+          id(co2_calibrate).execute();
         break;
       default:
         break;
     }
   }
+
+  // Two-step CONFIRM button: the first activation arms it for CONFIRM_MS ("Confirm?"), the second
+  // one within that time returns true.
+  bool confirmed_(Ctl c) {
+    const bool armed = this->armed_(c);
+    if (this->armed_until_ != 0 && !armed)
+      this->invalidate_ctl_(this->armed_ctl_);  // another button was armed
+    this->armed_until_ = armed ? 0 : millis() + CONFIRM_MS;
+    this->armed_ctl_ = c;
+    this->invalidate_ctl_(c);
+    return armed;
+  }
+  bool armed_(Ctl c) const { return this->armed_until_ != 0 && this->armed_ctl_ == c; }
 
   void ha_switch_(const char *entity, bool on) {
     id(ha_call).execute(std::string(on ? "switch.turn_on" : "switch.turn_off"), std::string(entity));
@@ -1047,6 +1071,9 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
     switch (c) {
       case C_WIND_SPEED:
         id(ha_number).execute(std::string(E_WIND_SPEED), this->local_[c]);
+        break;
+      case C_CO2_ALARM:  // a number on this device, no Home Assistant round trip
+        id(co2_alarm_threshold).make_call().set_value(this->local_[c]).perform();
         break;
       case C_THERMO_SET:
         id(ha_climate_temperature).execute(std::string(E_THERMOSTAT), this->local_[c]);
@@ -1722,7 +1749,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
     }
 
     this->draw_button_(it, HYGRO_CONTROLS[1], ICON_WEATHER_RAINY, "Let it rain", TILE_BG);
-    const bool armed = this->armed_until_ != 0;
+    const bool armed = this->armed_(C_REFILLED);
     this->draw_button_(it, HYGRO_CONTROLS[2], armed ? nullptr : ICON_CUP_WATER, armed ? "Confirm?" : "Refilled",
                        armed ? ARMED : TILE_BG);
   }
@@ -1810,14 +1837,18 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       snprintf(buf, sizeof(buf), ok ? "%.0f" : "-", id(co2_val).state);
       this->draw_values_left_(it, buf, ok ? "ppm" : nullptr, id(color_co2), id(color_co2), -1.f);
       this->value_line_(it, LINE_Y[0], "status", TEXT_DIM, ok ? co2_status(id(co2_val).state) : "no data");
-      snprintf(buf, sizeof(buf), "%.0f ppm", id(co2_alarm_threshold).state);
-      this->value_line_(it, LINE_Y[1], "alarm at", WARN, buf);
     }
-    this->draw_graph_(it, CO2_TRACES, 1, 200.f, -1, -1, id(co2_alarm_threshold).state);
+    this->draw_slider_(it, CO2_CONTROLS[0], Color(120, 30, 24));  // alarm threshold
+    this->draw_graph_(it, CO2_TRACES, 1, 200.f, -1, -1, this->slider_value_(C_CO2_ALARM));
     const bool sound = id(co2_warning_sound).state;
-    this->draw_toggle_(it, CO2_CONTROLS[0], sound ? ICON_BELL_RING : ICON_BELL_OFF, "Warning sound", sound);
+    this->draw_toggle_(it, CO2_CONTROLS[1], sound ? ICON_BELL_RING : ICON_BELL_OFF, "Warning sound", sound);
     this->draw_slider_label_(it, "LED brightness");
-    this->draw_slider_(it, CO2_CONTROLS[1]);
+    this->draw_slider_(it, CO2_CONTROLS[2]);
+    // Zero-point calibration: sets the current reading to 400 ppm, so only in fresh air.
+    const bool armed = this->armed_(C_CO2_CALIBRATE);
+    this->draw_button_(it, CO2_CONTROLS[3], armed ? nullptr : ICON_MOLECULE_CO2, armed ? "Confirm?" : "Calibrate",
+                       armed ? ARMED : TILE_BG);
+    this->text_(it, 164 + 74, SLIDER_LABEL_Y, &id(tiny_font), TEXT_DIM, TextAlign::CENTER, "in fresh air");
   }
 
   // ---------------------------------------------------------------- state
@@ -1828,6 +1859,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
   uint8_t wheel_part_{0};  // 0 = hue, 1 = saturation
   uint32_t last_activity_{0};
   uint32_t armed_until_{0};
+  Ctl armed_ctl_{C_NONE};  // the CONFIRM button armed_until_ belongs to
   int range_{HIST_DEFAULT_RANGE};  // time range shown by all graphs (HIST_RANGES)
   uint32_t graph_pushes_{0};
 

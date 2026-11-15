@@ -63,7 +63,7 @@ api:
             rtttl: !lambda 'return song_str;'
     - action: mhz19_calibrate_zero
       then:
-        - mhz19.calibrate_zero: co2_sensor
+        - script.execute: co2_calibrate
 
 ota:
   - platform: esphome
@@ -75,6 +75,16 @@ globals:
     initial_value: '0'
 
 script:
+  # MH-Z19 zero-point ("fresh air") calibration: the current reading becomes 400 ppm. Run it only
+  # after the sensor has been in outdoor air for at least 20 minutes. Triggered by the "CO2 Fresh Air
+  # Calibration" button, the console's CO2 page and the mhz19_calibrate_zero API action.
+  - id: co2_calibrate
+    mode: single
+    then:
+      - logger.log: "MH-Z19: zero-point calibration (fresh air = 400 ppm)"
+      - mhz19.calibrate_zero: co2_sensor
+      - rtttl.play: "Calibrated:d=16,o=6,b=180:c,g"
+
   # Home Assistant calls made by the UI (gecko_console.h)
   - id: ha_call   # action on an entity without data: switch.turn_on/off, button.press, light.turn_off
     mode: queued
@@ -191,6 +201,14 @@ switch:
       - lambda: 'gecko_ui::ui.changed(gecko_ui::F_CO2_SOUND);'
     on_turn_off:
       - lambda: 'gecko_ui::ui.changed(gecko_ui::F_CO2_SOUND);'
+
+button:
+  - platform: template
+    name: "CO2 Fresh Air Calibration"
+    icon: mdi:air-filter
+    entity_category: config
+    on_press:
+      - script.execute: co2_calibrate
 
 number:
   # CO2 level that sounds the alarm melody; drawn as the dashed red line in the CO2 graph.
