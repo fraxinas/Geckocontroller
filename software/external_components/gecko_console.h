@@ -35,6 +35,7 @@
 #pragma once
 
 #include "esphome.h"
+#include "gecko_history.h"
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -56,7 +57,6 @@ static constexpr uint32_t IDLE_TIMEOUT_MS = 60000;
 static constexpr uint32_t HOLD_MS = 4000;       // show a locally set value this long
 static constexpr uint32_t SEND_INTERVAL_MS = 300;  // throttle HA calls while dragging/turning
 static constexpr uint32_t CONFIRM_MS = 3000;
-static constexpr uint32_t GRAPH_REFRESH_MS = 10000;
 static constexpr int SWIPE_MIN_DX = 60;
 
 // Home Assistant entities of the Geckocontroller
@@ -97,14 +97,62 @@ static const Color NO_DATA(64, 64, 64);
 static const Color ON_GREEN(60, 190, 90);
 static const Color WARN(255, 70, 50);
 static const Color ARMED(230, 120, 20);
-// Graph trace colours; must match the color: entries used by the graphs in gecko-console.yaml.
-// Value labels on the pages use them as the legend.
+// Graph trace colours. Value labels on the pages use them as the legend.
 static const Color T_NOW(255, 100, 100);    // color_now
 static const Color T_WEATHER(255, 230, 60);  // color_weather
 static const Color T_TARGET(80, 220, 100);   // color_target
 static const Color T_LEVEL(60, 200, 230);    // color_level (reservoir, wind speed, CO2)
 static const Color T_CEILING(70, 120, 255);  // color_ceiling
 static const Color T_GROUND(230, 90, 200);   // color_ground
+static const Color T_DAYLIGHT(255, 150, 40);   // daylight lamp level (Thermo graph, own 0-100% scale)
+static const Color T_HEAT_LAMP(255, 60, 120);  // heat lamp: graph background tint by its duty
+static const Color GRID(60, 66, 74);
+
+// ------------------------------------------------------------------ history
+// Every graphed value, sampled every 2 s by sample_history() (gecko-console.yaml) into all time
+// ranges at once (gecko_history.h). Heater series are levels in % (0 while off).
+enum Series : uint8_t {
+  S_TEMP_NOW,
+  S_TEMP_TARGET,
+  S_TEMP_GROUND,
+  S_DAYLIGHT,
+  S_HEAT_LAMP,
+  S_HUM_NOW,
+  S_HUM_TARGET,
+  S_HUM_CEILING,
+  S_HUM_GROUND,
+  S_RESERVOIR,
+  S_WIND,
+  S_WIND_WEATHER,
+  S_CO2,
+  S_COUNT,
+};
+inline History<S_COUNT> history;
+
+// CO2 level colour, green -> yellow (~1100 ppm) -> red (from 1500 ppm). The RGB status LEDs, the
+// overview tile and the CO2 graph all use it.
+inline Color co2_color(float ppm) {
+  const float g = clamp(1.6f - 0.001f * ppm, 0.f, 1.f);
+  const float r = clamp(-0.5f + 0.001f * ppm, 0.f, 1.f);
+  return Color((uint8_t) std::lround(r * 255), (uint8_t) std::lround(g * 255), 0);
+}
+
+// One line of a graph: a fixed colour, or `color_of` colours every point by its value.
+struct Trace {
+  Series series;
+  Color color;
+  uint8_t thick;
+  Color (*color_of)(float){nullptr};
+};
+static const Trace THERMO_TRACES[] = {
+    {S_TEMP_GROUND, T_GROUND, 1}, {S_TEMP_TARGET, T_TARGET, 1}, {S_TEMP_NOW, T_NOW, 2}};
+static const Trace HYGRO_TRACES[] = {{S_RESERVOIR, T_LEVEL, 1},
+                                     {S_HUM_GROUND, T_GROUND, 1},
+                                     {S_HUM_CEILING, T_CEILING, 1},
+                                     {S_HUM_TARGET, T_WEATHER, 1},
+                                     {S_HUM_NOW, T_NOW, 2}};
+static const Trace WIND_TRACES[] = {{S_WIND_WEATHER, T_WEATHER, 1}, {S_WIND, T_LEVEL, 2}};
+static const Trace CO2_TRACES[] = {{S_CO2, T_LEVEL, 2, co2_color}};
 
 struct Box {
   int x{0}, y{0}, w{0}, h{0};
@@ -141,6 +189,7 @@ enum Field : uint8_t {
   F_WIND_AUTO,
   F_CO2_SOUND,
   F_CO2_LEDS,
+  F_CO2_ALARM,  // alarm threshold: values and the graph's threshold line
   F_HEATER,
   F_WEATHER_SET,
 };
@@ -161,6 +210,7 @@ enum Ctl : uint8_t {
   C_CO2_LEDS,
   C_WEATHER_SET,
   C_THERMO_SET,
+  C_GRAPH,  // the history graph: push/tap cycles its time range
   C_COUNT,
   C_NONE = 0xFF,
 };
@@ -178,7 +228,7 @@ struct Control {
 // Grow light uses the same rows without the graph; Scenic light has its own layout.
 static constexpr Box VALUES_LEFT{0, 30, 152, 104};
 static constexpr int GRAPH_X = 156, GRAPH_Y = 32;
-static constexpr Box GRAPH_BOX{GRAPH_X, GRAPH_Y, 158, 94};
+static constexpr Box GRAPH_BOX{GRAPH_X, GRAPH_Y, HIST_LEN, 94};
 static constexpr Box VALUES_BOX{8, 32, W - 16, 96};  // full width (Grow light)
 static constexpr Box TOGGLE_ROW{8, 134, W - 16, 32};
 static constexpr int SLIDER_LABEL_Y = 180;
@@ -197,15 +247,18 @@ static constexpr int SCENIC_HUE_X = 218, SCENIC_SAT_X = 284;  // column centres
 static const Control THERMO_CONTROLS[] = {
     {C_WEATHER_SET, Kind::TOGGLE, TOGGLE_ROW},
     {C_THERMO_SET, Kind::SLIDER, SLIDER_BOX},
+    {C_GRAPH, Kind::BUTTON, GRAPH_BOX},
 };
 static const Control HYGRO_CONTROLS[] = {
     {C_RAIN_AUTO, Kind::TOGGLE, TOGGLE_ROW},
     {C_LET_IT_RAIN, Kind::BUTTON, {8, 200, 148, 36}},
     {C_REFILLED, Kind::CONFIRM, {164, 200, 148, 36}},
+    {C_GRAPH, Kind::BUTTON, GRAPH_BOX},
 };
 static const Control WIND_CONTROLS[] = {
     {C_WIND_AUTO, Kind::TOGGLE, TOGGLE_ROW},
     {C_WIND_SPEED, Kind::SLIDER, SLIDER_BOX},
+    {C_GRAPH, Kind::BUTTON, GRAPH_BOX},
 };
 static const Control GROW_CONTROLS[] = {
     {C_GROW_AUTO, Kind::TOGGLE, TOGGLE_ROW},
@@ -219,6 +272,7 @@ static const Control SCENIC_CONTROLS[] = {
 static const Control CO2_CONTROLS[] = {
     {C_CO2_SOUND, Kind::TOGGLE, TOGGLE_ROW},
     {C_CO2_LEDS, Kind::SLIDER, SLIDER_BOX},
+    {C_GRAPH, Kind::BUTTON, GRAPH_BOX},
 };
 
 inline float sval(sensor::Sensor *s) { return s->has_state() ? s->state : NAN; }
@@ -417,12 +471,16 @@ class UI {
         }
         break;
       case Page::CO2:
-        if (f == F_CO2)
+        if (f == F_CO2) {
           this->invalidate(VALUES_LEFT);
-        else if (f == F_CO2_SOUND)
+        } else if (f == F_CO2_ALARM) {
+          this->invalidate(VALUES_LEFT);
+          this->invalidate(GRAPH_BOX);
+        } else if (f == F_CO2_SOUND) {
           this->invalidate_ctl_(C_CO2_SOUND);
-        else if (f == F_CO2_LEDS && !this->held_(C_CO2_LEDS))
+        } else if (f == F_CO2_LEDS && !this->held_(C_CO2_LEDS)) {
           this->invalidate_ctl_(C_CO2_LEDS);
+        }
         break;
     }
   }
@@ -620,10 +678,12 @@ class UI {
       this->armed_until_ = 0;
       this->invalidate_ctl_(C_REFILLED);
     }
-    if (now - this->last_graph_ >= GRAPH_REFRESH_MS) {
-      this->last_graph_ = now;
-      if (this->page_ == Page::THERMO || this->page_ == Page::HYGRO || this->page_ == Page::WIND ||
-          this->page_ == Page::CO2)
+    // Redraw the graph only when its range has completed a pixel (every 5.7 s at 15 min, every
+    // 18 min at 48 h).
+    const uint32_t pushes = history.pushes(this->range_);
+    if (pushes != this->graph_pushes_) {
+      this->graph_pushes_ = pushes;
+      if (this->has_graph_())
         this->invalidate(GRAPH_BOX);
     }
   }
@@ -642,12 +702,12 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
 
   static const Control *controls(Page p, int &n) {
     switch (p) {
-      case Page::THERMO: n = 2; return THERMO_CONTROLS;
-      case Page::HYGRO: n = 3; return HYGRO_CONTROLS;
-      case Page::WIND: n = 2; return WIND_CONTROLS;
+      case Page::THERMO: n = 3; return THERMO_CONTROLS;
+      case Page::HYGRO: n = 4; return HYGRO_CONTROLS;
+      case Page::WIND: n = 3; return WIND_CONTROLS;
       case Page::GROW: n = 2; return GROW_CONTROLS;
       case Page::SCENIC: n = 3; return SCENIC_CONTROLS;
-      case Page::CO2: n = 2; return CO2_CONTROLS;
+      case Page::CO2: n = 3; return CO2_CONTROLS;
       default: n = 0; return nullptr;
     }
   }
@@ -943,6 +1003,11 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         break;
       case C_CO2_SOUND:
         id(co2_warning_sound).toggle();
+        break;
+      case C_GRAPH:
+        this->range_ = (this->range_ + 1) % HIST_RANGE_COUNT;
+        this->graph_pushes_ = history.pushes(this->range_);
+        this->invalidate(GRAPH_BOX);
         break;
       case C_LET_IT_RAIN:
         id(ha_call).execute(std::string("button.press"), std::string(E_LET_IT_RAIN));
@@ -1283,7 +1348,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
   static const char *co2_status(float ppm) {
     if (ppm < 1000)
       return "good";
-    if (ppm < 1800)
+    if (ppm < id(co2_alarm_threshold).state)
       return "elevated";
     return "alarm";
   }
@@ -1466,6 +1531,124 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
   }
   static constexpr int LINE_Y[3] = {94, 110, 126};
 
+  bool has_graph_() const {
+    return this->page_ == Page::THERMO || this->page_ == Page::HYGRO || this->page_ == Page::WIND ||
+           this->page_ == Page::CO2;
+  }
+
+  // History graph in GRAPH_BOX for the selected range, oldest left, now at the right edge. The y
+  // axis fits all traces, widened to whole multiples of y_grid (one dotted line per multiple).
+  // Optional extras on their own 0-100% scale: `band` tints each column's background by its level,
+  // `level` is drawn as a line wherever it is above 0. `mark` is a dashed red reference line (an
+  // alarm threshold), always inside the y range. Drawn column by column, clipped to area_.
+  void draw_graph_(Display &it, const Trace *traces, int n, float y_grid, int band = -1, int level = -1,
+                   float mark = NAN) {
+    const Box g = GRAPH_BOX;
+    const Box clip = g.intersect(this->area_);
+    if (clip.empty())
+      return;
+    const int r = this->range_;
+    const int x0 = clip.x - g.x, x1 = clip.x + clip.w - g.x;  // visible columns
+
+    float lo = NAN, hi = NAN;
+    for (int t = 0; t < n; t++) {
+      for (int x = 0; x < HIST_LEN; x++) {
+        const float v = history.get(traces[t].series, r, x);
+        if (std::isnan(v))
+          continue;
+        lo = std::isnan(lo) ? v : std::min(lo, v);
+        hi = std::isnan(hi) ? v : std::max(hi, v);
+      }
+    }
+    if (!std::isnan(mark)) {
+      lo = std::isnan(lo) ? mark : std::min(lo, mark);
+      hi = std::isnan(hi) ? mark : std::max(hi, mark);
+    }
+    float yn = 0.f, ym = y_grid;
+    if (!std::isnan(lo)) {
+      yn = std::floor(lo / y_grid) * y_grid;
+      ym = std::max(std::ceil(hi / y_grid) * y_grid, yn + y_grid);
+    }
+    // at most ~6 grid lines: coarsen the grid on a wide range
+    float step = y_grid;
+    while ((ym - yn) / step > 6.f)
+      step *= 2.f;
+    const int bottom = g.y + g.h - 1;
+    auto to_y = [&](float v, float a, float b) {
+      return bottom - (int) std::lround(clamp((v - a) / (b - a), 0.f, 1.f) * (g.h - 1));
+    };
+    auto px = [&](int x, int y, Color c) {
+      if (this->area_.contains(x, y))
+        it.draw_pixel_at(x, y, c);
+    };
+    // vertical run in column x from y a to y b (any order), clipped
+    auto vrun = [&](int x, int a, int b, Color c) {
+      if (a > b)
+        std::swap(a, b);
+      this->fill_(it, Box{x, a, 1, b - a + 1}, c);
+    };
+
+    if (band >= 0) {
+      for (int x = x0; x < x1; x++) {
+        const float v = history.get(band, r, x);
+        if (std::isnan(v) || v <= 0.f)
+          continue;
+        const float a = clamp(v / 100.f, 0.f, 1.f) * 0.55f;
+        auto mix = [a](uint8_t from, uint8_t to) { return (uint8_t) std::lround(from + (to - from) * a); };
+        const Color c(mix(BG.r, T_HEAT_LAMP.r), mix(BG.g, T_HEAT_LAMP.g), mix(BG.b, T_HEAT_LAMP.b));
+        vrun(g.x + x, g.y, bottom, c);
+      }
+    }
+
+    // grid: dotted lines per y step, and per time step counted back from now (right edge)
+    for (float v = yn + step; v < ym - step / 2.f; v += step) {
+      const int y = to_y(v, yn, ym);
+      for (int x = x0 - (x0 & 1); x < x1; x += 2)
+        px(g.x + x, y, GRID);
+    }
+    const int cols = (int) (HIST_RANGES[r].duration_ms / HIST_RANGES[r].grid_ms);
+    for (int i = 1; i < cols; i++) {
+      const int x = g.x + g.w - 1 - (int) std::lround((float) i * g.w / cols);
+      if (x < clip.x || x >= clip.x + clip.w)
+        continue;
+      for (int y = g.y; y < g.y + g.h; y += 2)
+        px(x, y, GRID);
+    }
+
+    auto line = [&](int s, float a, float b, Color c, int thick, bool skip_zero, Color (*color_of)(float)) {
+      int prev = INT32_MIN;
+      // start one column early so the run into the first visible column connects
+      for (int x = std::max(0, x0 - 1); x < x1; x++) {
+        const float v = history.get(s, r, x);
+        if (std::isnan(v) || (skip_zero && v <= 0.f)) {
+          prev = INT32_MIN;
+          continue;
+        }
+        const int y = to_y(v, a, b);
+        if (x >= x0) {
+          const int from = prev == INT32_MIN ? y : prev;
+          vrun(g.x + x, std::min(from, y), std::min(std::max(from, y) + thick - 1, bottom),
+               color_of != nullptr ? color_of(v) : c);
+        }
+        prev = y;
+      }
+    };
+    if (level >= 0)
+      line(level, 0.f, 100.f, T_DAYLIGHT, 1, true, nullptr);
+    if (!std::isnan(mark)) {  // dashed: 4 on, 2 off
+      const int y = to_y(mark, yn, ym);
+      for (int x = x0; x < x1; x++)
+        if (x % 6 < 4)
+          px(g.x + x, y, WARN);
+    }
+    for (int t = 0; t < n; t++)
+      line(traces[t].series, yn, ym, traces[t].color, traces[t].thick, false, traces[t].color_of);
+
+    this->frame_(it, g, TEXT_DIM, 1);
+    this->text_(it, g.x + 4, g.y + 2, &id(tiny_font), TEXT_DIM, TextAlign::TOP_LEFT, HIST_RANGES[r].label);
+    this->draw_focus_(it, THERMO_CONTROLS[2]);  // C_GRAPH, same box on every graph page
+  }
+
   void draw_thermo_(Display &it) {
     if (this->vis_(VALUES_LEFT)) {
       const float cur = sval(&id(thermostat_current_temperature));
@@ -1491,10 +1674,11 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         snprintf(buf, sizeof(buf), "%.0f%%", b / 2.55f);
       else
         snprintf(buf, sizeof(buf), "off");
-      this->value_line_(it, LINE_Y[1], day ? "daylight" : "heat lamp", TEXT_DIM, buf);
+      this->value_line_(it, LINE_Y[1], day ? "daylight" : "heat lamp", day ? T_DAYLIGHT : T_HEAT_LAMP, buf);
     }
-    if (this->vis_(GRAPH_BOX))
-      it.graph(GRAPH_X, GRAPH_Y, &id(temperature_graph), TEXT_DIM);
+    // Heating: heat lamp as a pink background by its duty, daylight lamp as an orange line on its
+    // own 0-100% scale.
+    this->draw_graph_(it, THERMO_TRACES, 3, 1.f, S_HEAT_LAMP, S_DAYLIGHT);
     this->draw_toggle_(it, THERMO_CONTROLS[0], ICON_THERMOMETER, "Weather setpoint", id(weather_setpoint).state);
     this->draw_slider_label_(it, "Setpoint");
     this->draw_slider_(it, THERMO_CONTROLS[1]);
@@ -1517,8 +1701,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       snprintf(buf, sizeof(buf), std::isnan(gnd) ? "-" : "%.0f%%", gnd);
       this->value_line_(it, LINE_Y[2], "ground", T_GROUND, buf);
     }
-    if (this->vis_(GRAPH_BOX))
-      it.graph(GRAPH_X, GRAPH_Y, &id(humidity_graph), TEXT_DIM);
+    this->draw_graph_(it, HYGRO_TRACES, 5, 10.f);
 
     this->draw_toggle_(it, HYGRO_CONTROLS[0], ICON_WEATHER_RAINY, "Rain automation", id(rain_automation).state);
 
@@ -1558,8 +1741,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       snprintf(buf, sizeof(buf), std::isnan(wx) ? "-" : "%.0f km/h", wx);
       this->value_line_(it, LINE_Y[2], "weather", T_WEATHER, buf);
     }
-    if (this->vis_(GRAPH_BOX))
-      it.graph(GRAPH_X, GRAPH_Y, &id(wind_graph), TEXT_DIM);
+    this->draw_graph_(it, WIND_TRACES, 2, 20.f);
     this->draw_toggle_(it, WIND_CONTROLS[0], ICON_WEATHER_WINDY, "Automatic", id(multifan_auto).state);
     this->draw_slider_label_(it, "Manual speed");
     this->draw_slider_(it, WIND_CONTROLS[1]);
@@ -1626,12 +1808,12 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       const bool ok = id(co2_val).has_state() && !id(co2_sensor).status_has_warning();
       char buf[24];
       snprintf(buf, sizeof(buf), ok ? "%.0f" : "-", id(co2_val).state);
-      this->draw_values_left_(it, buf, ok ? "ppm" : nullptr, T_LEVEL, id(color_co2), -1.f);
+      this->draw_values_left_(it, buf, ok ? "ppm" : nullptr, id(color_co2), id(color_co2), -1.f);
       this->value_line_(it, LINE_Y[0], "status", TEXT_DIM, ok ? co2_status(id(co2_val).state) : "no data");
-      this->value_line_(it, LINE_Y[1], "alarm at", TEXT_DIM, "1800 ppm");
+      snprintf(buf, sizeof(buf), "%.0f ppm", id(co2_alarm_threshold).state);
+      this->value_line_(it, LINE_Y[1], "alarm at", WARN, buf);
     }
-    if (this->vis_(GRAPH_BOX))
-      it.graph(GRAPH_X, GRAPH_Y, &id(co2_graph), TEXT_DIM);
+    this->draw_graph_(it, CO2_TRACES, 1, 200.f, -1, -1, id(co2_alarm_threshold).state);
     const bool sound = id(co2_warning_sound).state;
     this->draw_toggle_(it, CO2_CONTROLS[0], sound ? ICON_BELL_RING : ICON_BELL_OFF, "Warning sound", sound);
     this->draw_slider_label_(it, "LED brightness");
@@ -1646,7 +1828,8 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
   uint8_t wheel_part_{0};  // 0 = hue, 1 = saturation
   uint32_t last_activity_{0};
   uint32_t armed_until_{0};
-  uint32_t last_graph_{0};
+  int range_{HIST_DEFAULT_RANGE};  // time range shown by all graphs (HIST_RANGES)
+  uint32_t graph_pushes_{0};
 
   // locally set values (sliders 0-100, wheel hue/sat) held while HA catches up
   float local_[C_COUNT]{};
@@ -1671,5 +1854,40 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
 };
 
 inline UI ui;
+
+// Samples every graphed value into the history; called every 2 s from gecko-console.yaml. Nothing is
+// recorded while Home Assistant is disconnected (the values would be stale), leaving a gap.
+inline void sample_history() {
+  static const bool scaled = (history.set_scale(S_CO2, 1.f), true);  // ppm: whole units fit int16
+  (void) scaled;
+  float v[S_COUNT];
+  for (auto &x : v)
+    x = NAN;
+  if (id(api_connected).state) {
+    auto level = [](binary_sensor::BinarySensor *on, sensor::Sensor *bri) {
+      if (!on->has_state())
+        return NAN;
+      if (!on->state)
+        return 0.f;
+      const float b = sval(bri);
+      return std::isnan(b) ? NAN : b / 2.55f;
+    };
+    v[S_TEMP_NOW] = sval(&id(thermostat_current_temperature));
+    v[S_TEMP_TARGET] = sval(&id(thermostat_target_temperature));
+    v[S_TEMP_GROUND] = sval(&id(ground_temperature));
+    v[S_DAYLIGHT] = level(&id(daylight_on), &id(daylight_brightness));
+    v[S_HEAT_LAMP] = level(&id(heat_lamp_on), &id(heat_lamp_brightness));
+    v[S_HUM_NOW] = sval(&id(humidity_current));
+    v[S_HUM_TARGET] = sval(&id(humidity_target));
+    v[S_HUM_CEILING] = sval(&id(ceiling_humidity));
+    v[S_HUM_GROUND] = sval(&id(ground_humidity));
+    v[S_RESERVOIR] = sval(&id(reservoir_level));
+    v[S_WIND] = sval(&id(multifan_percentage));
+    v[S_WIND_WEATHER] = sval(&id(weather_windspeed));
+    if (!id(co2_sensor).status_has_warning())
+      v[S_CO2] = sval(&id(co2_val));
+  }
+  history.sample(v);
+}
 
 }  // namespace gecko_ui

@@ -15,6 +15,7 @@
 esphome:
   name: geckoconsole
   includes:
+    - external_components/gecko_history.h
     - external_components/gecko_console.h
   on_boot:
     priority: 250
@@ -191,6 +192,25 @@ switch:
     on_turn_off:
       - lambda: 'gecko_ui::ui.changed(gecko_ui::F_CO2_SOUND);'
 
+number:
+  # CO2 level that sounds the alarm melody; drawn as the dashed red line in the CO2 graph.
+  # Set it in Home Assistant; kept across reboots.
+  - platform: template
+    id: co2_alarm_threshold
+    name: "CO2 Alarm Threshold"
+    icon: mdi:molecule-co2
+    unit_of_measurement: ppm
+    mode: box
+    min_value: 800
+    max_value: 5000
+    step: 50
+    initial_value: 1800
+    optimistic: true
+    restore_value: true
+    entity_category: config
+    on_value:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_CO2_ALARM);'
+
 binary_sensor:
   - platform: gpio
     id: rotary_dial_push
@@ -294,13 +314,12 @@ sensor:
           - lambda: |-
               if (!id(api_connected).state)
                 return;
+              const Color c = gecko_ui::co2_color(x);
               auto call = id(rgb_leds).make_call();
-              float g = clamp(1.6f - 0.001f * x, 0.f, 1.f);
-              float r = clamp(-0.5f + 0.001f * x, 0.f, 1.f);
-              call.set_rgb(r, g, 0.f);
+              call.set_rgb(c.r / 255.f, c.g / 255.f, 0.f);
               call.perform();
-              id(color_co2) = Color(r * 255, g * 255, 0);
-              if (x > 1800)
+              id(color_co2) = c;
+              if (x > id(co2_alarm_threshold).state)
                 id(co2_warning_action).execute();
           - lambda: 'gecko_ui::ui.changed(gecko_ui::F_CO2);'
     temperature:
@@ -420,58 +439,6 @@ sensor:
     on_value:
       - lambda: 'gecko_ui::ui.changed(gecko_ui::F_HEATER);'
 
-  # --- Graph samplers ---
-  # graph only records a sample when its sensor publishes; Home Assistant values only arrive when
-  # they change, which leaves long gaps. These republish every graph value every 5 s (one graph
-  # pixel is 15 min / 158 px = 5.7 s).
-  - platform: template
-    id: g_temp_now
-    update_interval: 5s
-    lambda: 'return id(thermostat_current_temperature).state;'
-  - platform: template
-    id: g_temp_ground
-    update_interval: 5s
-    lambda: 'return id(ground_temperature).state;'
-  - platform: template
-    id: g_temp_target
-    update_interval: 5s
-    lambda: 'return id(thermostat_target_temperature).state;'
-  - platform: template
-    id: g_hum_now
-    update_interval: 5s
-    lambda: 'return id(humidity_current).state;'
-  - platform: template
-    id: g_hum_weather
-    update_interval: 5s
-    lambda: 'return id(weather_humidity).state;'
-  - platform: template
-    id: g_hum_ceiling
-    update_interval: 5s
-    lambda: 'return id(ceiling_humidity).state;'
-  - platform: template
-    id: g_hum_ground
-    update_interval: 5s
-    lambda: 'return id(ground_humidity).state;'
-  - platform: template
-    id: g_reservoir
-    update_interval: 5s
-    lambda: 'return id(reservoir_level).state;'
-  - platform: template
-    id: g_wind
-    update_interval: 5s
-    lambda: 'return id(multifan_percentage).state;'
-  - platform: template
-    id: g_wind_weather
-    update_interval: 5s
-    lambda: 'return id(weather_windspeed).state;'
-  - platform: template
-    id: g_co2
-    update_interval: 5s
-    lambda: |-
-      if (id(co2_sensor).status_has_warning())
-        return NAN;
-      return id(co2_val).state;
-
 text_sensor:
   - platform: homeassistant
     id: scenic_light_hs
@@ -526,7 +493,11 @@ interval:
   - interval: 20ms
     then:
       - lambda: 'gecko_ui::ui.flush(id(gecko_display));'
-  # Idle timeout back to the overview
+  # Graph history: samples every graphed value into all time ranges (gecko_history.h)
+  - interval: 2s
+    then:
+      - lambda: 'gecko_ui::sample_history();'
+  # Idle timeout back to the overview, graph refresh
   - interval: 1s
     then:
       - lambda: 'gecko_ui::ui.tick();'
@@ -611,88 +582,6 @@ color:
     red_int: 64
     green_int: 64
     blue_int: 64
-  # Graph traces; must match the T_* colours in gecko_console.h (they double as the legend)
-  - id: color_now
-    red_int: 255
-    green_int: 100
-    blue_int: 100
-  - id: color_weather
-    red_int: 255
-    green_int: 230
-    blue_int: 60
-  - id: color_target
-    red_int: 80
-    green_int: 220
-    blue_int: 100
-  - id: color_level
-    red_int: 60
-    green_int: 200
-    blue_int: 230
-  - id: color_ceiling
-    red_int: 70
-    green_int: 120
-    blue_int: 255
-  - id: color_ground
-    red_int: 230
-    green_int: 90
-    blue_int: 200
-
-# 15-minute histories. All graphs share one size and position (GRAPH_BOX in gecko_console.h).
-graph:
-  - id: temperature_graph
-    duration: 15min
-    x_grid: 5min
-    y_grid: 1.0     # K/div
-    width: 158
-    height: 94
-    traces:
-      - sensor: g_temp_now
-        line_thickness: 2
-        color: color_now
-      - sensor: g_temp_target
-        color: color_target
-      - sensor: g_temp_ground
-        color: color_ground
-  - id: humidity_graph
-    duration: 15min
-    x_grid: 5min
-    y_grid: 10.0    # %/div
-    width: 158
-    height: 94
-    traces:
-      - sensor: g_hum_now
-        line_thickness: 2
-        color: color_now
-      - sensor: g_hum_weather
-        color: color_weather
-      - sensor: g_hum_ceiling
-        color: color_ceiling
-      - sensor: g_hum_ground
-        color: color_ground
-      - sensor: g_reservoir
-        color: color_level
-  - id: wind_graph
-    duration: 15min
-    x_grid: 5min
-    y_grid: 20.0    # % (fan) or km/h (weather) per div
-    width: 158
-    height: 94
-    traces:
-      - sensor: g_wind
-        line_thickness: 2
-        color: color_level
-      - sensor: g_wind_weather
-        color: color_weather
-  - id: co2_graph
-    duration: 15min
-    x_grid: 5min
-    y_grid: 200.0   # ppm/div
-    width: 158
-    height: 94
-    traces:
-      - sensor: g_co2
-        line_thickness: 2
-        color: color_level
 
 image:
   - file: "external_components/geckocontrol-logo.png"
