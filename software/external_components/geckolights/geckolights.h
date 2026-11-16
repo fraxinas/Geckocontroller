@@ -210,10 +210,12 @@ class GeckoLights : public Component, public output::FloatOutput {
   static bool drive_lamp_(light::LightState *lamp, float level, optional<uint32_t> transition_ms = {});
   void follow_sun_();                      // sunrise/sunset sweeps and the day/night flip
   void start_scenic_effect_(const char *name);
-  void on_scenic_effect_stopped_(bool sunrise_done);  // an effect let go of the scenic RGB
+  // An effect let go of the scenic RGB; `sweep` for the sunrise/sunset sweeps.
+  void on_scenic_effect_stopped_(bool sunrise_done, bool sweep);
+  void resume_weather_effect_();           // restart the weather's effect if the scenic RGB is free
   void end_test_sweep_();                  // a test sweep let go of the scenic RGB
-  // The scene must be dark -- a test sweep is on: daylight lamp off, the invisible heat lamp heats
-  // instead.
+  // The scene must be dark -- a test sweep or a weather effect (Lightning) is on: growlight and
+  // daylight lamp off, the invisible heat lamp heats instead.
   bool dark_scene_() const;
   void reroute_heat_();                    // apply the last thermostat demand to the right heater now
 
@@ -274,6 +276,7 @@ class GeckoLights : public Component, public output::FloatOutput {
   uint32_t illum_on_ms_{0};            // growlight on-time within the current cycle
   bool illum_growlight_on_{false};     // last state written to a switched growlight
   bool illum_active_{false};           // controller drove the lights on its last update
+  bool illum_dark_{false};             // a weather effect held the growlight off on the last update
   float illum_published_{NAN};         // last value pushed to illum_sens_
 
   // --- Passing clouds ---

@@ -399,7 +399,9 @@ geckoweather:
   # The more clouds, the shorter the clear gaps and the deeper they go (up to 70% at 100%).
   # Uniform overcast, fog and steady rain have none -- nothing to drift.
   #
-  # Effect: "Lightning" (scenic RGB flicker). Edit freely.
+  # Effect: "Lightning" (scenic RGB flicker). While the weather has an effect the scene is dark,
+  # whatever the oktas say: growlight and daylight lamp off, the heat lamp heats instead (as at
+  # night). Edit freely.
   default: { oktas: 0, rain: 0 }               # unmapped code -> clear
   rules:
     - codes: [0]                                # clear

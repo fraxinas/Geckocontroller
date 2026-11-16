@@ -130,14 +130,14 @@ void GeckoLights::setup() {
   }
   sunset_color->set_inverse(true);
   // Only a sunrise sweep that played to its end starts the day early (see follow_sun_).
-  sunrise_color->set_on_stop([this](bool finished) { this->on_scenic_effect_stopped_(finished); });
+  sunrise_color->set_on_stop([this](bool finished) { this->on_scenic_effect_stopped_(finished, true); });
   // The sunset ends the day as it starts (see follow_sun_), so its end hands over to the moonlight.
-  sunset_color->set_on_stop([this](bool) { this->on_scenic_effect_stopped_(false); });
+  sunset_color->set_on_stop([this](bool) { this->on_scenic_effect_stopped_(false, true); });
 
   auto *lightning = new LightningLightEffect("Lightning");
   lightning->set_scenic_light(this->scenic_light_);
   lightning->set_enabled(this->enabled_);
-  lightning->set_on_stop([this](bool) { this->on_scenic_effect_stopped_(false); });
+  lightning->set_on_stop([this](bool) { this->on_scenic_effect_stopped_(false, false); });
   this->scenic_light_->add_effects({sunrise_color, sunset_color, lightning});
 
   ESP_LOGD(TAG, "Added Sun light effects");
@@ -170,7 +170,10 @@ void GeckoLights::on_weather_(const geckoweather::WeatherState &w) {
   if (this->enabled_ != nullptr && !*this->enabled_)
     return;  // light automation disabled -> lamps stay as they are
   this->set_clouds_(w.clouds);
+  const bool was_dark = this->dark_scene_();
   this->apply_weather_effect_(w.effect);
+  if (this->dark_scene_() != was_dark)
+    this->reroute_heat_();  // storm moving in / out: daylight lamp off / back now, not on the next PID cycle
   // Re-render with the new sky attenuation right away: by day through the illumination controller,
   // by night through the moonlight (the moon sensor itself can be hours from its next change).
   if (globals::id(this->is_daytime_)) {
@@ -183,8 +186,10 @@ void GeckoLights::on_weather_(const geckoweather::WeatherState &w) {
 // Switch the running weather effect on the scenic RGB (Lightning). Empty / "none" = off.
 void GeckoLights::apply_weather_effect_(const std::string &effect) {
   std::string want = (effect == "none") ? "" : effect;
-  if (want == this->active_weather_effect_)
+  if (want == this->active_weather_effect_) {
+    this->resume_weather_effect_();  // e.g. the same storm picked again after a sweep ended it
     return;
+  }
   // Stop the previous one only if it still runs: a sunrise/sunset sweep may have replaced it since.
   if (!this->active_weather_effect_.empty() &&
       this->scenic_light_->get_effect_name() == StringRef(this->active_weather_effect_)) {
@@ -198,6 +203,15 @@ void GeckoLights::apply_weather_effect_(const std::string &effect) {
     call.set_effect(want);
     call.perform();
   }
+}
+
+// A sunrise/sunset sweep replaces a running weather effect; once the scenic RGB is free again and the
+// weather still calls for it (a storm outlasting the sunset), it comes back.
+void GeckoLights::resume_weather_effect_() {
+  if (this->active_weather_effect_.empty() || (this->enabled_ != nullptr && !*this->enabled_))
+    return;
+  if (this->scenic_light_->get_effect_name() == StringRef("None"))
+    this->start_scenic_effect_(this->active_weather_effect_.c_str());
 }
 
 // The sun-driven day. The "Sunrise Color" / "Sunset Color" sweeps on the scenic RGB start as the sun
@@ -274,11 +288,11 @@ void GeckoLights::start_scenic_effect_(const char *name) {
 // An effect let go of the scenic RGB, finished or cut short: hand it back to its standing owner.
 // Deferred, because stop() runs inside the LightCall that ended the effect, which would overwrite a
 // call issued from here -- and if that call started another effect, the owners see it and keep out.
-void GeckoLights::on_scenic_effect_stopped_(bool sunrise_done) {
+void GeckoLights::on_scenic_effect_stopped_(bool sunrise_done, bool sweep) {
   // A test sunrise does not start the day.
   if (sunrise_done && this->test_effect_ == nullptr && this->sun_ != nullptr && this->sun_->get_time() != nullptr)
     this->sunrise_swept_ = this->sun_->get_time()->utcnow().timestamp;
-  this->defer("scenic_release", [this]() {
+  this->defer("scenic_release", [this, sweep]() {
     // The test sweep is over once its effect no longer runs (this stop may also be the effect it
     // replaced).
     if (this->test_effect_ != nullptr && !(this->scenic_light_->get_effect_name() == StringRef(this->test_effect_))) {
@@ -286,6 +300,8 @@ void GeckoLights::on_scenic_effect_stopped_(bool sunrise_done) {
       return;
     }
     this->follow_sun_();
+    if (sweep)
+      this->resume_weather_effect_();
     if (globals::id(this->is_daytime_)) {
       this->update_illumination_();
     } else if (this->moon_sens_ != nullptr && this->moon_sens_->has_state()) {
@@ -331,6 +347,7 @@ void GeckoLights::end_test_sweep_() {
   ESP_LOGI(TAG, "test %s over", this->test_effect_);
   this->test_effect_ = nullptr;
   this->follow_sun_();
+  this->resume_weather_effect_();
   if (globals::id(this->is_daytime_)) {
     this->update_illumination_();
   } else if (this->moon_sens_ != nullptr && this->moon_sens_->has_state()) {
@@ -343,7 +360,7 @@ void GeckoLights::end_test_sweep_() {
 bool GeckoLights::dark_scene_() const {
   if (this->enabled_ != nullptr && !*this->enabled_)
     return false;  // light automation off: no scene to protect
-  return this->test_effect_ != nullptr;
+  return this->test_effect_ != nullptr || !this->active_weather_effect_.empty();
 }
 
 void GeckoLights::reroute_heat_() {
@@ -421,7 +438,7 @@ static constexpr float LAMP_EPSILON = 1e-4f;
 
 // The daylight lamp is a large incandescent heater: fade it rather than snapping it.
 static constexpr uint32_t DAYLIGHT_FADE_MS = 30000;
-// Daylight lamp out as the scene goes dark (see dark_scene_).
+// Growlight and daylight lamp out as the scene goes dark (a storm moving in), and the growlight back.
 static constexpr uint32_t DARK_FADE_MS = 5000;
 
 // The PID re-runs on every ceiling-temperature reading (15 s) and re-writes *both* of its outputs
@@ -501,8 +518,8 @@ void GeckoLights::write_state(float state) {
   // and no cloud dimming -- what the terrarium *looks* like is the growlight's job (illumination
   // controller below). By night -- which starts with the sunset sweep -- the heat lamp does the same. Each side also switches the other
   // heater off, so a day/night flip from any source hands over on the next PID cycle.
-  // A dark scene (test sweep) keeps the bright daylight lamp off by day too -- it would wash the
-  // scene out -- and the heat lamp carries the demand as at night.
+  // A dark scene (thunderstorm, test sweep) keeps the bright daylight lamp off by day too -- it would
+  // wash out the lightning -- and the heat lamp carries the demand as at night; storms last hours.
   float level = clamp(state, 0.0f, 1.0f);
   const bool dark = this->dark_scene_();
   const bool daylight = globals::id(this->is_daytime_) && !dark;
@@ -643,6 +660,11 @@ void GeckoLights::update_illumination_() {
   float sun = this->sun_factor_();
   float sky = globals::id(this->skycond_attenuation_);
   float setpoint = clamp(sky * sun * this->cloud_factor_, 0.0f, 1.0f);
+  // A weather effect (Lightning) plays on the scenic RGB and needs a dark scene: the growlight is
+  // off for as long as the weather calls for one, even while a sweep has the scenic RGB.
+  const bool dark = this->dark_scene_();
+  if (dark)
+    setpoint = 0.0f;
   // While a cloud fades, every render -- the cloud's own and any sample in between -- fades over
   // what is left of it; a fixed short fade would snap the growlight to the cloud's end state.
   const uint32_t now = millis();
@@ -653,6 +675,9 @@ void GeckoLights::update_illumination_() {
   uint32_t handover = this->sweep_step_ms_();
   if (!this->illum_active_ && handover > fade)
     fade = handover;
+  if (dark != this->illum_dark_ && DARK_FADE_MS > fade)
+    fade = DARK_FADE_MS;
+  this->illum_dark_ = dark;
   this->illum_active_ = true;
   bool moved = std::fabs(setpoint - this->illum_setpoint_) > 0.01f;
   this->illum_setpoint_ = setpoint;
@@ -670,7 +695,9 @@ void GeckoLights::update_illumination_() {
   if (this->scenic_light_->get_effect_name() == "None")
     drive_lamp_(this->scenic_light_, 0.0f, handover);
 
-  if (moved)
+  if (moved && dark)
+    ESP_LOGD(TAG, "illumination: growlight off for the '%s' weather effect", this->active_weather_effect_.c_str());
+  else if (moved)
     ESP_LOGD(TAG, "illumination: growlight %.0f%% (sky %.0f%% x sun %.0f%% x cloud %.0f%%)", setpoint * 100.0f,
              sky * 100.0f, sun * 100.0f, this->cloud_factor_ * 100.0f);
   this->publish_illumination_();
