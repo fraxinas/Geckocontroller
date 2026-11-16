@@ -249,6 +249,22 @@ select:
           id(gecko_weather).set_weather_code(codes[i], true);
 
 button:
+  # Testing aids: play the sunrise / sunset sweep now, at 10 s per step (~1 min). Day/night is not
+  # touched; while the sweep runs the daylight lamp is off (the heat lamp heats instead) and the
+  # growlight cross-fades as at the real thing. Also on the console's Settings page.
+  - platform: template
+    name: "Sunrise (test)"
+    icon: mdi:weather-sunset-up
+    entity_category: config
+    on_press:
+      - lambda: 'id(gecko_lights).test_sweep(true);'
+  - platform: template
+    name: "Sunset (test)"
+    icon: mdi:weather-sunset-down
+    entity_category: config
+    on_press:
+      - lambda: 'id(gecko_lights).test_sweep(false);'
+
   - platform: template
     id: pump_button
     name: "Let it rain"

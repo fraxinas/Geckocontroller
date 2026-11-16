@@ -24,7 +24,8 @@ static uint8_t sun_lut[SUN_LUT_LEN][4] = {
 void SunColorLightEffect::start() {
   ESP_LOGD(TAG, "Starting SunColorLightEffect '%s' %s", this->name_, this->inverse_ ? "inversed" : "");
   this->finished_ = false;
-  this->transition_length_ = this->sun_effect_delay_ * 1000;
+  this->transition_length_ = this->next_step_ms_ != 0 ? this->next_step_ms_ : this->sun_effect_delay_ * 1000;
+  this->next_step_ms_ = 0;
   // Due right away: the first step shows on the first apply().
   this->last_color_change_ = millis() - this->transition_length_;
   if (this->inverse_) {
@@ -120,8 +121,8 @@ static float frand(float a, float b) { return a + (b - a) * ((float) random_uint
 static constexpr uint32_t ILLUM_SAMPLE_MS = 60000;
 
 void GeckoLights::setup() {
-  auto *sunrise_color = new SunColorLightEffect("Sunrise Color");
-  auto *sunset_color = new SunColorLightEffect("Sunset Color");
+  auto *sunrise_color = this->sunrise_color_ = new SunColorLightEffect("Sunrise Color");
+  auto *sunset_color = this->sunset_color_ = new SunColorLightEffect("Sunset Color");
   for (auto *e : {sunrise_color, sunset_color}) {
     e->set_scenic_light(this->scenic_light_);
     e->set_sun_effect_delay(this->sun_effect_delay_);
@@ -274,9 +275,16 @@ void GeckoLights::start_scenic_effect_(const char *name) {
 // Deferred, because stop() runs inside the LightCall that ended the effect, which would overwrite a
 // call issued from here -- and if that call started another effect, the owners see it and keep out.
 void GeckoLights::on_scenic_effect_stopped_(bool sunrise_done) {
-  if (sunrise_done && this->sun_ != nullptr && this->sun_->get_time() != nullptr)
+  // A test sunrise does not start the day.
+  if (sunrise_done && this->test_effect_ == nullptr && this->sun_ != nullptr && this->sun_->get_time() != nullptr)
     this->sunrise_swept_ = this->sun_->get_time()->utcnow().timestamp;
   this->defer("scenic_release", [this]() {
+    // The test sweep is over once its effect no longer runs (this stop may also be the effect it
+    // replaced).
+    if (this->test_effect_ != nullptr && !(this->scenic_light_->get_effect_name() == StringRef(this->test_effect_))) {
+      this->end_test_sweep_();
+      return;
+    }
     this->follow_sun_();
     if (globals::id(this->is_daytime_)) {
       this->update_illumination_();
@@ -284,6 +292,63 @@ void GeckoLights::on_scenic_effect_stopped_(bool sunrise_done) {
       this->on_moon_(this->moon_sens_->state);
     }
   });
+}
+
+void GeckoLights::test_sweep(bool sunrise) {
+  const char *name = sunrise ? "Sunrise Color" : "Sunset Color";
+  if (this->enabled_ != nullptr && !*this->enabled_) {
+    ESP_LOGW(TAG, "test %s: light automation is off", name);
+    return;
+  }
+  const int ct = this->calib_target_ != nullptr ? globals::id(this->calib_target_) : 0;
+  if (ct == 1 || ct == 2) {
+    ESP_LOGW(TAG, "test %s: heating calibration in progress", name);
+    return;
+  }
+  ESP_LOGI(TAG, "test %s: %u s steps, daylight lamp held off", name, (unsigned) (TEST_SWEEP_STEP_MS / 1000));
+  this->test_effect_ = name;
+  this->test_pace_ = true;
+  const uint32_t step = this->sweep_step_ms_();
+  this->reroute_heat_();
+  // By day the growlight fades out with the sweep's first colour, as at a real sunset; it comes
+  // back with the cross-fade after the sweep (update_illumination_ sees a takeover).
+  if (this->illum_active_) {
+    this->illum_setpoint_ = 0.0f;
+    if (this->growlight_light_ != nullptr)
+      this->set_growlight_level_(0.0f, step);
+    else
+      this->set_growlight_(false);
+    this->illum_active_ = false;
+    this->publish_illumination_();
+  }
+  (sunrise ? this->sunrise_color_ : this->sunset_color_)->set_next_step_ms(TEST_SWEEP_STEP_MS);
+  this->start_scenic_effect_(name);
+}
+
+// Back to the real time of day: growlight (cross-fading in at the test pace) or moonlight, and the
+// daylight lamp to the thermostat's current demand.
+void GeckoLights::end_test_sweep_() {
+  ESP_LOGI(TAG, "test %s over", this->test_effect_);
+  this->test_effect_ = nullptr;
+  this->follow_sun_();
+  if (globals::id(this->is_daytime_)) {
+    this->update_illumination_();
+  } else if (this->moon_sens_ != nullptr && this->moon_sens_->has_state()) {
+    this->on_moon_(this->moon_sens_->state);
+  }
+  this->test_pace_ = false;
+  this->reroute_heat_();
+}
+
+bool GeckoLights::dark_scene_() const {
+  if (this->enabled_ != nullptr && !*this->enabled_)
+    return false;  // light automation off: no scene to protect
+  return this->test_effect_ != nullptr;
+}
+
+void GeckoLights::reroute_heat_() {
+  if (this->last_heat_output_.has_value())  // nothing to route before the thermostat's first write
+    this->write_state(*this->last_heat_output_);
 }
 
 // Is the local wall clock inside the sleeping-hours window -- from quiet_start_min_ until sunrise?
@@ -356,6 +421,8 @@ static constexpr float LAMP_EPSILON = 1e-4f;
 
 // The daylight lamp is a large incandescent heater: fade it rather than snapping it.
 static constexpr uint32_t DAYLIGHT_FADE_MS = 30000;
+// Daylight lamp out as the scene goes dark (see dark_scene_).
+static constexpr uint32_t DARK_FADE_MS = 5000;
 
 // The PID re-runs on every ceiling-temperature reading (15 s) and re-writes *both* of its outputs
 // each time -- including a plain 0.0 to the heater while it is cooling. The resulting lamp command
@@ -397,6 +464,7 @@ bool GeckoLights::drive_lamp_(light::LightState *lamp, float level, optional<uin
 // Thermostat heat_output target: drives the daylight lamp (daytime) or heat lamp (nighttime),
 // ported from the old gecko.yaml `heater` write_action lambda.
 void GeckoLights::write_state(float state) {
+  this->last_heat_output_ = state;  // also on the calibration / OFF paths: re-routing replays it
   // During heating calibration the PID relay output is routed here; drive only the targeted lamp
   // directly (no attenuation math) so the autotune relay is clean. The target selects the lamp
   // regardless of actual day/night: 1 == heat_day (daylight lamp), 2 == heat_night (heat lamp).
@@ -433,13 +501,16 @@ void GeckoLights::write_state(float state) {
   // and no cloud dimming -- what the terrarium *looks* like is the growlight's job (illumination
   // controller below). By night -- which starts with the sunset sweep -- the heat lamp does the same. Each side also switches the other
   // heater off, so a day/night flip from any source hands over on the next PID cycle.
+  // A dark scene (test sweep) keeps the bright daylight lamp off by day too -- it would wash the
+  // scene out -- and the heat lamp carries the demand as at night.
   float level = clamp(state, 0.0f, 1.0f);
-  bool day = globals::id(this->is_daytime_);
-  bool acted = drive_lamp_(this->day_light_, day ? level : 0.0f, DAYLIGHT_FADE_MS);
-  acted |= drive_lamp_(this->heat_lamp_, day ? 0.0f : level);
+  const bool dark = this->dark_scene_();
+  const bool daylight = globals::id(this->is_daytime_) && !dark;
+  bool acted = drive_lamp_(this->day_light_, daylight ? level : 0.0f, daylight || !dark ? DAYLIGHT_FADE_MS : DARK_FADE_MS);
+  acted |= drive_lamp_(this->heat_lamp_, daylight ? 0.0f : level);
   // Logged after the fact, and only when a lamp actually moved: an unchanged poll says nothing.
   if (acted)
-    ESP_LOGD(TAG, "Thermostat PID Controller %s write_action: %.3f", day ? "daylight" : "heat lamp", state);
+    ESP_LOGD(TAG, "Thermostat PID Controller %s write_action: %.3f", daylight ? "daylight" : "heat lamp", state);
 }
 
 // ------------------- Illumination controller -------------------
@@ -558,6 +629,8 @@ void GeckoLights::update_illumination_() {
   // rather than switching it off, and the controller simply resumes on a later update.
   if (this->enabled_ != nullptr && !*this->enabled_)
     return;
+  if (this->test_effect_ != nullptr)
+    return;  // a test sweep owns the scene until it ends
 
   if (!globals::id(this->is_daytime_)) {
     if (this->illum_active_) {

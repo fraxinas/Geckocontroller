@@ -92,6 +92,8 @@ class SunColorLightEffect : public ScenicLightEffect {
   void set_sun_effect_delay(uint16_t delay) { this->sun_effect_delay_ = delay; }
   void set_enabled(bool *g) { this->enabled_ = g; }
   void set_inverse(bool direction) { this->inverse_ = direction; }
+  // Step length (ms) for the next run only, instead of sun_effect_delay; used by the test sweeps.
+  void set_next_step_ms(uint32_t ms) { this->next_step_ms_ = ms; }
 
   void start() override;
   void apply() override;
@@ -100,6 +102,7 @@ class SunColorLightEffect : public ScenicLightEffect {
   light::LightState *scenic_light_{nullptr};
   bool *enabled_{nullptr};
   uint16_t sun_effect_delay_{180};
+  uint32_t next_step_ms_{0};
   bool inverse_{false};
   uint32_t last_color_change_{0};
   uint32_t transition_length_{};
@@ -166,7 +169,15 @@ class GeckoLights : public Component, public output::FloatOutput {
   }
   void set_sun_effect_delay(uint16_t delay) { this->sun_effect_delay_ = delay; }
   // One step of the sunrise/sunset sweeps; also the pace of the growlight <-> sweep cross-fades.
-  uint32_t sweep_step_ms_() const { return (uint32_t) this->sun_effect_delay_ * 1000; }
+  uint32_t sweep_step_ms_() const {
+    return this->test_pace_ ? TEST_SWEEP_STEP_MS : (uint32_t) this->sun_effect_delay_ * 1000;
+  }
+  // Test sweep ("Sunrise (test)" / "Sunset (test)" buttons): plays the sunrise or sunset sweep now,
+  // at TEST_SWEEP_STEP_MS per step, with the growlight cross-fading as at the real one. Day/night is
+  // left alone; the daylight lamp is held off while the sweep runs (it would wash the scene out),
+  // and at the end everything returns to what the real time of day calls for.
+  static constexpr uint32_t TEST_SWEEP_STEP_MS = 10000;
+  void test_sweep(bool sunrise);
 
   // --- Illumination controller (see update_illumination_ in the .cpp for the whole scheme) ---
   // How bright the terrarium *looks*, as opposed to how much heat the daylight lamp is making.
@@ -200,6 +211,11 @@ class GeckoLights : public Component, public output::FloatOutput {
   void follow_sun_();                      // sunrise/sunset sweeps and the day/night flip
   void start_scenic_effect_(const char *name);
   void on_scenic_effect_stopped_(bool sunrise_done);  // an effect let go of the scenic RGB
+  void end_test_sweep_();                  // a test sweep let go of the scenic RGB
+  // The scene must be dark -- a test sweep is on: daylight lamp off, the invisible heat lamp heats
+  // instead.
+  bool dark_scene_() const;
+  void reroute_heat_();                    // apply the last thermostat demand to the right heater now
 
   // --- Illumination controller ---
   void update_illumination_();             // recompute the setpoint and drive the growlight
@@ -237,6 +253,13 @@ class GeckoLights : public Component, public output::FloatOutput {
   float sunset_elevation_{5.0f};
   time_t last_sun_sample_{0};                         // UTC time of the previous follow_sun_ pass
   uint16_t sun_effect_delay_{180};
+  SunColorLightEffect *sunrise_color_{nullptr};
+  SunColorLightEffect *sunset_color_{nullptr};
+  // Test sweep: `test_effect_` runs (illumination and daylight lamp held); `test_pace_` also covers
+  // the growlight cross-fade after it.
+  const char *test_effect_{nullptr};
+  bool test_pace_{false};
+  optional<float> last_heat_output_{};                // last thermostat demand, to re-route it at once
 
   // --- Illumination controller state ---
   sun::Sun *sun_{nullptr};
