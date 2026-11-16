@@ -456,6 +456,12 @@ sensor:
     attribute: brightness
     on_value:
       - lambda: 'gecko_ui::ui.changed(gecko_ui::F_HEATER);'
+  # Gecko scale (g) under its nest; ~0 while the gecko is out
+  - platform: homeassistant
+    id: scale_weight
+    entity_id: sensor.geckocontrol_scale
+    on_value:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_SCALE);'
 
 text_sensor:
   - platform: homeassistant
@@ -464,6 +470,12 @@ text_sensor:
     attribute: hs_color
     on_value:
       - lambda: 'gecko_ui::ui.changed(gecko_ui::F_SCENIC);'
+  # Gecko in / out of its nest since when, and the last periods (the controller's gecko_nest.h)
+  - platform: homeassistant
+    id: gecko_nest_log
+    entity_id: sensor.geckocontrol_gecko_nest_log
+    on_value:
+      - lambda: 'gecko_ui::ui.gecko_log(x);'
   # Shown on the Settings page
   - platform: wifi_info
     ssid:
@@ -619,6 +631,18 @@ image:
   - file: "external_components/geckocontrol-logo.png"
     id: gecko_logo
     type: RGB
+  # Menu tile icon of the Gecko page
+  - file: "external_components/geckocontrol-logo.png"
+    id: gecko_icon
+    type: RGB565
+    transparency: alpha_channel
+    resize: 36x36
+  # Gecko line on the overview
+  - file: "external_components/geckocontrol-logo.png"
+    id: gecko_icon_small
+    type: RGB565
+    transparency: alpha_channel
+    resize: 20x20
   # Scenic light colour wheel, rendered by tools/gen_colorwheel.py; looked up per pixel by the UI
   - file: "external_components/colorwheel.png"
     id: colorwheel

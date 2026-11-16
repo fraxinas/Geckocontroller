@@ -108,6 +108,7 @@ static const Color T_CEILING(70, 120, 255);  // color_ceiling
 static const Color T_GROUND(230, 90, 200);   // color_ground
 static const Color T_DAYLIGHT(255, 150, 40);   // daylight lamp level (Thermo graph, own 0-100% scale)
 static const Color T_HEAT_LAMP(255, 60, 120);  // heat lamp: graph background tint by its duty
+static const Color T_GECKO(170, 110, 255);     // gecko weight, a light shade of the logo's purple
 static const Color GRID(60, 66, 74);
 
 // ------------------------------------------------------------------ history
@@ -127,6 +128,7 @@ enum Series : uint8_t {
   S_WIND,
   S_WIND_WEATHER,
   S_CO2,
+  S_WEIGHT,  // gecko weight, only while it sits on the scale (gaps otherwise)
   S_COUNT,
 };
 inline History<S_COUNT> history;
@@ -155,6 +157,7 @@ static const Trace HYGRO_TRACES[] = {{S_RESERVOIR, T_LEVEL, 1},
                                      {S_HUM_NOW, T_NOW, 2}};
 static const Trace WIND_TRACES[] = {{S_WIND_WEATHER, T_WEATHER, 1}, {S_WIND, T_LEVEL, 2}};
 static const Trace CO2_TRACES[] = {{S_CO2, T_LEVEL, 2, co2_color}};
+static const Trace GECKO_TRACES[] = {{S_WEIGHT, T_GECKO, 2}};
 
 struct Box {
   int x{0}, y{0}, w{0}, h{0};
@@ -168,12 +171,12 @@ struct Box {
   bool intersects(const Box &o) const { return !intersect(o).empty(); }
 };
 
-enum class Page : uint8_t { OVERVIEW, MENU, THERMO, HYGRO, WIND, GROW, SCENIC, CO2, SETTINGS };
+enum class Page : uint8_t { OVERVIEW, MENU, THERMO, HYGRO, WIND, GROW, SCENIC, CO2, GECKO, SETTINGS };
 
-// Menu grid, row-major (4x2): climate in the top row, lights and settings below. Swiping on a
-// subpage follows this order, skipping Settings.
-static const Page MENU_PAGES[] = {Page::THERMO, Page::HYGRO,  Page::WIND, Page::CO2,
-                                  Page::GROW,   Page::SCENIC, Page::SETTINGS};
+// Menu grid, row-major (4x2): climate in the top row, lights, gecko and settings below. Swiping on
+// a subpage follows this order, skipping Settings.
+static const Page MENU_PAGES[] = {Page::THERMO, Page::HYGRO,  Page::WIND,  Page::CO2,
+                                  Page::GROW,   Page::SCENIC, Page::GECKO, Page::SETTINGS};
 static constexpr int MENU_COUNT = sizeof(MENU_PAGES) / sizeof(MENU_PAGES[0]);
 static constexpr int MENU_COLS = 4;
 
@@ -197,6 +200,7 @@ enum Field : uint8_t {
   F_CO2_ALARM,  // alarm threshold: values and the graph's threshold line
   F_HEATER,
   F_WEATHER_SET,
+  F_SCALE,
   F_BACKLIGHT,
 };
 
@@ -285,6 +289,15 @@ static const Control CO2_CONTROLS[] = {
     {C_CO2_SOUND, Kind::TOGGLE, TOGGLE_ROW},
     {C_CO2_LEDS, Kind::SLIDER, {8, 190, 152, 44}},
     {C_CO2_CALIBRATE, Kind::CONFIRM, {164, 190, 148, 44}},
+    {C_GRAPH, Kind::BUTTON, GRAPH_BOX},
+};
+// Gecko: the scale sits under its nest. How long it has been in / out, weight and graph like the
+// other graph pages, the latest completed in / out periods below. In / out is decided and logged by
+// the controller (gecko_nest.h there), which keeps it across reboots.
+static constexpr Box GECKO_LOG{0, 136, W, H - 136};
+static constexpr int GECKO_LOG_ROWS = 5;
+static constexpr float GECKO_MIN_G = 5.f;  // graph only readings from here on (as gecko_nest.h)
+static const Control GECKO_CONTROLS[] = {
     {C_GRAPH, Kind::BUTTON, GRAPH_BOX},
 };
 // Settings: network info lines, display brightness slider in the usual slider row.
@@ -424,6 +437,7 @@ class UI {
           case F_HUM: this->invalidate(OV_ROWS[1]); break;
           case F_CO2: this->invalidate(OV_ROWS[2]); break;
           case F_RESERVOIR: case F_RAIN_AUTO: case F_GROW: case F_WIND: this->invalidate(OV_STATUS); break;
+          case F_SCALE: case F_CLOCK: this->invalidate(OV_GECKO); break;
           default: break;
         }
         break;
@@ -436,6 +450,7 @@ class UI {
           case F_CO2: p = Page::CO2; break;
           case F_GROW: p = Page::GROW; break;
           case F_SCENIC: p = Page::SCENIC; break;
+          case F_SCALE: p = Page::GECKO; break;
           default: break;
         }
         const int tile = menu_index(p);
@@ -501,6 +516,12 @@ class UI {
           this->invalidate_ctl_(C_CO2_LEDS);
         }
         break;
+      case Page::GECKO:
+        if (f == F_SCALE || f == F_CLOCK) {  // the clock ages the in / out duration
+          this->invalidate(VALUES_LEFT);
+          this->invalidate(GECKO_LOG);
+        }
+        break;
       case Page::SETTINGS:
         if (f == F_WIFI)
           this->invalidate(SETTINGS_INFO);
@@ -508,6 +529,34 @@ class UI {
           this->invalidate_ctl_(C_BACKLIGHT);
         break;
     }
+  }
+
+  // "Gecko nest Log" from the controller: "<in>,<since>;<in>,<start>,<seconds>,<weight x10>;..."
+  // with UTC epochs, newest period first.
+  void gecko_log(const std::string &txt) {
+    unsigned in = 0, since = 0;
+    int pos = 0;
+    this->gecko_known_ = sscanf(txt.c_str(), "%u,%u%n", &in, &since, &pos) == 2 && since > 0;
+    this->gecko_in_ = in != 0;
+    this->gecko_since_ = since;
+    this->gecko_log_n_ = 0;
+    this->last_stay_weight_ = NAN;
+    const char *p = this->gecko_known_ ? txt.c_str() + pos : "";
+    while (*p == ';' && this->gecko_log_n_ < GECKO_LOG_ROWS) {
+      unsigned i, start, sec, w10;
+      int k = 0;
+      if (sscanf(p + 1, "%u,%u,%u,%u%n", &i, &start, &sec, &w10, &k) != 4)
+        break;
+      GeckoPeriod &e = this->gecko_log_[this->gecko_log_n_++];
+      e.in = i != 0;
+      e.start = start;
+      e.seconds = sec;
+      e.weight = e.in && w10 > 0 ? w10 / 10.f : NAN;
+      if (std::isnan(this->last_stay_weight_) && !std::isnan(e.weight))
+        this->last_stay_weight_ = e.weight;
+      p += 1 + k;
+    }
+    this->changed(F_SCALE);
   }
 
   // ---------------------------------------------------------------- input
@@ -708,15 +757,15 @@ class UI {
     const uint32_t pushes = history.pushes(this->range_);
     if (pushes != this->graph_pushes_) {
       this->graph_pushes_ = pushes;
-      if (this->has_graph_())
-        this->invalidate(GRAPH_BOX);
+      this->invalidate_graph_();
     }
   }
 
  protected:
   // ---------------------------------------------------------------- layout helpers
-  static constexpr Box OV_ROWS[3] = {{8, 32, W - 16, 54}, {8, 92, W - 16, 54}, {8, 152, W - 16, 54}};
-  static constexpr Box OV_STATUS = {8, 212, W - 16, 26};
+  static constexpr Box OV_ROWS[3] = {{8, 30, W - 16, 50}, {8, 84, W - 16, 50}, {8, 138, W - 16, 50}};
+  static constexpr Box OV_STATUS = {8, 192, W - 16, 22};
+  static constexpr Box OV_GECKO = {8, 216, W - 16, 22};
   static constexpr Box BACK_BOX = {0, 0, 150, HEADER_H};     // tap target
 static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus frame
 
@@ -740,6 +789,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case Page::GROW: n = 2; return GROW_CONTROLS;
       case Page::SCENIC: n = 3; return SCENIC_CONTROLS;
       case Page::CO2: n = 5; return CO2_CONTROLS;
+      case Page::GECKO: n = 1; return GECKO_CONTROLS;
       case Page::SETTINGS: n = 1; return SETTINGS_CONTROLS;
       default: n = 0; return nullptr;
     }
@@ -808,6 +858,8 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
           this->go_(Page::HYGRO);
         else if (OV_ROWS[2].contains(x, y))
           this->go_(Page::CO2);
+        else if (OV_GECKO.contains(x, y))
+          this->go_(Page::GECKO);
         else
           this->go_(Page::MENU);
         return;
@@ -1048,7 +1100,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case C_GRAPH:
         this->range_ = (this->range_ + 1) % HIST_RANGE_COUNT;
         this->graph_pushes_ = history.pushes(this->range_);
-        this->invalidate(GRAPH_BOX);
+        this->invalidate_graph_();
         break;
       case C_LET_IT_RAIN:
         id(ha_call).execute(std::string("button.press"), std::string(E_LET_IT_RAIN));
@@ -1309,6 +1361,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case Page::OVERVIEW:
         this->draw_header_(it, nullptr);
         this->draw_overview_(it);
+        this->draw_overview_gecko_(it);
         break;
       case Page::MENU:
         this->draw_header_(it, "Menu");
@@ -1339,6 +1392,10 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         this->draw_header_(it, page_title(this->page_));
         this->draw_co2_(it);
         break;
+      case Page::GECKO:
+        this->draw_header_(it, page_title(this->page_));
+        this->draw_gecko_(it);
+        break;
       case Page::SETTINGS:
         this->draw_header_(it, page_title(this->page_));
         this->draw_settings_(it);
@@ -1354,6 +1411,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case Page::GROW: return "Grow light";
       case Page::SCENIC: return "Scenic light";
       case Page::CO2: return "CO₂";
+      case Page::GECKO: return "Gecko";
       case Page::SETTINGS: return "Settings";
       default: return "";
     }
@@ -1572,13 +1630,24 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         ic = id(color_co2);
         break;
       }
+      case Page::GECKO:  // its weight while in the nest, "out" otherwise
+        if (this->gecko_known_ && !this->gecko_in_) {
+          snprintf(value, sizeof(value), "out");
+        } else if (this->gecko_known_) {
+          const float g = sval(&id(scale_weight));
+          snprintf(value, sizeof(value), std::isnan(g) ? "in" : "%.0f g", g);
+        }
+        break;
       case Page::SETTINGS:
         icon = ICON_COG;
         break;
       default:
         break;
     }
-    this->text_(it, cx, b.y + 28, &id(icon_font), ic, TextAlign::CENTER, icon);
+    if (MENU_PAGES[i] == Page::GECKO)
+      it.image(cx, b.y + 28, &id(gecko_icon), display::ImageAlign::CENTER);
+    else
+      this->text_(it, cx, b.y + 28, &id(icon_font), ic, TextAlign::CENTER, icon);
     this->text_(it, cx, b.y + 58, &id(tiny_font), TEXT_DIM, TextAlign::CENTER, menu_label(MENU_PAGES[i]));
     if (value[0])
       this->text_(it, cx, b.y + 84, &id(mid_font), TEXT, TextAlign::CENTER, value);
@@ -1612,7 +1681,15 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
 
   bool has_graph_() const {
     return this->page_ == Page::THERMO || this->page_ == Page::HYGRO || this->page_ == Page::WIND ||
-           this->page_ == Page::CO2;
+           this->page_ == Page::CO2 || this->page_ == Page::GECKO;
+  }
+  // The graph and everything computed from its range
+  void invalidate_graph_() {
+    if (!this->has_graph_())
+      return;
+    this->invalidate(GRAPH_BOX);
+    if (this->page_ == Page::GECKO)
+      this->invalidate(VALUES_LEFT);  // the average follows the graph's range
   }
 
   // History graph in GRAPH_BOX for the selected range, oldest left, now at the right edge. The y
@@ -1903,6 +1980,127 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
     this->text_(it, 164 + 74, SLIDER_LABEL_Y, &id(tiny_font), TEXT_DIM, TextAlign::CENTER, "in fresh air");
   }
 
+  // ---------------------------------------------------------------- gecko
+  static time_t epoch_now() {
+    auto t = id(ha_time).now();
+    return t.is_valid() ? t.timestamp : 0;
+  }
+  // "45 min", "2 h 15", "3 d 4 h"
+  static void fmt_duration(char *buf, size_t n, uint32_t seconds) {
+    const uint32_t min = seconds / 60;
+    if (min < 60)
+      snprintf(buf, n, "%u min", (unsigned) min);
+    else if (min < 24 * 60)
+      snprintf(buf, n, "%u h %02u", (unsigned) (min / 60), (unsigned) (min % 60));
+    else
+      snprintf(buf, n, "%u d %u h", (unsigned) (min / (24 * 60)), (unsigned) (min / 60 % 24));
+  }
+  static void fmt_clock(char *buf, size_t n, time_t t) {
+    if (t == 0) {
+      snprintf(buf, n, "--:--");
+      return;
+    }
+    const ESPTime e = ESPTime::from_epoch_local(t);
+    snprintf(buf, n, "%02u:%02u", e.hour, e.minute);
+  }
+  // How long the current period has lasted; false while the clock is not set.
+  bool gecko_for_(uint32_t &seconds) const {
+    const time_t now = epoch_now();
+    if (now == 0 || !this->gecko_known_)
+      return false;
+    seconds = now > (time_t) this->gecko_since_ ? (uint32_t) (now - this->gecko_since_) : 0;
+    return true;
+  }
+
+  // Overview line below the status row: in / out of the nest and for how long, its weight.
+  void draw_overview_gecko_(Display &it) {
+    if (!this->vis_(OV_GECKO))
+      return;
+    const int cy = OV_GECKO.y + OV_GECKO.h / 2;
+    it.image(OV_GECKO.x + 10, cy, &id(gecko_icon_small), display::ImageAlign::CENTER);
+    char dur[20], buf[48];
+    uint32_t sec;
+    if (!this->gecko_known_) {
+      snprintf(buf, sizeof(buf), "no data from the scale");
+    } else if (!this->gecko_for_(sec)) {
+      snprintf(buf, sizeof(buf), "%s", this->gecko_in_ ? "in the nest" : "out");
+    } else {
+      fmt_duration(dur, sizeof(dur), sec);
+      snprintf(buf, sizeof(buf), "%s for %s", this->gecko_in_ ? "in the nest" : "out", dur);
+    }
+    this->text_(it, OV_GECKO.x + 24, cy, &id(tiny_font), TEXT, TextAlign::CENTER_LEFT, buf);
+    const float g = this->gecko_in_ ? sval(&id(scale_weight)) : this->last_stay_weight_;
+    if (this->gecko_known_ && !std::isnan(g)) {
+      snprintf(buf, sizeof(buf), "%.1f g", g);
+      this->text_(it, OV_GECKO.x + OV_GECKO.w, cy, &id(tiny_font), this->gecko_in_ ? TEXT : TEXT_DIM,
+                  TextAlign::CENTER_RIGHT, buf);
+    }
+  }
+
+  void draw_gecko_(Display &it) {
+    if (this->vis_(VALUES_LEFT)) {
+      char buf[24];
+      // How long in / out, big; the state below it
+      uint32_t sec;
+      if (this->gecko_for_(sec)) {
+        fmt_duration(buf, sizeof(buf), sec);
+        this->text_(it, 80, 50, &id(big_font), TEXT, TextAlign::CENTER, buf);
+      } else {
+        this->text_(it, 80, 50, &id(big_font), TEXT, TextAlign::CENTER, "-");
+      }
+      const char *state = !this->gecko_known_ ? "no reading yet" : this->gecko_in_ ? "in the nest" : "out of the nest";
+      this->text_(it, 80, 77, &id(tiny_font), this->gecko_in_ ? T_GECKO : TEXT_DIM, TextAlign::CENTER, state);
+      // weight now (or of the last stay while out), average over the graph's range
+      const float now = this->gecko_in_ ? sval(&id(scale_weight)) : this->last_stay_weight_;
+      snprintf(buf, sizeof(buf), std::isnan(now) ? "-" : "%.1f g", now);
+      this->value_line_(it, LINE_Y[0], this->gecko_in_ ? "weight" : "last stay", T_GECKO, buf);
+      float sum = 0.f;
+      int n = 0;
+      for (int x = 0; x < HIST_LEN; x++) {
+        const float v = history.get(S_WEIGHT, this->range_, x);
+        if (!std::isnan(v)) {
+          sum += v;
+          n++;
+        }
+      }
+      snprintf(buf, sizeof(buf), n > 0 ? "%.1f g" : "-", n > 0 ? sum / n : 0.f);
+      char label[16];
+      snprintf(label, sizeof(label), "avg %s", HIST_RANGES[this->range_].label);
+      this->value_line_(it, LINE_Y[1], label, TEXT_DIM, buf);
+      fmt_clock(buf, sizeof(buf), this->gecko_known_ ? this->gecko_since_ : 0);
+      this->value_line_(it, LINE_Y[2], "since", TEXT_DIM, buf);
+    }
+    this->draw_graph_(it, GECKO_TRACES, 1, 5.f);
+    if (this->vis_(GECKO_LOG))
+      this->draw_gecko_log_(it);
+  }
+
+  // The latest completed periods, newest first: in / out, from - to, how long, mean weight of a stay.
+  void draw_gecko_log_(Display &it) {
+    this->fill_(it, Box{8, GECKO_LOG.y + 2, W - 16, 1}, GRID);
+    if (this->gecko_log_n_ == 0) {
+      this->text_(it, W / 2, GECKO_LOG.y + 50, &id(tiny_font), TEXT_DIM, TextAlign::CENTER,
+                  "no visits to the nest logged yet");
+      return;
+    }
+    char from[8], to[8], buf[24];
+    for (int i = 0; i < this->gecko_log_n_; i++) {
+      const GeckoPeriod &p = this->gecko_log_[i];
+      const int y = GECKO_LOG.y + 15 + i * 19;
+      this->text_(it, 12, y, &id(tiny_font), p.in ? T_GECKO : TEXT_DIM, TextAlign::CENTER_LEFT, p.in ? "in" : "out");
+      fmt_clock(from, sizeof(from), p.start);
+      fmt_clock(to, sizeof(to), p.start + p.seconds);
+      snprintf(buf, sizeof(buf), "%s-%s", from, to);
+      this->text_(it, 50, y, &id(tiny_font), TEXT, TextAlign::CENTER_LEFT, buf);
+      fmt_duration(buf, sizeof(buf), p.seconds);
+      this->text_(it, 236, y, &id(tiny_font), TEXT, TextAlign::CENTER_RIGHT, buf);
+      if (p.in && !std::isnan(p.weight)) {
+        snprintf(buf, sizeof(buf), "%.1f g", p.weight);
+        this->text_(it, W - 12, y, &id(tiny_font), TEXT_DIM, TextAlign::CENTER_RIGHT, buf);
+      }
+    }
+  }
+
   void draw_settings_(Display &it) {
     if (this->vis_(SETTINGS_INFO)) {
       auto line = [&](int y, const char *label, const char *value) {
@@ -1941,6 +2139,20 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
   bool send_pending_[C_COUNT]{};
   uint32_t last_send_[C_COUNT]{};
   float shown_h_{0}, shown_s_{0};  // cursor position currently on screen
+
+  // gecko in / out of its nest, from the controller (see gecko_log())
+  struct GeckoPeriod {
+    bool in;
+    time_t start;  // UTC epoch
+    uint32_t seconds;
+    float weight;  // mean weight of a stay in the nest
+  };
+  bool gecko_known_{false};
+  bool gecko_in_{false};
+  uint32_t gecko_since_{0};  // UTC epoch
+  float last_stay_weight_{NAN};
+  GeckoPeriod gecko_log_[GECKO_LOG_ROWS]{};  // newest first
+  int gecko_log_n_{0};
 
   // touch gesture tracking
   bool t_down_{false};
@@ -1989,6 +2201,9 @@ inline void sample_history() {
     v[S_WIND_WEATHER] = sval(&id(weather_windspeed));
     if (!id(co2_sensor).status_has_warning())
       v[S_CO2] = sval(&id(co2_val));
+    const float g = sval(&id(scale_weight));
+    if (g >= GECKO_MIN_G)  // the scale reads ~0 while the gecko is out of its nest
+      v[S_WEIGHT] = g;
   }
   history.sample(v);
 }
