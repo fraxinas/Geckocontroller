@@ -34,7 +34,7 @@ The rain pump is fed from a 1 l bottle and must not run dry. `reservoir_runtime`
 
 ### HX711 Load Cell
 
-with 0g weight (only coconut)
+with 0g weight (only nest)
 
 | RawVal | Diff |
 | :----- | :--- |

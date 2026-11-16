@@ -9,6 +9,8 @@ substitutions:
 
 esphome:
   name: geckocontrol
+  includes:
+    - external_components/gecko_nest.h
   # Every boot/reflash comes up with all automations ENABLED. The PID climates (heating + humidity)
   # restore their last mode from flash, so a manual OFF would persist -- force them back to HEAT_COOL
   # here. The rain/light/fan enables are globals with restore_value:no (initial true) further down;
@@ -23,6 +25,7 @@ esphome:
       - climate.control:
           id: hygrostat
           mode: HEAT_COOL
+      - lambda: 'gecko_nest::nest.setup();'
 
 esp32:
   board: nodemcu-32s
@@ -580,6 +583,7 @@ sensor:
   # LDO (DVDD via JP61), so ldo_voltage must stay below 3V3 - 0.3 V.
   - platform: nau7802
     name: "Scale"
+    id: gecko_scale
     i2c_id: bus_a
     address: 0x2A
     ldo_voltage: "3.0V"
@@ -603,6 +607,16 @@ sensor:
             if (x < 2.5)
               return 0.0;
             return x;
+
+  # Mean weight of each stay in the nest, published as the gecko leaves (gecko_nest.h)
+  - platform: template
+    id: gecko_stay_weight
+    name: "Gecko Stay Weight"
+    unit_of_measurement: g
+    accuracy_decimals: 1
+    state_class: measurement
+    icon: mdi:scale
+    update_interval: never
 
   - platform: dallas_temp
     one_wire_id: bus_dallas
@@ -1010,6 +1024,32 @@ binary_sensor:
     name: "Weather Fallback"
     icon: mdi:weather-cloudy-alert
     lambda: 'return id(gecko_weather).in_fallback();'
+
+  # Gecko in / out of its nest (the scale is under it), published by gecko_nest.h
+  - platform: template
+    id: gecko_in_nest
+    name: "Gecko in nest"
+    device_class: occupancy
+    icon: mdi:egg-outline
+
+text_sensor:
+  # gecko_nest.h: start of the current in / out period, and state + last periods for the console
+  - platform: template
+    id: gecko_nest_since
+    name: "Gecko nest Since"
+    device_class: timestamp
+    update_interval: never
+  - platform: template
+    id: gecko_nest_log
+    name: "Gecko nest Log"
+    icon: mdi:format-list-bulleted
+    entity_category: diagnostic
+    update_interval: never
+
+interval:
+  - interval: 1s
+    then:
+      - lambda: 'gecko_nest::nest.tick();'
 
 status_led:
   pin: GPIO12
