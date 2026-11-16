@@ -464,6 +464,16 @@ text_sensor:
     attribute: hs_color
     on_value:
       - lambda: 'gecko_ui::ui.changed(gecko_ui::F_SCENIC);'
+  # Shown on the Settings page
+  - platform: wifi_info
+    ssid:
+      id: net_ssid
+      on_value:
+        - lambda: 'gecko_ui::ui.changed(gecko_ui::F_WIFI);'
+    ip_address:
+      id: net_ip
+      on_value:
+        - lambda: 'gecko_ui::ui.changed(gecko_ui::F_WIFI);'
 
 output:
   # LEDC channels share a timer in pairs (0/1, 2/3, ...). RTTTL retunes the buzzer's timer for every
@@ -494,8 +504,11 @@ light:
     id: backlight
     name: "Display Backlight"
     output: backlight_pwm
-    restore_mode: ALWAYS_ON
+    # Always on at boot, with the brightness last set (Settings page or Home Assistant)
+    restore_mode: RESTORE_AND_ON
     default_transition_length: 250ms
+    on_state:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_BACKLIGHT);'
 
 rtttl:
   id: rtttlplayer
@@ -579,6 +592,7 @@ font:
       "\U000F009E",  # bell-ring
       "\U000F009B",  # bell-off
       "\U000F004D",  # arrow-left
+      "\U000F0493",  # cog
       ]
   - file:
       type: web

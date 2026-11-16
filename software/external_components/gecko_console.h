@@ -25,17 +25,18 @@
 //
 // Interaction model
 // -----------------
-// Overview -> Menu (3x2 tiles) -> subpage. On a subpage the encoder moves the focus between its
+// Overview -> Menu (4x2 tiles) -> subpage. On a subpage the encoder moves the focus between its
 // controls and the header's back arrow; push goes back, toggles/presses, or enters edit mode for sliders and the colour wheel (turn
 // changes the value, push confirms; the wheel edits hue, then saturation). Touch acts directly:
 // tap toggles/presses, drag on a slider or the wheel sets the value, a horizontal swipe switches
-// to the neighbouring subpage. Back (button 2 / header arrow) leaves edit mode, then the page.
+// to the neighbouring subpage (Settings is left out of that ring). Back (button 2 / header arrow) leaves edit mode, then the page.
 // Values set locally are shown immediately and held for a few seconds while Home Assistant
 // echoes them back; sends while dragging/turning are throttled.
 #pragma once
 
 #include "esphome.h"
 #include "gecko_history.h"
+#include "esphome/core/version.h"
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -83,6 +84,7 @@ static const char *const E_THERMOSTAT = "climate.geckocontrol_thermostat_air";
 #define ICON_BELL_RING "\U000F009E"
 #define ICON_BELL_OFF "\U000F009B"
 #define ICON_ARROW_LEFT "\U000F004D"
+#define ICON_COG "\U000F0493"
 
 // Theme
 static const Color BG(8, 12, 16);
@@ -166,11 +168,14 @@ struct Box {
   bool intersects(const Box &o) const { return !intersect(o).empty(); }
 };
 
-enum class Page : uint8_t { OVERVIEW, MENU, THERMO, HYGRO, WIND, GROW, SCENIC, CO2 };
+enum class Page : uint8_t { OVERVIEW, MENU, THERMO, HYGRO, WIND, GROW, SCENIC, CO2, SETTINGS };
 
-// Menu grid, row-major (3x2). The two light pages sit next to each other.
-static const Page MENU_PAGES[6] = {Page::THERMO, Page::HYGRO, Page::WIND, Page::GROW, Page::SCENIC, Page::CO2};
-static constexpr int MENU_COUNT = 6;
+// Menu grid, row-major (4x2): climate in the top row, lights and settings below. Swiping on a
+// subpage follows this order, skipping Settings.
+static const Page MENU_PAGES[] = {Page::THERMO, Page::HYGRO,  Page::WIND, Page::CO2,
+                                  Page::GROW,   Page::SCENIC, Page::SETTINGS};
+static constexpr int MENU_COUNT = sizeof(MENU_PAGES) / sizeof(MENU_PAGES[0]);
+static constexpr int MENU_COLS = 4;
 
 // Which value changed (sensor callbacks -> invalidate the boxes showing it on the current page)
 enum Field : uint8_t {
@@ -192,6 +197,7 @@ enum Field : uint8_t {
   F_CO2_ALARM,  // alarm threshold: values and the graph's threshold line
   F_HEATER,
   F_WEATHER_SET,
+  F_BACKLIGHT,
 };
 
 // Controls on the subpages
@@ -213,6 +219,7 @@ enum Ctl : uint8_t {
   C_WEATHER_SET,
   C_THERMO_SET,
   C_GRAPH,  // the history graph: push/tap cycles its time range
+  C_BACKLIGHT,
   C_COUNT,
   C_NONE = 0xFF,
 };
@@ -279,6 +286,11 @@ static const Control CO2_CONTROLS[] = {
     {C_CO2_LEDS, Kind::SLIDER, {8, 190, 152, 44}},
     {C_CO2_CALIBRATE, Kind::CONFIRM, {164, 190, 148, 44}},
     {C_GRAPH, Kind::BUTTON, GRAPH_BOX},
+};
+// Settings: network info lines, display brightness slider in the usual slider row.
+static constexpr Box SETTINGS_INFO{0, 30, W, 96};
+static const Control SETTINGS_CONTROLS[] = {
+    {C_BACKLIGHT, Kind::SLIDER, SLIDER_BOX},
 };
 
 inline float sval(sensor::Sensor *s) { return s->has_state() ? s->state : NAN; }
@@ -416,16 +428,17 @@ class UI {
         }
         break;
       case Page::MENU: {
-        int tile = -1;
+        Page p = Page::MENU;
         switch (f) {
-          case F_TEMP: tile = 0; break;
-          case F_HUM: tile = 1; break;
-          case F_WIND: tile = 2; break;
-          case F_GROW: tile = 3; break;
-          case F_SCENIC: tile = 4; break;
-          case F_CO2: tile = 5; break;
+          case F_TEMP: p = Page::THERMO; break;
+          case F_HUM: p = Page::HYGRO; break;
+          case F_WIND: p = Page::WIND; break;
+          case F_CO2: p = Page::CO2; break;
+          case F_GROW: p = Page::GROW; break;
+          case F_SCENIC: p = Page::SCENIC; break;
           default: break;
         }
+        const int tile = menu_index(p);
         if (tile >= 0)
           this->invalidate(menu_tile_box(tile));
         break;
@@ -487,6 +500,12 @@ class UI {
         } else if (f == F_CO2_LEDS && !this->held_(C_CO2_LEDS)) {
           this->invalidate_ctl_(C_CO2_LEDS);
         }
+        break;
+      case Page::SETTINGS:
+        if (f == F_WIFI)
+          this->invalidate(SETTINGS_INFO);
+        else if (f == F_BACKLIGHT && !this->held_(C_BACKLIGHT))
+          this->invalidate_ctl_(C_BACKLIGHT);
         break;
     }
   }
@@ -702,8 +721,15 @@ class UI {
 static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus frame
 
   static Box menu_tile_box(int i) {
-    const int gap = 6, tw = (W - 4 * gap) / 3, th = (H - HEADER_H - 3 * gap) / 2;
-    return Box{gap + (i % 3) * (tw + gap), HEADER_H + gap + (i / 3) * (th + gap), tw, th};
+    constexpr int rows = (MENU_COUNT + MENU_COLS - 1) / MENU_COLS;
+    const int gap = 6, tw = (W - (MENU_COLS + 1) * gap) / MENU_COLS, th = (H - HEADER_H - (rows + 1) * gap) / rows;
+    return Box{gap + (i % MENU_COLS) * (tw + gap), HEADER_H + gap + (i / MENU_COLS) * (th + gap), tw, th};
+  }
+  static int menu_index(Page p) {
+    for (int i = 0; i < MENU_COUNT; i++)
+      if (MENU_PAGES[i] == p)
+        return i;
+    return -1;
   }
 
   static const Control *controls(Page p, int &n) {
@@ -714,6 +740,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case Page::GROW: n = 2; return GROW_CONTROLS;
       case Page::SCENIC: n = 3; return SCENIC_CONTROLS;
       case Page::CO2: n = 5; return CO2_CONTROLS;
+      case Page::SETTINGS: n = 1; return SETTINGS_CONTROLS;
       default: n = 0; return nullptr;
     }
   }
@@ -735,11 +762,8 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
 
   // ---------------------------------------------------------------- navigation
   void go_(Page p) {
-    if (p == Page::MENU && this->page_ != Page::OVERVIEW && this->page_ != Page::MENU) {
-      for (int i = 0; i < MENU_COUNT; i++)  // back from a subpage: focus its tile
-        if (MENU_PAGES[i] == this->page_)
-          this->menu_focus_ = i;
-    }
+    if (p == Page::MENU && menu_index(this->page_) >= 0)
+      this->menu_focus_ = menu_index(this->page_);  // back from a subpage: focus its tile
     if (p != this->page_) {
       this->editing_ = false;
       this->armed_until_ = 0;
@@ -762,14 +786,13 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
   }
 
   void swipe_(int dir) {
-    if (this->page_ == Page::OVERVIEW || this->page_ == Page::MENU)
+    int i = menu_index(this->page_);
+    if (i < 0 || this->page_ == Page::SETTINGS)
       return;
-    for (int i = 0; i < MENU_COUNT; i++) {
-      if (MENU_PAGES[i] == this->page_) {
-        this->go_(MENU_PAGES[(i + dir + MENU_COUNT) % MENU_COUNT]);
-        return;
-      }
-    }
+    do
+      i = (i + dir + MENU_COUNT) % MENU_COUNT;
+    while (MENU_PAGES[i] == Page::SETTINGS);
+    this->go_(MENU_PAGES[i]);
   }
 
   void tap_(int x, int y) {
@@ -861,6 +884,8 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         return {0.f, 100.f, 5.f, 5.f, "%.0f%%", "%.0f%% (auto)"};
       case C_CO2_ALARM:  // co2_alarm_threshold number range
         return {800.f, 5000.f, 50.f, 50.f, "alarm %.0f ppm", "alarm %.0f ppm"};
+      case C_BACKLIGHT:  // never fully dark: the screen must stay readable
+        return {5.f, 100.f, 5.f, 5.f, "%.0f%%", "%.0f%%"};
       default:
         return {0.f, 100.f, 1.f, 5.f, "%.0f%%", "%.0f%% (auto)"};
     }
@@ -891,6 +916,10 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       }
       case C_CO2_LEDS: {
         auto &v = id(rgb_leds).remote_values;
+        return v.is_on() ? v.get_brightness() * 100.f : 0.f;
+      }
+      case C_BACKLIGHT: {
+        auto &v = id(backlight).remote_values;
         return v.is_on() ? v.get_brightness() * 100.f : 0.f;
       }
       default:
@@ -1104,6 +1133,12 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         call.perform();
         break;
       }
+      case C_BACKLIGHT: {
+        auto call = id(backlight).turn_on();
+        call.set_brightness(this->local_[c] / 100.f);
+        call.perform();
+        break;
+      }
       default:
         break;
     }
@@ -1304,6 +1339,10 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         this->draw_header_(it, page_title(this->page_));
         this->draw_co2_(it);
         break;
+      case Page::SETTINGS:
+        this->draw_header_(it, page_title(this->page_));
+        this->draw_settings_(it);
+        break;
     }
   }
 
@@ -1315,7 +1354,17 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case Page::GROW: return "Grow light";
       case Page::SCENIC: return "Scenic light";
       case Page::CO2: return "CO₂";
+      case Page::SETTINGS: return "Settings";
       default: return "";
+    }
+  }
+  // Shorter names for the 72 px menu tiles
+  static const char *menu_label(Page p) {
+    switch (p) {
+      case Page::HYGRO: return "Hygro";
+      case Page::GROW: return "Grow";
+      case Page::SCENIC: return "Scenic";
+      default: return page_title(p);
     }
   }
 
@@ -1471,7 +1520,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         icon = ICON_THERMOMETER;
         const float t = sval(&id(thermostat_current_temperature));
         if (!std::isnan(t))
-          snprintf(value, sizeof(value), "%.1f°C", t);
+          snprintf(value, sizeof(value), "%.1f°", t);  // "°C" is wider than the tile
         ic = temp_color(t - sval(&id(thermostat_target_temperature)));
         break;
       }
@@ -1519,15 +1568,18 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case Page::CO2: {
         icon = ICON_MOLECULE_CO2;
         if (id(co2_val).has_state() && !id(co2_sensor).status_has_warning())
-          snprintf(value, sizeof(value), "%.0f ppm", id(co2_val).state);
+          snprintf(value, sizeof(value), "%.0f", id(co2_val).state);  // ppm does not fit
         ic = id(color_co2);
         break;
       }
+      case Page::SETTINGS:
+        icon = ICON_COG;
+        break;
       default:
         break;
     }
     this->text_(it, cx, b.y + 28, &id(icon_font), ic, TextAlign::CENTER, icon);
-    this->text_(it, cx, b.y + 58, &id(tiny_font), TEXT_DIM, TextAlign::CENTER, page_title(MENU_PAGES[i]));
+    this->text_(it, cx, b.y + 58, &id(tiny_font), TEXT_DIM, TextAlign::CENTER, menu_label(MENU_PAGES[i]));
     if (value[0])
       this->text_(it, cx, b.y + 84, &id(mid_font), TEXT, TextAlign::CENTER, value);
   }
@@ -1849,6 +1901,25 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
     this->draw_button_(it, CO2_CONTROLS[3], armed ? nullptr : ICON_MOLECULE_CO2, armed ? "Confirm?" : "Calibrate",
                        armed ? ARMED : TILE_BG);
     this->text_(it, 164 + 74, SLIDER_LABEL_Y, &id(tiny_font), TEXT_DIM, TextAlign::CENTER, "in fresh air");
+  }
+
+  void draw_settings_(Display &it) {
+    if (this->vis_(SETTINGS_INFO)) {
+      auto line = [&](int y, const char *label, const char *value) {
+        this->text_(it, 12, y, &id(tiny_font), TEXT_DIM, TextAlign::CENTER_LEFT, label);
+        this->text_(it, W - 12, y, &id(tiny_font), TEXT, TextAlign::CENTER_RIGHT, value);
+      };
+      auto text = [](text_sensor::TextSensor *t) { return t->has_state() && !t->state.empty() ? t->state.c_str() : "-"; };
+      line(42, "Wi-Fi", text(&id(net_ssid)));
+      line(62, "IP address", text(&id(net_ip)));
+      const float dbm = sval(&id(wifisignal));
+      char buf[16];
+      snprintf(buf, sizeof(buf), std::isnan(dbm) ? "-" : "%.0f dBm", dbm);
+      line(82, "Signal", buf);
+      line(102, "ESPHome", ESPHOME_VERSION);
+    }
+    this->draw_slider_label_(it, "Display brightness");
+    this->draw_slider_(it, SETTINGS_CONTROLS[0]);
   }
 
   // ---------------------------------------------------------------- state
