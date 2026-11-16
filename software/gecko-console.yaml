@@ -470,6 +470,18 @@ text_sensor:
     attribute: hs_color
     on_value:
       - lambda: 'gecko_ui::ui.changed(gecko_ui::F_SCENIC);'
+  # Settings page test buttons: highlighted while their sweep runs / an override is in force
+  - platform: homeassistant
+    id: scenic_light_effect
+    entity_id: light.geckocontrol_scenic_light
+    attribute: effect
+    on_value:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_TEST_STATE);'
+  - platform: homeassistant
+    id: weather_override
+    entity_id: select.geckocontrol_weather_override_test
+    on_value:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_TEST_STATE);'
   # Gecko in / out of its nest since when, and the last periods (the controller's gecko_nest.h)
   - platform: homeassistant
     id: gecko_nest_log
@@ -605,6 +617,9 @@ font:
       "\U000F009B",  # bell-off
       "\U000F004D",  # arrow-left
       "\U000F0493",  # cog
+      "\U000F059C",  # weather-sunset-up
+      "\U000F059B",  # weather-sunset-down
+      "\U000F0595",  # weather-partly-cloudy
       ]
   - file:
       type: web

@@ -71,6 +71,9 @@ static const char *const E_SCENIC_LIGHT = "light.geckocontrol_scenic_light";
 static const char *const E_WIND_SPEED = "number.geckocontrol_fan_manual_speed";
 static const char *const E_WEATHER_SET = "switch.geckocontrol_weather_setpoint";
 static const char *const E_THERMOSTAT = "climate.geckocontrol_thermostat_air";
+static const char *const E_SUNRISE_TEST = "button.geckocontrol_sunrise_test";
+static const char *const E_SUNSET_TEST = "button.geckocontrol_sunset_test";
+static const char *const E_WEATHER_OVERRIDE = "select.geckocontrol_weather_override_test";
 
 // Material Design Icons 7.4.47 codepoints (see icon fonts in gecko-console.yaml)
 #define ICON_THERMOMETER "\U000F050F"
@@ -85,6 +88,9 @@ static const char *const E_THERMOSTAT = "climate.geckocontrol_thermostat_air";
 #define ICON_BELL_OFF "\U000F009B"
 #define ICON_ARROW_LEFT "\U000F004D"
 #define ICON_COG "\U000F0493"
+#define ICON_SUNSET_UP "\U000F059C"
+#define ICON_SUNSET_DOWN "\U000F059B"
+#define ICON_PARTLY_CLOUDY "\U000F0595"
 
 // Theme
 static const Color BG(8, 12, 16);
@@ -202,6 +208,7 @@ enum Field : uint8_t {
   F_WEATHER_SET,
   F_SCALE,
   F_BACKLIGHT,
+  F_TEST_STATE,  // scenic light effect or weather override (Settings test buttons)
 };
 
 // Controls on the subpages
@@ -224,6 +231,9 @@ enum Ctl : uint8_t {
   C_THERMO_SET,
   C_GRAPH,  // the history graph: push/tap cycles its time range
   C_BACKLIGHT,
+  C_SUNRISE_TEST,
+  C_SUNSET_TEST,
+  C_WEATHER_TEST,
   C_COUNT,
   C_NONE = 0xFF,
 };
@@ -300,9 +310,13 @@ static constexpr float GECKO_MIN_G = 5.f;  // graph only readings from here on (
 static const Control GECKO_CONTROLS[] = {
     {C_GRAPH, Kind::BUTTON, GRAPH_BOX},
 };
-// Settings: network info lines, display brightness slider in the usual slider row.
-static constexpr Box SETTINGS_INFO{0, 30, W, 96};
+// Settings: network info lines; test sunrise / sunset and the weather override (cycles through its
+// options) for trying out the light scenes; display brightness slider in the usual slider row.
+static constexpr Box SETTINGS_INFO{0, 30, W, 74};
 static const Control SETTINGS_CONTROLS[] = {
+    {C_SUNRISE_TEST, Kind::BUTTON, {8, 106, 148, 32}},
+    {C_SUNSET_TEST, Kind::BUTTON, {164, 106, 148, 32}},
+    {C_WEATHER_TEST, Kind::BUTTON, {8, 140, W - 16, 32}},
     {C_BACKLIGHT, Kind::SLIDER, SLIDER_BOX},
 };
 
@@ -527,6 +541,9 @@ class UI {
           this->invalidate(SETTINGS_INFO);
         else if (f == F_BACKLIGHT && !this->held_(C_BACKLIGHT))
           this->invalidate_ctl_(C_BACKLIGHT);
+        else if (f == F_TEST_STATE)
+          for (Ctl c : {C_SUNRISE_TEST, C_SUNSET_TEST, C_WEATHER_TEST})
+            this->invalidate_ctl_(c);
         break;
     }
   }
@@ -790,7 +807,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case Page::SCENIC: n = 3; return SCENIC_CONTROLS;
       case Page::CO2: n = 5; return CO2_CONTROLS;
       case Page::GECKO: n = 1; return GECKO_CONTROLS;
-      case Page::SETTINGS: n = 1; return SETTINGS_CONTROLS;
+      case Page::SETTINGS: n = 4; return SETTINGS_CONTROLS;
       default: n = 0; return nullptr;
     }
   }
@@ -1112,6 +1129,15 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case C_CO2_CALIBRATE:
         if (this->confirmed_(C_CO2_CALIBRATE))
           id(co2_calibrate).execute();
+        break;
+      case C_SUNRISE_TEST:
+        id(ha_call).execute(std::string("button.press"), std::string(E_SUNRISE_TEST));
+        break;
+      case C_SUNSET_TEST:
+        id(ha_call).execute(std::string("button.press"), std::string(E_SUNSET_TEST));
+        break;
+      case C_WEATHER_TEST:  // next option, wrapping around to "(live)"
+        id(ha_call).execute(std::string("select.select_next"), std::string(E_WEATHER_OVERRIDE));
         break;
       default:
         break;
@@ -2108,16 +2134,27 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         this->text_(it, W - 12, y, &id(tiny_font), TEXT, TextAlign::CENTER_RIGHT, value);
       };
       auto text = [](text_sensor::TextSensor *t) { return t->has_state() && !t->state.empty() ? t->state.c_str() : "-"; };
-      line(42, "Wi-Fi", text(&id(net_ssid)));
-      line(62, "IP address", text(&id(net_ip)));
+      line(40, "Wi-Fi", text(&id(net_ssid)));
+      line(58, "IP address", text(&id(net_ip)));
       const float dbm = sval(&id(wifisignal));
       char buf[16];
       snprintf(buf, sizeof(buf), std::isnan(dbm) ? "-" : "%.0f dBm", dbm);
-      line(82, "Signal", buf);
-      line(102, "ESPHome", ESPHOME_VERSION);
+      line(76, "Signal", buf);
+      line(94, "ESPHome", ESPHOME_VERSION);
     }
+    // Highlighted while the sweep runs / while a weather override is in force.
+    const std::string &fx = id(scenic_light_effect).state;
+    this->draw_button_(it, SETTINGS_CONTROLS[0], ICON_SUNSET_UP, "Test sunrise",
+                       fx == "Sunrise Color" ? ARMED : TILE_BG);
+    this->draw_button_(it, SETTINGS_CONTROLS[1], ICON_SUNSET_DOWN, "Test sunset",
+                       fx == "Sunset Color" ? ARMED : TILE_BG);
+    const auto &wx = id(weather_override);
+    const bool live = !wx.has_state() || wx.state == "(live)" || wx.state.empty();
+    char label[48];
+    snprintf(label, sizeof(label), "Weather: %s", !wx.has_state() ? "-" : live ? "live" : wx.state.c_str());
+    this->draw_button_(it, SETTINGS_CONTROLS[2], ICON_PARTLY_CLOUDY, label, live ? TILE_BG : ARMED);
     this->draw_slider_label_(it, "Display brightness");
-    this->draw_slider_(it, SETTINGS_CONTROLS[0]);
+    this->draw_slider_(it, SETTINGS_CONTROLS[3]);
   }
 
   // ---------------------------------------------------------------- state
