@@ -1050,6 +1050,25 @@ binary_sensor:
     icon: mdi:egg-outline
 
 text_sensor:
+  # Next sunrise / sunset of the (shifted) sun at the elevation the colour sweeps start at; the
+  # console counts down to them
+  - platform: sun
+    sun_id: remote_sun
+    name: "Next Sunrise"
+    id: next_sunrise
+    type: sunrise
+    elevation: 5°
+    format: "%Y-%m-%dT%H:%M:%SZ"
+    device_class: timestamp
+  - platform: sun
+    sun_id: remote_sun
+    name: "Next Sunset"
+    id: next_sunset
+    type: sunset
+    elevation: 5°
+    format: "%Y-%m-%dT%H:%M:%SZ"
+    device_class: timestamp
+
   # gecko_nest.h: start of the current in / out period, and state + last periods for the console
   - platform: template
     id: gecko_nest_since
