@@ -687,7 +687,24 @@ sensor:
     address: 0x76
     update_interval: 15s
 
-  # - platform: sht3x
+  - platform: sht3xd
+    temperature:
+      name: "Ground Temperature"
+      id: temperature_ground
+      filters:
+        - lambda: |-
+            if (x > 0 && x < 60)
+              return x;
+            return {};
+      accuracy_decimals: 1
+    humidity:
+      name: "Ground Humidity"
+      id: humidity_ground
+      accuracy_decimals: 0
+    address: 0x44
+    update_interval: 20s
+
+  # - platform: sht4x
   #   temperature:
   #     name: "Ground Temperature"
   #     id: temperature_ground
@@ -702,27 +719,9 @@ sensor:
   #   humidity:
   #     name: "Ground Humidity"
   #     id: humidity_ground
+  #     accuracy_decimals: 0
   #   address: 0x44
   #   update_interval: 20s
-
-  - platform: sht4x
-    temperature:
-      name: "Ground Temperature"
-      id: temperature_ground
-      filters:
-        - lambda: |-
-            if (x > 0 && x < 60)
-              return x;
-            return {};
-        - calibrate_linear:
-            - 0.7 -> -6.6
-            - 30.4 -> 25.12
-    humidity:
-      name: "Ground Humidity"
-      id: humidity_ground
-      accuracy_decimals: 0
-    address: 0x44
-    update_interval: 20s
 
   - platform: pulse_counter
     name: "Fan Tacho"
