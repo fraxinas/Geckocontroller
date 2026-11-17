@@ -25,7 +25,7 @@
 //
 // Interaction model
 // -----------------
-// Overview -> Menu (4x2 tiles) -> subpage. On a subpage the encoder moves the focus between its
+// Start page (live sky, gecko_scene.h) -> Menu (4x2 tiles) -> subpage. On a subpage the encoder moves the focus between its
 // controls and the header's back arrow; push goes back, toggles/presses, or enters edit mode for sliders and the colour wheel (turn
 // changes the value, push confirms; the wheel edits hue, then saturation). Touch acts directly:
 // tap toggles/presses, drag on a slider or the wheel sets the value, a horizontal swipe switches
@@ -36,10 +36,12 @@
 
 #include "esphome.h"
 #include "gecko_history.h"
+#include "gecko_scene.h"
 #include "esphome/core/version.h"
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace gecko_ui {
@@ -91,6 +93,18 @@ static const char *const E_WEATHER_OVERRIDE = "select.geckocontrol_weather_overr
 #define ICON_SUNSET_UP "\U000F059C"
 #define ICON_SUNSET_DOWN "\U000F059B"
 #define ICON_PARTLY_CLOUDY "\U000F0595"
+// weather icons of the start page (icon_big)
+#define ICON_W_SUNNY "\U000F0599"
+#define ICON_W_NIGHT "\U000F0594"
+#define ICON_W_PARTLY "\U000F0595"
+#define ICON_W_NIGHT_PARTLY "\U000F0F31"
+#define ICON_W_CLOUDY "\U000F0590"
+#define ICON_W_FOG "\U000F0591"
+#define ICON_W_RAINY "\U000F0597"
+#define ICON_W_POURING "\U000F0596"
+#define ICON_W_PARTLY_RAINY "\U000F0F33"
+#define ICON_W_SNOWY "\U000F0598"
+#define ICON_W_STORM "\U000F067E"
 
 // Theme
 static const Color BG(8, 12, 16);
@@ -310,6 +324,14 @@ static constexpr float GECKO_MIN_G = 5.f;  // graph only readings from here on (
 static const Control GECKO_CONTROLS[] = {
     {C_GRAPH, Kind::BUTTON, GRAPH_BOX},
 };
+// Start page: the live sky behind two glass panels -- weather, temperature and humidity on top,
+// the next sunrise / sunset and the nest below. Redrawn as a whole every frame.
+static const gecko_scene::Glass START_GLASS[] = {{6, 30, 250, 94}, {6, 168, 308, 66}};
+static constexpr Box ST_WEATHER{6, 30, 76, 94}, ST_TEMP{82, 30, 174, 47}, ST_HUM{82, 77, 174, 47};
+static constexpr Box ST_SUN{6, 168, 308, 33}, ST_NEST{6, 201, 308, 33}, ST_CO2{190, 0, 96, 26};
+static constexpr uint32_t FRAME_MIN_MS = 100;  // at most 10 frames per second ...
+// ... and at least twice the time a frame takes, so the animation leaves half the CPU to the rest
+
 // Settings: network info lines; test sunrise / sunset and the weather override (cycles through its
 // options) for trying out the light scenes; display brightness slider in the usual slider row.
 static constexpr Box SETTINGS_INFO{0, 30, W, 74};
@@ -321,6 +343,26 @@ static const Control SETTINGS_CONTROLS[] = {
 };
 
 inline float sval(sensor::Sensor *s) { return s->has_state() ? s->state : NAN; }
+
+// Direct access to the mipi_spi stripe buffer for the start page's sky, which writes every pixel:
+// draw_pixel_at() costs a virtual call, a clipping test and four watermark updates per pixel. The
+// members are protected; a derived class may name them, and member pointers taken there work on the
+// display object itself (standard C++, no patch to ESPHome). Requires hardware rotation, so that
+// the buffer holds the stripe in screen orientation, 16 bit pixels and no column rounding.
+template<class D> struct StripeAccess : D {
+  static uint16_t *buffer(D &d) { return d.*(&StripeAccess::buffer_); }
+  static int start(D &d) { return d.*(&StripeAccess::start_line_); }
+  static int end(D &d) { return d.*(&StripeAccess::end_line_); }
+  static uint16_t pixel(uint8_t r, uint8_t g, uint8_t b) { return StripeAccess::convert_color(Color(r, g, b)); }
+  // the whole stripe is to be sent
+  static void mark(D &d) {
+    d.*(&StripeAccess::x_low_) = 0;
+    d.*(&StripeAccess::x_high_) = W - 1;
+    d.*(&StripeAccess::y_low_) = start(d);
+    d.*(&StripeAccess::y_high_) = end(d) - 1;
+  }
+  static_assert(D::round_buffer(W) == W, "stripe rows must be exactly the screen width");
+};
 
 // Parses HA's hs_color attribute, e.g. "(210.0, 80.0)" or "[210.0, 80.0]".
 inline bool parse_hs(const std::string &txt, float &h, float &s) {
@@ -363,12 +405,25 @@ class UI {
   // Called from a 20 ms interval: sends throttled values, performs pending redraws.
   void flush(Display *d) {
     this->send_due_();
+    const uint32_t now = millis();
+    const bool animate = this->page_ == Page::OVERVIEW && id(api_connected).state;
+    if (animate && now - this->frame_start_ >= this->frame_gap_)
+      this->full_dirty_ = true;
     if (this->full_dirty_) {
       this->full_dirty_ = false;
       this->dirty_.clear();
       this->partial_ = false;
       this->pass_ = 0;
+      if (animate)
+        this->start_step_(now);
+      const uint32_t t0 = millis();
       d->update();
+      if (animate)
+        this->frame_done_(t0, millis() - t0);
+      return;
+    }
+    if (animate) {
+      this->dirty_.clear();  // the next frame redraws everything anyway
       return;
     }
     if (this->dirty_.empty())
@@ -414,8 +469,9 @@ class UI {
 
     if (!this->partial_) {
       this->area_ = stripe;
-      it.fill(BG);  // fast path: fills the stripe buffer directly (no clipping active)
-      this->draw_page_(it);
+      if (this->page_ != Page::OVERVIEW || !id(api_connected).state)
+        it.fill(BG);  // fast path: fills the stripe buffer directly (no clipping active)
+      this->draw_page_(it);  // (the start page's sky covers every pixel itself)
       return;
     }
 
@@ -439,21 +495,13 @@ class UI {
       this->invalidate_all();
       return;
     }
-    if (f == F_CLOCK && this->page_ == Page::OVERVIEW)
-      this->invalidate(Box{0, 0, 80, HEADER_H});
+    if (this->page_ == Page::OVERVIEW)
+      return;  // redrawn every frame
     if (f == F_WIFI)
       this->invalidate(Box{W - 34, 0, 34, HEADER_H});
 
     switch (this->page_) {
       case Page::OVERVIEW:
-        switch (f) {
-          case F_TEMP: this->invalidate(OV_ROWS[0]); break;
-          case F_HUM: this->invalidate(OV_ROWS[1]); break;
-          case F_CO2: this->invalidate(OV_ROWS[2]); break;
-          case F_RESERVOIR: case F_RAIN_AUTO: case F_GROW: case F_WIND: this->invalidate(OV_STATUS); break;
-          case F_SCALE: case F_CLOCK: this->invalidate(OV_GECKO); break;
-          default: break;
-        }
         break;
       case Page::MENU: {
         Page p = Page::MENU;
@@ -780,9 +828,6 @@ class UI {
 
  protected:
   // ---------------------------------------------------------------- layout helpers
-  static constexpr Box OV_ROWS[3] = {{8, 30, W - 16, 50}, {8, 84, W - 16, 50}, {8, 138, W - 16, 50}};
-  static constexpr Box OV_STATUS = {8, 192, W - 16, 22};
-  static constexpr Box OV_GECKO = {8, 216, W - 16, 22};
   static constexpr Box BACK_BOX = {0, 0, 150, HEADER_H};     // tap target
 static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus frame
 
@@ -869,13 +914,15 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
     }
     switch (this->page_) {
       case Page::OVERVIEW:
-        if (OV_ROWS[0].contains(x, y))
+        if (ST_TEMP.contains(x, y))
           this->go_(Page::THERMO);
-        else if (OV_ROWS[1].contains(x, y))
+        else if (ST_HUM.contains(x, y))
           this->go_(Page::HYGRO);
-        else if (OV_ROWS[2].contains(x, y))
+        else if (ST_CO2.contains(x, y))
           this->go_(Page::CO2);
-        else if (OV_GECKO.contains(x, y))
+        else if (ST_SUN.contains(x, y))
+          this->go_(Page::SCENIC);
+        else if (ST_NEST.contains(x, y))
           this->go_(Page::GECKO);
         else
           this->go_(Page::MENU);
@@ -1385,9 +1432,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
     }
     switch (this->page_) {
       case Page::OVERVIEW:
-        this->draw_header_(it, nullptr);
-        this->draw_overview_(it);
-        this->draw_overview_gecko_(it);
+        this->draw_start_(it);
         break;
       case Page::MENU:
         this->draw_header_(it, "Menu");
@@ -1481,6 +1526,9 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         this->text_(it, 8, HEADER_H / 2, &id(tiny_font), TEXT, TextAlign::CENTER_LEFT, buf);
       }
     }
+    this->draw_wifi_(it);
+  }
+  void draw_wifi_(Display &it) {
     const float dbm = sval(&id(wifisignal));
     const int bars = std::isnan(dbm) ? 0 : (int) std::lround((dbm + 100.f) / 10.f);
     for (int i = 0; i < 5; i++) {
@@ -1511,80 +1559,6 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
     if (ppm < id(co2_alarm_threshold).state)
       return "elevated";
     return "alarm";
-  }
-
-  void draw_overview_(Display &it) {
-    char value[24], diff[16];
-    auto row = [&](const Box &b, Color bg, const char *icon) {
-      this->fill_(it, b, bg);
-      if (!this->vis_(b))
-        return;
-      const int cy = b.y + b.h / 2;
-      this->text_(it, b.x + 10, cy, &id(icon_font), Color::BLACK, TextAlign::CENTER_LEFT, icon);
-      if (value[0])
-        this->text_(it, b.x + b.w / 2, cy, &id(big_font), Color::BLACK, TextAlign::CENTER, value);
-      if (diff[0])
-        this->text_(it, b.x + b.w - 10, cy, &id(tiny_font), Color::BLACK, TextAlign::CENTER_RIGHT, diff);
-    };
-
-    {
-      const float cur = sval(&id(thermostat_current_temperature));
-      const float d = cur - sval(&id(thermostat_target_temperature));
-      value[0] = diff[0] = 0;
-      if (!std::isnan(cur))
-        snprintf(value, sizeof(value), "%.1f°C", cur);
-      if (!std::isnan(d))
-        snprintf(diff, sizeof(diff), "%+.1f", d);
-      row(OV_ROWS[0], temp_color(d), ICON_THERMOMETER);
-    }
-    {
-      const float cur = sval(&id(humidity_current));
-      const float d = cur - sval(&id(humidity_target));
-      value[0] = diff[0] = 0;
-      if (!std::isnan(cur))
-        snprintf(value, sizeof(value), "%.0f%%", cur);
-      if (!std::isnan(d))
-        snprintf(diff, sizeof(diff), "%+.0f", d);
-      row(OV_ROWS[1], hum_color(d), ICON_WATER_PERCENT);
-    }
-    {
-      value[0] = diff[0] = 0;
-      if (id(co2_val).has_state() && !id(co2_sensor).status_has_warning())
-        snprintf(value, sizeof(value), "%.0f ppm", id(co2_val).state);
-      row(OV_ROWS[2], id(color_co2), ICON_MOLECULE_CO2);
-    }
-
-    // Status row: reservoir, rain automation, grow light, wind
-    if (!this->vis_(OV_STATUS))
-      return;
-    const int cy = OV_STATUS.y + OV_STATUS.h / 2;
-    char buf[16];
-    int x = OV_STATUS.x;
-    auto item = [&](const char *icon, Color ic, const char *txt, int width) {
-      this->text_(it, x, cy, &id(icon_small), ic, TextAlign::CENTER_LEFT, icon);
-      this->text_(it, x + 24, cy, &id(tiny_font), TEXT, TextAlign::CENTER_LEFT, txt);
-      x += width;
-    };
-    const float res = sval(&id(reservoir_level));
-    if (std::isnan(res))
-      snprintf(buf, sizeof(buf), "-");
-    else
-      snprintf(buf, sizeof(buf), "%.0f%%", res);
-    item(ICON_CUP_WATER, !std::isnan(res) && res < 20.f ? WARN : TEXT, buf, 76);
-    item(ICON_WEATHER_RAINY, id(rain_automation).state ? TEXT : TEXT_DIM, id(rain_automation).state ? "auto" : "off",
-         72);
-    const float gb = sval(&id(grow_light_brightness));
-    if (id(grow_light_on).state && !std::isnan(gb))
-      snprintf(buf, sizeof(buf), "%.0f%%", gb / 2.55f);
-    else
-      snprintf(buf, sizeof(buf), "off");
-    item(ICON_SPROUT, id(grow_light_on).state ? TEXT : TEXT_DIM, buf, 76);
-    const float wp = sval(&id(multifan_percentage));
-    if (std::isnan(wp))
-      snprintf(buf, sizeof(buf), "-");
-    else
-      snprintf(buf, sizeof(buf), "%.0f%%", wp);
-    item(ICON_WEATHER_WINDY, TEXT, buf, 76);
   }
 
   void draw_menu_tile_(Display &it, int i) {
@@ -2006,6 +1980,224 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
     this->text_(it, 164 + 74, SLIDER_LABEL_Y, &id(tiny_font), TEXT_DIM, TextAlign::CENTER, "in fresh air");
   }
 
+  // ---------------------------------------------------------------- start page
+  // The weather in force: the "Weather Override (test)" choice, else the live historic code.
+  int weather_code_() const {
+    const auto &o = id(weather_override);
+    if (o.has_state() && !o.state.empty() && o.state != "(live)") {
+      // labels and codes as in the controller's select (gecko.yaml)
+      static const struct {
+        const char *label;
+        int code;
+      } OVERRIDES[] = {{"Clear", 0},        {"Partly cloudy", 2},     {"Overcast", 3},  {"Fog", 45},
+                       {"Drizzle", 53},     {"Light rain", 61},       {"Rain", 63},     {"Heavy rain", 65},
+                       {"Snow", 73},        {"Rain showers", 81},     {"Thunderstorm", 95},
+                       {"Severe thunderstorm", 99}};
+      for (const auto &m : OVERRIDES)
+        if (o.state == m.label)
+          return m.code;
+    }
+    const float c = sval(&id(weather_wmo));
+    return std::isnan(c) ? -1 : (int) c;
+  }
+  bool weather_overridden_() const {
+    const auto &o = id(weather_override);
+    return o.has_state() && !o.state.empty() && o.state != "(live)";
+  }
+  static void weather_look(gecko_scene::Sky s, bool night, const char *&icon, const char *&label, Color &col) {
+    using gecko_scene::Sky;
+    const Color sun(255, 214, 90), moon(215, 222, 255), cloud(225, 232, 242), rain(140, 190, 255);
+    switch (s) {
+      case Sky::CLEAR: icon = night ? ICON_W_NIGHT : ICON_W_SUNNY; label = "Clear"; col = night ? moon : sun; break;
+      case Sky::FAIR: icon = night ? ICON_W_NIGHT_PARTLY : ICON_W_PARTLY; label = "Fair"; col = night ? moon : sun; break;
+      case Sky::PARTLY: icon = night ? ICON_W_NIGHT_PARTLY : ICON_W_PARTLY; label = "Partly"; col = cloud; break;
+      case Sky::OVERCAST: icon = ICON_W_CLOUDY; label = "Overcast"; col = cloud; break;
+      case Sky::FOG: icon = ICON_W_FOG; label = "Fog"; col = cloud; break;
+      case Sky::DRIZZLE: icon = ICON_W_RAINY; label = "Drizzle"; col = rain; break;
+      case Sky::RAIN: icon = ICON_W_POURING; label = "Rain"; col = rain; break;
+      case Sky::SHOWERS: icon = ICON_W_PARTLY_RAINY; label = "Showers"; col = rain; break;
+      case Sky::SNOW: icon = ICON_W_SNOWY; label = "Snow"; col = TEXT; break;
+      case Sky::STORM: icon = ICON_W_STORM; label = "Storm"; col = sun; break;
+    }
+  }
+  // "2026-11-17T16:47:00Z" (the controller's next sunrise / sunset) -> UTC epoch, 0 if none
+  static time_t parse_utc(const std::string &txt) {
+    int y, mo, d, h, mi, sec;
+    if (sscanf(txt.c_str(), "%d-%d-%dT%d:%d:%d", &y, &mo, &d, &h, &mi, &sec) != 6)
+      return 0;
+    ESPTime t{};
+    t.year = y;
+    t.month = mo;
+    t.day_of_month = d;
+    t.hour = h;
+    t.minute = mi;
+    t.second = sec;
+    t.recalc_timestamp_utc(false);
+    return t.timestamp;
+  }
+
+  void start_step_(uint32_t now) {
+    const uint32_t t0 = micros();
+    gecko_scene::Inputs in;
+    in.wmo = this->weather_code_();
+    const float e = sval(&id(sun_elevation));
+    in.sun_elevation = !std::isnan(e) ? e : (id(daytime).state ? 30.f : -20.f);
+    const float m = sval(&id(moon_illumination));
+    in.moon = std::isnan(m) ? 50.f : m;
+    this->scene_.set_inputs(in);
+    this->scene_.step(now);
+    this->step_us_ += micros() - t0;
+  }
+  void frame_done_(uint32_t start, uint32_t cost) {
+    this->frame_start_ = start;
+    this->frame_gap_ = std::max(FRAME_MIN_MS, 2 * cost);
+    this->frame_cost_sum_ += cost;
+    if (++this->frame_count_ == 100) {
+      ESP_LOGD(TAG, "start page: %u ms per frame (step %u, sky %u, overlay %u, rest = transfer), one every %u ms",
+               (unsigned) (this->frame_cost_sum_ / 100), (unsigned) (this->step_us_ / 100000),
+               (unsigned) (this->sky_us_ / 100000), (unsigned) (this->overlay_us_ / 100000),
+               (unsigned) this->frame_gap_);
+      this->frame_count_ = 0;
+      this->frame_cost_sum_ = 0;
+      this->step_us_ = this->sky_us_ = this->overlay_us_ = 0;
+    }
+  }
+
+  // Text with a drop shadow, legible on the moving sky
+  void text_shadow_(Display &it, int x, int y, font::Font *f, Color c, TextAlign a, const char *s) {
+    this->text_(it, x + 1, y + 1, f, Color(0, 0, 0), a, s);
+    this->text_(it, x, y, f, c, a, s);
+  }
+
+  void draw_start_(Display &it) {
+    const Box &a = this->area_;
+    const uint32_t t0 = micros();
+    if (!this->partial_) {  // a whole stripe: straight into the display's buffer
+      using Disp = std::remove_reference_t<decltype(id(gecko_display))>;
+      using Acc = StripeAccess<Disp>;
+      Disp &d = id(gecko_display);
+      uint16_t *const fb = Acc::buffer(d);
+      const int y0 = Acc::start(d), y1 = Acc::end(d);
+      auto put = [fb, y0, y1](int x, int y, uint8_t r, uint8_t g, uint8_t b) {
+        if ((unsigned) x < (unsigned) W && y >= y0 && y < y1)
+          fb[(y - y0) * W + x] = Acc::pixel(r, g, b);
+      };
+      this->scene_.render(0, y0, W, y1 - y0, START_GLASS, 2, put);
+      this->scene_.render_particles(0, y0, W, y1 - y0, START_GLASS, 2, put);
+      Acc::mark(d);
+    } else {
+      auto put = [&it](int x, int y, uint8_t r, uint8_t g, uint8_t b) { it.draw_pixel_at(x, y, Color(r, g, b)); };
+      this->scene_.render(a.x, a.y, a.w, a.h, START_GLASS, 2, put);
+      this->scene_.render_particles(a.x, a.y, a.w, a.h, START_GLASS, 2, put);
+    }
+    const uint32_t t1 = micros();
+    this->sky_us_ += t1 - t0;
+    this->draw_start_overlay_(it);
+    this->overlay_us_ += micros() - t1;
+  }
+
+  void draw_start_overlay_(Display &it) {
+    char buf[32];
+
+    // status line: clock, CO2, wifi
+    auto now = id(ha_time).now();
+    if (now.is_valid()) {
+      snprintf(buf, sizeof(buf), "%02d:%02d", now.hour, now.minute);
+      this->text_shadow_(it, 10, 14, &id(mid_font), TEXT, TextAlign::CENTER_LEFT, buf);
+    }
+    if (id(co2_val).has_state() && !id(co2_sensor).status_has_warning() && this->vis_(ST_CO2)) {
+      snprintf(buf, sizeof(buf), "%.0f ppm", id(co2_val).state);
+      it.filled_circle(ST_CO2.x + 8, 14, 5, Color(0, 0, 0));
+      it.filled_circle(ST_CO2.x + 8, 14, 4, id(color_co2));
+      this->text_shadow_(it, ST_CO2.x + 18, 13, &id(tiny_font), TEXT, TextAlign::CENTER_LEFT, buf);
+    }
+    this->draw_wifi_(it);
+
+    // weather: icon and what it is (orange while the test override is in force)
+    if (this->vis_(ST_WEATHER)) {
+      const char *icon, *label;
+      Color col;
+      weather_look(this->scene_.sky(), this->scene_.night(), icon, label, col);
+      if (this->weather_code_() < 0)
+        label = "-";
+      this->text_(it, 44, 64, &id(icon_big), col, TextAlign::CENTER, icon);
+      this->text_(it, 44, 107, &id(tiny_font), this->weather_overridden_() ? ARMED : TEXT_DIM, TextAlign::CENTER, label);
+    }
+    // temperature and humidity: live value, its difference to the setpoint, the setpoint
+    auto climate = [&](const Box &b, float cur, float tgt, const char *fmt, const char *dfmt, const char *sfmt,
+                       Color dc) {
+      if (!this->vis_(b))
+        return;
+      const int cy = b.y + b.h / 2;
+      snprintf(buf, sizeof(buf), std::isnan(cur) ? "-" : fmt, cur);
+      this->text_(it, b.x + 4, cy + 1, &id(big_font), TEXT, TextAlign::CENTER_LEFT, buf);
+      if (!std::isnan(cur) && !std::isnan(tgt)) {
+        snprintf(buf, sizeof(buf), dfmt, cur - tgt);
+        this->text_(it, b.x + b.w - 8, cy - 8, &id(tiny_font), dc, TextAlign::CENTER_RIGHT, buf);
+      }
+      if (!std::isnan(tgt)) {
+        snprintf(buf, sizeof(buf), sfmt, tgt);
+        this->text_(it, b.x + b.w - 8, cy + 10, &id(tiny_font), TEXT_DIM, TextAlign::CENTER_RIGHT, buf);
+      }
+    };
+    {
+      const float cur = sval(&id(thermostat_current_temperature)), tgt = sval(&id(thermostat_target_temperature));
+      climate(ST_TEMP, cur, tgt, "%.1f°", "%+.1f", "set %.1f", temp_color(cur - tgt));
+    }
+    {
+      const float cur = sval(&id(humidity_current)), tgt = sval(&id(humidity_target));
+      climate(ST_HUM, cur, tgt, "%.0f%%", "%+.0f", "set %.0f", hum_color(cur - tgt));
+    }
+
+    // next sunrise / sunset (the colour sweeps start then)
+    if (this->vis_(ST_SUN)) {
+      const int cy = ST_SUN.y + ST_SUN.h / 2 + 1;
+      const time_t t = epoch_now(), rise = parse_utc(id(next_sunrise).state), set = parse_utc(id(next_sunset).state);
+      const std::string &fx = id(scenic_light_effect).state;
+      bool sunrise = rise != 0 && (set == 0 || rise < set);
+      const time_t next = sunrise ? rise : set;
+      if (fx == "Sunrise Color" || fx == "Sunset Color") {
+        sunrise = fx == "Sunrise Color";
+        snprintf(buf, sizeof(buf), "%s now", sunrise ? "Sunrise" : "Sunset");
+      } else if (next == 0 || t == 0) {
+        snprintf(buf, sizeof(buf), "-");
+      } else {
+        char dur[16];
+        fmt_duration(dur, sizeof(dur), next > t ? (uint32_t) (next - t) : 0);
+        snprintf(buf, sizeof(buf), "%s in %s", sunrise ? "Sunrise" : "Sunset", dur);
+      }
+      this->text_(it, ST_SUN.x + 12, cy, &id(icon_small), Color(255, 190, 90), TextAlign::CENTER_LEFT,
+                  sunrise ? ICON_SUNSET_UP : ICON_SUNSET_DOWN);
+      this->text_(it, ST_SUN.x + 40, cy, &id(mid_font), TEXT, TextAlign::CENTER_LEFT, buf);
+      if (next != 0) {
+        fmt_clock(buf, sizeof(buf), next);
+        this->text_(it, ST_SUN.x + ST_SUN.w - 10, cy, &id(tiny_font), TEXT_DIM, TextAlign::CENTER_RIGHT, buf);
+      }
+    }
+    // the nest: in / out and for how long, the gecko's weight
+    if (this->vis_(ST_NEST)) {
+      const int cy = ST_NEST.y + ST_NEST.h / 2 - 1;
+      it.image(ST_NEST.x + 22, cy, &id(gecko_icon_small), display::ImageAlign::CENTER);
+      uint32_t sec;
+      if (!this->gecko_known_) {
+        snprintf(buf, sizeof(buf), "Nest: no data");
+      } else if (!this->gecko_for_(sec)) {
+        snprintf(buf, sizeof(buf), "%s", this->gecko_in_ ? "In the nest" : "Out");
+      } else {
+        char dur[16];
+        fmt_duration(dur, sizeof(dur), sec);
+        snprintf(buf, sizeof(buf), "%s %s", this->gecko_in_ ? "In the nest" : "Out for", dur);
+      }
+      this->text_(it, ST_NEST.x + 40, cy, &id(mid_font), TEXT, TextAlign::CENTER_LEFT, buf);
+      const float g = this->gecko_in_ ? sval(&id(scale_weight)) : this->last_stay_weight_;
+      if (this->gecko_known_ && !std::isnan(g)) {
+        snprintf(buf, sizeof(buf), "%.1f g", g);
+        this->text_(it, ST_NEST.x + ST_NEST.w - 10, cy, &id(tiny_font), this->gecko_in_ ? TEXT : TEXT_DIM,
+                    TextAlign::CENTER_RIGHT, buf);
+      }
+    }
+  }
+
   // ---------------------------------------------------------------- gecko
   static time_t epoch_now() {
     auto t = id(ha_time).now();
@@ -2036,31 +2228,6 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       return false;
     seconds = now > (time_t) this->gecko_since_ ? (uint32_t) (now - this->gecko_since_) : 0;
     return true;
-  }
-
-  // Overview line below the status row: in / out of the nest and for how long, its weight.
-  void draw_overview_gecko_(Display &it) {
-    if (!this->vis_(OV_GECKO))
-      return;
-    const int cy = OV_GECKO.y + OV_GECKO.h / 2;
-    it.image(OV_GECKO.x + 10, cy, &id(gecko_icon_small), display::ImageAlign::CENTER);
-    char dur[20], buf[48];
-    uint32_t sec;
-    if (!this->gecko_known_) {
-      snprintf(buf, sizeof(buf), "no data from the scale");
-    } else if (!this->gecko_for_(sec)) {
-      snprintf(buf, sizeof(buf), "%s", this->gecko_in_ ? "in the nest" : "out");
-    } else {
-      fmt_duration(dur, sizeof(dur), sec);
-      snprintf(buf, sizeof(buf), "%s for %s", this->gecko_in_ ? "in the nest" : "out", dur);
-    }
-    this->text_(it, OV_GECKO.x + 24, cy, &id(tiny_font), TEXT, TextAlign::CENTER_LEFT, buf);
-    const float g = this->gecko_in_ ? sval(&id(scale_weight)) : this->last_stay_weight_;
-    if (this->gecko_known_ && !std::isnan(g)) {
-      snprintf(buf, sizeof(buf), "%.1f g", g);
-      this->text_(it, OV_GECKO.x + OV_GECKO.w, cy, &id(tiny_font), this->gecko_in_ ? TEXT : TEXT_DIM,
-                  TextAlign::CENTER_RIGHT, buf);
-    }
   }
 
   void draw_gecko_(Display &it) {
@@ -2190,6 +2357,13 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
   float last_stay_weight_{NAN};
   GeckoPeriod gecko_log_[GECKO_LOG_ROWS]{};  // newest first
   int gecko_log_n_{0};
+
+  // start page animation
+  gecko_scene::Scene scene_;
+  uint32_t frame_start_{0};
+  uint32_t frame_gap_{FRAME_MIN_MS};
+  uint32_t frame_count_{0}, frame_cost_sum_{0};
+  uint32_t step_us_{0}, sky_us_{0}, overlay_us_{0};  // timing of the last 100 frames
 
   // touch gesture tracking
   bool t_down_{false};

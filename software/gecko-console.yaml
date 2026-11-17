@@ -16,6 +16,7 @@ esphome:
   name: geckoconsole
   includes:
     - external_components/gecko_history.h
+    - external_components/gecko_scene.h
     - external_components/gecko_console.h
   on_boot:
     priority: 250
@@ -456,6 +457,17 @@ sensor:
     attribute: brightness
     on_value:
       - lambda: 'gecko_ui::ui.changed(gecko_ui::F_HEATER);'
+  # Start page sky: the historic weather code the controller follows (WMO), the controller's sun
+  # (its day is shifted, see gecko.yaml) and the historic moon
+  - platform: homeassistant
+    id: weather_wmo
+    entity_id: sensor.weather_code_in_france_noumea_182_days_ago
+  - platform: homeassistant
+    id: sun_elevation
+    entity_id: sensor.geckocontrol_sun_elevation
+  - platform: homeassistant
+    id: moon_illumination
+    entity_id: sensor.moon_in_france_noumea_182_days_ago
   # Gecko scale (g) under its nest; ~0 while the gecko is out
   - platform: homeassistant
     id: scale_weight
@@ -488,6 +500,13 @@ text_sensor:
     entity_id: sensor.geckocontrol_gecko_nest_log
     on_value:
       - lambda: 'gecko_ui::ui.gecko_log(x);'
+  # Start page countdown: the controller's next sunrise / sunset (when the colour sweeps start)
+  - platform: homeassistant
+    id: next_sunrise
+    entity_id: sensor.geckocontrol_next_sunrise
+  - platform: homeassistant
+    id: next_sunset
+    entity_id: sensor.geckocontrol_next_sunset
   # Shown on the Settings page
   - platform: wifi_info
     ssid:
@@ -627,6 +646,25 @@ font:
     id: icon_small
     size: 20
     glyphs: *icons
+  # Start page weather icon
+  - file:
+      type: web
+      url: https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/fonts/materialdesignicons-webfont.ttf
+    id: icon_big
+    size: 48
+    glyphs: [
+      "\U000F0599",  # weather-sunny
+      "\U000F0594",  # weather-night
+      "\U000F0595",  # weather-partly-cloudy
+      "\U000F0F31",  # weather-night-partly-cloudy
+      "\U000F0590",  # weather-cloudy
+      "\U000F0591",  # weather-fog
+      "\U000F0597",  # weather-rainy
+      "\U000F0596",  # weather-pouring
+      "\U000F0F33",  # weather-partly-rainy
+      "\U000F0598",  # weather-snowy
+      "\U000F067E",  # weather-lightning-rainy
+      ]
 
 color:
   - id: color_dark_purple
