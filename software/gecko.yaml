@@ -1059,6 +1059,28 @@ number:
           call.set_speed((int) x);
           call.perform();
 
+# Climate alarms (Home Assistant: "Problem" / "OK"). They look at the outcome only -- the
+# thermostat's and hygrostat's current value against their setpoint -- so they catch a blown lamp,
+# a clogged rain pipe or a lamp left on by hand, with the automations on or off. Raised after the
+# value has been out of range for `delay` without a break; cleared once it has been back inside the
+# limit by the hysteresis for `clear_delay`.
+geckoalarm:
+  id: gecko_alarm
+  thermostat: thermostat_air
+  hygrostat: hygrostat
+  temperature_deviation: 4      # K above / below the thermostat setpoint
+  humidity_deficit: 10          # %RH below the humidity setpoint
+  temperature_hysteresis: 0.5   # K
+  humidity_hysteresis: 2        # %RH
+  delay: 10min
+  clear_delay: 2min
+  overtemperature:
+    name: "Overtemperature Alarm"
+  undertemperature:
+    name: "Undertemperature Alarm"
+  low_humidity:
+    name: "Low Humidity Alarm"
+
 # PID auto-calibration: owns 5 tuned parameter sets (heat_day/heat_night/cool/humidify/dehumidify),
 # persists them, and swaps the active set per climate action. The thermostat's heating set is
 # additionally swapped on the day<->night transition (daylight lamp vs heat lamp). See PID_CALIBRATION.md.
