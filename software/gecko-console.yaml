@@ -222,6 +222,23 @@ binary_sensor:
     entity_id: light.geckocontrol_scenic_light
     on_state:
       - lambda: 'gecko_ui::ui.changed(gecko_ui::F_SCENIC);'
+  # Daylight lamp held by hand instead of by the thermostat (Sunlight page)
+  - platform: homeassistant
+    id: daylight_manual
+    entity_id: switch.geckocontrol_daylight_manual
+    on_state:
+      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_DAY_MANUAL);'
+  # Climate alarms of the controller (geckoalarm), shown on the start page. The start page redraws
+  # every frame, so they need no callback.
+  - platform: homeassistant
+    id: alarm_overtemperature
+    entity_id: binary_sensor.geckocontrol_overtemperature_alarm
+  - platform: homeassistant
+    id: alarm_undertemperature
+    entity_id: binary_sensor.geckocontrol_undertemperature_alarm
+  - platform: homeassistant
+    id: alarm_low_humidity
+    entity_id: binary_sensor.geckocontrol_low_humidity_alarm
 
 sensor:
   - platform: wifi_signal
@@ -504,6 +521,8 @@ font:
       "\U000F059C",  # weather-sunset-up
       "\U000F059B",  # weather-sunset-down
       "\U000F0595",  # weather-partly-cloudy
+      "\U000F0599",  # weather-sunny
+      "\U000F0026",  # alert
       ]
   - file:
       type: web

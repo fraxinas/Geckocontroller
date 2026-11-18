@@ -78,6 +78,8 @@ static const char *const E_THERMOSTAT = "climate.geckocontrol_thermostat_air";
 static const char *const E_SUNRISE_TEST = "button.geckocontrol_sunrise_test";
 static const char *const E_SUNSET_TEST = "button.geckocontrol_sunset_test";
 static const char *const E_WEATHER_OVERRIDE = "select.geckocontrol_weather_override_test";
+static const char *const E_DAY_MANUAL = "switch.geckocontrol_daylight_manual";
+static const char *const E_DAY_LEVEL = "number.geckocontrol_daylight_manual_level";
 
 // Material Design Icons 7.4.47 codepoints (see icon fonts in gecko-console.yaml)
 #define ICON_THERMOMETER "\U000F050F"
@@ -94,6 +96,8 @@ static const char *const E_WEATHER_OVERRIDE = "select.geckocontrol_weather_overr
 #define ICON_SUNSET_UP "\U000F059C"
 #define ICON_SUNSET_DOWN "\U000F059B"
 #define ICON_PARTLY_CLOUDY "\U000F0595"
+#define ICON_SUNNY "\U000F0599"
+#define ICON_ALERT "\U000F0026"
 // weather icons of the start page (icon_big)
 #define ICON_W_SUNNY "\U000F0599"
 #define ICON_W_NIGHT "\U000F0594"
@@ -184,7 +188,7 @@ struct Box {
 
 enum class Page : uint8_t { OVERVIEW, MENU, THERMO, HYGRO, WIND, GROW, SCENIC, GECKO, TESTS, SETTINGS };
 
-// Menu grid, row-major (4x2): climate and grow light in the top row, scenic light, gecko, light
+// Menu grid, row-major (4x2): climate and sunlight (Page::GROW) in the top row, scenic light, gecko, light
 // tests and settings below. Swiping on a subpage follows this order, skipping Settings.
 static const Page MENU_PAGES[] = {Page::THERMO, Page::HYGRO, Page::WIND,  Page::GROW,
                                   Page::SCENIC, Page::GECKO, Page::TESTS, Page::SETTINGS};
@@ -210,6 +214,7 @@ enum Field : uint8_t {
   F_SCALE,
   F_BACKLIGHT,
   F_TEST_STATE,  // scenic light effect or weather override (Light tests page)
+  F_DAY_MANUAL,  // daylight lamp held by hand or by the thermostat
 };
 
 // Controls on the subpages
@@ -231,6 +236,8 @@ enum Ctl : uint8_t {
   C_SUNRISE_TEST,
   C_SUNSET_TEST,
   C_WEATHER_TEST,
+  C_DAY_MANUAL,
+  C_DAY_LEVEL,
   C_COUNT,
   C_NONE = 0xFF,
 };
@@ -245,11 +252,10 @@ struct Control {
 // ------------------------------------------------------------------ layout
 // One layout for all subpages with a history graph (Thermo, Hygro & Rain, Wind): values on the
 // left, the graph on the right (every graph is 158x94, see gecko-console.yaml), controls below.
-// Grow light uses the same rows without the graph; Scenic light has its own layout.
+// Sunlight and Scenic light have their own layouts.
 static constexpr Box VALUES_LEFT{0, 30, 152, 104};
 static constexpr int GRAPH_X = 156, GRAPH_Y = 32;
 static constexpr Box GRAPH_BOX{GRAPH_X, GRAPH_Y, HIST_LEN, 94};
-static constexpr Box VALUES_BOX{8, 32, W - 16, 96};  // full width (Grow light)
 static constexpr Box TOGGLE_ROW{8, 134, W - 16, 32};
 static constexpr int SLIDER_LABEL_Y = 180;
 static constexpr Box SLIDER_BOX{8, 190, W - 16, 44};
@@ -280,9 +286,16 @@ static const Control WIND_CONTROLS[] = {
     {C_WIND_SPEED, Kind::SLIDER, SLIDER_BOX},
     {C_GRAPH, Kind::BUTTON, GRAPH_BOX},
 };
+// Sunlight (Page::GROW): the growlight -- what the terrarium looks like, run by the light
+// automation -- and the daylight lamp -- the daytime heater, run by the thermostat unless held by
+// hand. Each a toggle, a label line and a slider.
+static constexpr Box GROW_INFO{0, 64, W, 18};
+static constexpr Box DAY_INFO{0, 168, W, 18};
 static const Control GROW_CONTROLS[] = {
-    {C_GROW_AUTO, Kind::TOGGLE, TOGGLE_ROW},
-    {C_GROW_LEVEL, Kind::SLIDER, SLIDER_BOX},
+    {C_GROW_AUTO, Kind::TOGGLE, {8, 30, W - 16, 32}},
+    {C_GROW_LEVEL, Kind::SLIDER, {8, 82, W - 16, 44}},
+    {C_DAY_MANUAL, Kind::TOGGLE, {8, 134, W - 16, 32}},
+    {C_DAY_LEVEL, Kind::SLIDER, {8, 186, W - 16, 44}},
 };
 static const Control SCENIC_CONTROLS[] = {
     {C_SCENIC_AUTO, Kind::TOGGLE, {186, 32, 130, 34}},
@@ -314,6 +327,12 @@ static constexpr uint32_t SHOW_IN_MS = 2000, SHOW_OUT_MS = 6000;  // from / back
 static constexpr float SHOW_LOW = -10.f, SHOW_HIGH = 18.f;      // the sun's way, degrees
 static constexpr float SHOW_COVER = 0.5f;  // at least partly cloudy: clouds to colour
 static constexpr time_t SHOW_PRESS_S = 30;  // a sweep this soon after its test button press is the test
+
+// Climate alarms of the controller (geckoalarm). A raised one takes the start page's sun row,
+// pulsing red; two at once (too hot / cold and too dry) take turns. Tapping it opens its page.
+enum class Alarm : uint8_t { OVERTEMPERATURE, UNDERTEMPERATURE, LOW_HUMIDITY, COUNT, NONE = COUNT };
+static constexpr int ALARM_COUNT = static_cast<int>(Alarm::COUNT);
+static constexpr uint32_t ALARM_TURN_MS = 3000;
 
 // Light tests: test sunrise / sunset and the weather override (cycles through its options) for
 // trying out the light scenes; below them the running scenic effect and the weather in force.
@@ -538,11 +557,14 @@ class UI {
         break;
       case Page::GROW:
         if (f == F_GROW) {
-          this->invalidate(VALUES_BOX);
+          this->invalidate(GROW_INFO);
           if (!this->held_(C_GROW_LEVEL))
             this->invalidate_ctl_(C_GROW_LEVEL);
-        } else if (f == F_LIGHT_AUTO) {
-          this->invalidate_all();
+        } else if (f == F_HEATER) {  // the daylight lamp's level
+          if (!this->held_(C_DAY_LEVEL))
+            this->invalidate_ctl_(C_DAY_LEVEL);
+        } else if (f == F_LIGHT_AUTO || f == F_DAY_MANUAL) {
+          this->invalidate_all();  // slider enabled state changes
         }
         break;
       case Page::SCENIC:
@@ -854,7 +876,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case Page::THERMO: n = 3; return THERMO_CONTROLS;
       case Page::HYGRO: n = 4; return HYGRO_CONTROLS;
       case Page::WIND: n = 3; return WIND_CONTROLS;
-      case Page::GROW: n = 2; return GROW_CONTROLS;
+      case Page::GROW: n = 4; return GROW_CONTROLS;
       case Page::SCENIC: n = 3; return SCENIC_CONTROLS;
       case Page::GECKO: n = 1; return GECKO_CONTROLS;
       case Page::TESTS: n = 3; return TESTS_CONTROLS;
@@ -925,7 +947,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         else if (ST_HUM.contains(x, y))
           this->go_(Page::HYGRO);
         else if (ST_SUN.contains(x, y))
-          this->go_(Page::SCENIC);
+          this->go_(this->alarm_shown_ != Alarm::NONE ? alarm_page(this->alarm_shown_) : Page::SCENIC);
         else if (ST_NEST.contains(x, y))
           this->go_(Page::GECKO);
         else
@@ -982,6 +1004,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case C_WIND_SPEED: return !id(multifan_auto).state;
       case C_THERMO_SET: return !id(weather_setpoint).state;
       case C_GROW_LEVEL: case C_SCENIC_WHEEL: case C_SCENIC_BRI: return !id(light_automation).state;
+      case C_DAY_LEVEL: return id(daylight_manual).state;
       default: return true;
     }
   }
@@ -1004,6 +1027,8 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         return {0.f, 100.f, 5.f, 5.f, "%.0f%%", "%.0f%% (auto)"};
       case C_BACKLIGHT:  // never fully dark: the screen must stay readable
         return {5.f, 100.f, 5.f, 5.f, "%.0f%%", "%.0f%%"};
+      case C_DAY_LEVEL:
+        return {0.f, 100.f, 1.f, 5.f, "%.0f%%", "%.0f%% (thermostat)"};
       default:
         return {0.f, 100.f, 1.f, 5.f, "%.0f%%", "%.0f%% (auto)"};
     }
@@ -1029,6 +1054,10 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case C_SCENIC_BRI: {
         const float b = sval(&id(scenic_light_brightness));
         return id(scenic_light_on).state && !std::isnan(b) ? b / 2.55f : 0.f;
+      }
+      case C_DAY_LEVEL: {
+        const float b = sval(&id(daylight_brightness));
+        return id(daylight_on).state && !std::isnan(b) ? b / 2.55f : 0.f;
       }
       case C_BACKLIGHT: {
         auto &v = id(backlight).remote_values;
@@ -1152,6 +1181,9 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case C_SCENIC_AUTO:
         this->ha_switch_(E_LIGHT_AUTO, !id(light_automation).state);
         break;
+      case C_DAY_MANUAL:
+        this->ha_switch_(E_DAY_MANUAL, !id(daylight_manual).state);
+        break;
       case C_GRAPH:
         this->range_ = (this->range_ + 1) % HIST_RANGE_COUNT;
         this->graph_pushes_ = history.pushes(this->range_);
@@ -1215,6 +1247,9 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         break;
       case C_THERMO_SET:
         id(ha_climate_temperature).execute(std::string(E_THERMOSTAT), this->local_[c]);
+        break;
+      case C_DAY_LEVEL:
+        id(ha_number).execute(std::string(E_DAY_LEVEL), this->local_[c]);
         break;
       case C_GROW_LEVEL:
         if (this->local_[c] > 0)
@@ -1456,7 +1491,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case Page::THERMO: return "Thermo";
       case Page::HYGRO: return "Hygro & Rain";
       case Page::WIND: return "Wind";
-      case Page::GROW: return "Grow light";
+      case Page::GROW: return "Sunlight";
       case Page::SCENIC: return "Scenic light";
       case Page::GECKO: return "Gecko";
       case Page::TESTS: return "Light tests";
@@ -1468,7 +1503,6 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
   static const char *menu_label(Page p) {
     switch (p) {
       case Page::HYGRO: return "Hygro";
-      case Page::GROW: return "Grow";
       case Page::SCENIC: return "Scenic";
       case Page::TESTS: return "Tests";
       default: return page_title(p);
@@ -1568,8 +1602,8 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
           snprintf(value, sizeof(value), "%.0f%%", p);
         break;
       }
-      case Page::GROW: {
-        icon = ICON_SPROUT;
+      case Page::GROW: {  // the growlight: what the terrarium looks like
+        icon = ICON_SUNNY;
         const float g = sval(&id(grow_light_brightness));
         if (id(grow_light_on).state && !std::isnan(g))
           snprintf(value, sizeof(value), "%.0f%%", g / 2.55f);
@@ -1872,27 +1906,25 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
   }
 
   void draw_grow_(Display &it) {
-    if (this->vis_(VALUES_BOX)) {
-      const int cy = VALUES_BOX.y + VALUES_BOX.h / 2;
-      const bool on = id(grow_light_on).state;
-      this->text_(it, 20, cy, &id(icon_font), on ? Color(120, 230, 90) : TEXT_DIM, TextAlign::CENTER_LEFT,
-                  ICON_SPROUT);
-      const float b = sval(&id(grow_light_brightness));
-      char buf[24];
-      if (on && !std::isnan(b))
-        snprintf(buf, sizeof(buf), "%.0f%%", b / 2.55f);
-      else
-        snprintf(buf, sizeof(buf), "off");
-      this->text_(it, 150, cy, &id(big_font), TEXT, TextAlign::CENTER, buf);
+    // growlight: light automation, level; the sun's share it is following
+    this->draw_toggle_(it, GROW_CONTROLS[0], ICON_SPROUT, "Light automation", id(light_automation).state);
+    if (this->vis_(GROW_INFO)) {
+      const int cy = GROW_INFO.y + GROW_INFO.h / 2;
+      this->text_(it, 12, cy, &id(tiny_font), TEXT_DIM, TextAlign::CENTER_LEFT, "Grow light");
       const float ill = sval(&id(illumination));
       if (!std::isnan(ill)) {
+        char buf[16];
         snprintf(buf, sizeof(buf), "sun %.0f%%", ill);
         this->text_(it, W - 12, cy, &id(tiny_font), TEXT_DIM, TextAlign::CENTER_RIGHT, buf);
       }
     }
-    this->draw_toggle_(it, GROW_CONTROLS[0], nullptr, "Light automation", id(light_automation).state);
-    this->draw_slider_label_(it, "Brightness");
     this->draw_slider_(it, GROW_CONTROLS[1]);
+    // daylight lamp: by the thermostat or by hand
+    this->draw_toggle_(it, GROW_CONTROLS[2], ICON_SUNNY, "Daylight manual", id(daylight_manual).state);
+    if (this->vis_(DAY_INFO))
+      this->text_(it, 12, DAY_INFO.y + DAY_INFO.h / 2, &id(tiny_font), TEXT_DIM, TextAlign::CENTER_LEFT,
+                  "Daylight lamp (heater)");
+    this->draw_slider_(it, GROW_CONTROLS[3], Color(130, 100, 40));
   }
 
   void draw_scenic_(Display &it) {
@@ -2122,8 +2154,14 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       climate(ST_HUM, cur, tgt, "%.0f%%", "%+.0f", "set %.0f", hum_color(cur - tgt));
     }
 
+    // a climate alarm, in place of the next sunrise / sunset
+    this->alarm_shown_ = this->alarm_due_();
+    if (this->alarm_shown_ != Alarm::NONE) {
+      if (this->vis_(ST_SUN))
+        this->draw_alarm_(it, this->alarm_shown_);
+    }
     // next sunrise / sunset (the colour sweeps start then)
-    if (this->vis_(ST_SUN)) {
+    else if (this->vis_(ST_SUN)) {
       const int cy = ST_SUN.y + ST_SUN.h / 2 + 1;
       const time_t t = epoch_now(), rise = parse_utc(id(next_sunrise).state), set = parse_utc(id(next_sunset).state);
       const std::string &fx = id(scenic_light_effect).state;
@@ -2270,6 +2308,43 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
     }
   }
 
+  static bool alarm_on(Alarm a) {
+    switch (a) {
+      case Alarm::OVERTEMPERATURE: return id(alarm_overtemperature).state;
+      case Alarm::UNDERTEMPERATURE: return id(alarm_undertemperature).state;
+      case Alarm::LOW_HUMIDITY: return id(alarm_low_humidity).state;
+      default: return false;
+    }
+  }
+  // The raised alarm to show now: one of them in turn, NONE if none is raised
+  static Alarm alarm_due_() {
+    Alarm on[ALARM_COUNT];
+    int n = 0;
+    for (int i = 0; i < ALARM_COUNT; i++)
+      if (alarm_on(static_cast<Alarm>(i)))
+        on[n++] = static_cast<Alarm>(i);
+    return n == 0 ? Alarm::NONE : on[(millis() / ALARM_TURN_MS) % n];
+  }
+  static Page alarm_page(Alarm a) { return a == Alarm::LOW_HUMIDITY ? Page::HYGRO : Page::THERMO; }
+
+  void draw_alarm_(Display &it, Alarm a) {
+    // pulsing at 1 Hz, inside the glass panel's rounded corners
+    const float p = 0.5f + 0.5f * std::sin(millis() * (2.f * (float) M_PI / 1000.f));
+    this->fill_(it, Box{ST_SUN.x + 4, ST_SUN.y + 3, ST_SUN.w - 8, ST_SUN.h - 3},
+                Color(130 + (int) (80 * p), 12 + (int) (18 * p), 12 + (int) (10 * p)));
+    const int cy = ST_SUN.y + ST_SUN.h / 2 + 1;
+    const bool temp = a != Alarm::LOW_HUMIDITY;
+    const float cur = temp ? sval(&id(thermostat_current_temperature)) : sval(&id(humidity_current));
+    const float set = temp ? sval(&id(thermostat_target_temperature)) : sval(&id(humidity_target));
+    const char *label = a == Alarm::OVERTEMPERATURE ? "Too hot" : a == Alarm::UNDERTEMPERATURE ? "Too cold" : "Too dry";
+    char buf[32] = "";
+    if (!std::isnan(cur) && !std::isnan(set))
+      snprintf(buf, sizeof(buf), temp ? "%.1f° / set %.1f°" : "%.0f%% / set %.0f%%", cur, set);
+    this->text_(it, ST_SUN.x + 12, cy, &id(icon_small), TEXT, TextAlign::CENTER_LEFT, ICON_ALERT);
+    this->text_(it, ST_SUN.x + 40, cy, &id(mid_font), TEXT, TextAlign::CENTER_LEFT, label);
+    this->text_(it, ST_SUN.x + ST_SUN.w - 10, cy, &id(tiny_font), TEXT, TextAlign::CENTER_RIGHT, buf);
+  }
+
   // The test sweep the scenic light runs ("Sunrise" / "Sunset"), nullptr if none
   static const char *sweep_test() {
     const std::string &fx = id(scenic_light_effect).state;
@@ -2368,6 +2443,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
   bool show_ending_{false};  // the sweep is over: blending back
   bool show_rise_{true};
   uint32_t show_start_{0}, show_end_{0};
+  Alarm alarm_shown_{Alarm::NONE};  // in the sun row, as last drawn
 
   // touch gesture tracking
   bool t_down_{false};
