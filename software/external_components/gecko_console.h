@@ -25,7 +25,9 @@
 //
 // Interaction model
 // -----------------
-// Start page (live sky, gecko_scene.h) -> Menu (4x2 tiles) -> subpage. On a subpage the encoder moves the focus between its
+// Start page (live sky, gecko_scene.h) -> Menu (4x2 tiles) -> subpage. The DevKitC console is operated
+// by touch alone; turn()/push()/back() still serve a rotary encoder and a back button if one is wired.
+// On a subpage the encoder moves the focus between its
 // controls and the header's back arrow; push goes back, toggles/presses, or enters edit mode for sliders and the colour wheel (turn
 // changes the value, push confirms; the wheel edits hue, then saturation). Touch acts directly:
 // tap toggles/presses, drag on a slider or the wheel sets the value, a horizontal swipe switches
@@ -80,7 +82,6 @@ static const char *const E_WEATHER_OVERRIDE = "select.geckocontrol_weather_overr
 // Material Design Icons 7.4.47 codepoints (see icon fonts in gecko-console.yaml)
 #define ICON_THERMOMETER "\U000F050F"
 #define ICON_WATER_PERCENT "\U000F058E"
-#define ICON_MOLECULE_CO2 "\U000F07E4"
 #define ICON_WEATHER_RAINY "\U000F0597"
 #define ICON_CUP_WATER "\U000F01AB"
 #define ICON_WEATHER_WINDY "\U000F059D"
@@ -123,7 +124,7 @@ static const Color ARMED(230, 120, 20);
 static const Color T_NOW(255, 100, 100);    // color_now
 static const Color T_WEATHER(255, 230, 60);  // color_weather
 static const Color T_TARGET(80, 220, 100);   // color_target
-static const Color T_LEVEL(60, 200, 230);    // color_level (reservoir, wind speed, CO2)
+static const Color T_LEVEL(60, 200, 230);    // color_level (reservoir, wind speed)
 static const Color T_CEILING(70, 120, 255);  // color_ceiling
 static const Color T_GROUND(230, 90, 200);   // color_ground
 static const Color T_DAYLIGHT(255, 150, 40);   // daylight lamp level (Thermo graph, own 0-100% scale)
@@ -147,19 +148,10 @@ enum Series : uint8_t {
   S_RESERVOIR,
   S_WIND,
   S_WIND_WEATHER,
-  S_CO2,
   S_WEIGHT,  // gecko weight, only while it sits on the scale (gaps otherwise)
   S_COUNT,
 };
 inline History<S_COUNT> history;
-
-// CO2 level colour, green -> yellow (~1100 ppm) -> red (from 1500 ppm). The RGB status LEDs, the
-// overview tile and the CO2 graph all use it.
-inline Color co2_color(float ppm) {
-  const float g = clamp(1.6f - 0.001f * ppm, 0.f, 1.f);
-  const float r = clamp(-0.5f + 0.001f * ppm, 0.f, 1.f);
-  return Color((uint8_t) std::lround(r * 255), (uint8_t) std::lround(g * 255), 0);
-}
 
 // One line of a graph: a fixed colour, or `color_of` colours every point by its value.
 struct Trace {
@@ -176,7 +168,6 @@ static const Trace HYGRO_TRACES[] = {{S_RESERVOIR, T_LEVEL, 1},
                                      {S_HUM_TARGET, T_WEATHER, 1},
                                      {S_HUM_NOW, T_NOW, 2}};
 static const Trace WIND_TRACES[] = {{S_WIND_WEATHER, T_WEATHER, 1}, {S_WIND, T_LEVEL, 2}};
-static const Trace CO2_TRACES[] = {{S_CO2, T_LEVEL, 2, co2_color}};
 static const Trace GECKO_TRACES[] = {{S_WEIGHT, T_GECKO, 2}};
 
 struct Box {
@@ -191,12 +182,12 @@ struct Box {
   bool intersects(const Box &o) const { return !intersect(o).empty(); }
 };
 
-enum class Page : uint8_t { OVERVIEW, MENU, THERMO, HYGRO, WIND, GROW, SCENIC, CO2, GECKO, SETTINGS };
+enum class Page : uint8_t { OVERVIEW, MENU, THERMO, HYGRO, WIND, GROW, SCENIC, GECKO, TESTS, SETTINGS };
 
-// Menu grid, row-major (4x2): climate in the top row, lights, gecko and settings below. Swiping on
-// a subpage follows this order, skipping Settings.
-static const Page MENU_PAGES[] = {Page::THERMO, Page::HYGRO,  Page::WIND,  Page::CO2,
-                                  Page::GROW,   Page::SCENIC, Page::GECKO, Page::SETTINGS};
+// Menu grid, row-major (4x2): climate and grow light in the top row, scenic light, gecko, light
+// tests and settings below. Swiping on a subpage follows this order, skipping Settings.
+static const Page MENU_PAGES[] = {Page::THERMO, Page::HYGRO, Page::WIND,  Page::GROW,
+                                  Page::SCENIC, Page::GECKO, Page::TESTS, Page::SETTINGS};
 static constexpr int MENU_COUNT = sizeof(MENU_PAGES) / sizeof(MENU_PAGES[0]);
 static constexpr int MENU_COLS = 4;
 
@@ -207,7 +198,6 @@ enum Field : uint8_t {
   F_WIFI,
   F_TEMP,
   F_HUM,
-  F_CO2,
   F_RESERVOIR,
   F_RAIN_AUTO,
   F_GROW,
@@ -215,14 +205,11 @@ enum Field : uint8_t {
   F_LIGHT_AUTO,
   F_WIND,
   F_WIND_AUTO,
-  F_CO2_SOUND,
-  F_CO2_LEDS,
-  F_CO2_ALARM,  // alarm threshold: values and the graph's threshold line
   F_HEATER,
   F_WEATHER_SET,
   F_SCALE,
   F_BACKLIGHT,
-  F_TEST_STATE,  // scenic light effect or weather override (Settings test buttons)
+  F_TEST_STATE,  // scenic light effect or weather override (Light tests page)
 };
 
 // Controls on the subpages
@@ -237,10 +224,6 @@ enum Ctl : uint8_t {
   C_SCENIC_AUTO,
   C_SCENIC_WHEEL,
   C_SCENIC_BRI,
-  C_CO2_SOUND,
-  C_CO2_LEDS,
-  C_CO2_CALIBRATE,
-  C_CO2_ALARM,
   C_WEATHER_SET,
   C_THERMO_SET,
   C_GRAPH,  // the history graph: push/tap cycles its time range
@@ -260,7 +243,7 @@ struct Control {
 };
 
 // ------------------------------------------------------------------ layout
-// One layout for all subpages with a history graph (Thermo, Hygro & Rain, Wind, CO2): values on the
+// One layout for all subpages with a history graph (Thermo, Hygro & Rain, Wind): values on the
 // left, the graph on the right (every graph is 158x94, see gecko-console.yaml), controls below.
 // Grow light uses the same rows without the graph; Scenic light has its own layout.
 static constexpr Box VALUES_LEFT{0, 30, 152, 104};
@@ -306,15 +289,6 @@ static const Control SCENIC_CONTROLS[] = {
     {C_SCENIC_WHEEL, Kind::WHEEL, WHEEL_BOX},
     {C_SCENIC_BRI, Kind::SLIDER, {4, 206, 176, 32}},
 };
-// The alarm threshold is a compact slider in the values column, below the status line.
-static constexpr Box CO2_ALARM_BOX{8, 104, VALUES_LEFT.w - 8, 30};
-static const Control CO2_CONTROLS[] = {
-    {C_CO2_ALARM, Kind::SLIDER, CO2_ALARM_BOX},
-    {C_CO2_SOUND, Kind::TOGGLE, TOGGLE_ROW},
-    {C_CO2_LEDS, Kind::SLIDER, {8, 190, 152, 44}},
-    {C_CO2_CALIBRATE, Kind::CONFIRM, {164, 190, 148, 44}},
-    {C_GRAPH, Kind::BUTTON, GRAPH_BOX},
-};
 // Gecko: the scale sits under its nest. How long it has been in / out, weight and graph like the
 // other graph pages, the latest completed in / out periods below. In / out is decided and logged by
 // the controller (gecko_nest.h there), which keeps it across reboots.
@@ -328,17 +302,22 @@ static const Control GECKO_CONTROLS[] = {
 // the next sunrise / sunset and the nest below. Redrawn as a whole every frame.
 static const gecko_scene::Glass START_GLASS[] = {{6, 30, 250, 94}, {6, 168, 308, 66}};
 static constexpr Box ST_WEATHER{6, 30, 76, 94}, ST_TEMP{82, 30, 174, 47}, ST_HUM{82, 77, 174, 47};
-static constexpr Box ST_SUN{6, 168, 308, 33}, ST_NEST{6, 201, 308, 33}, ST_CO2{190, 0, 96, 26};
+static constexpr Box ST_SUN{6, 168, 308, 33}, ST_NEST{6, 201, 308, 33};
 static constexpr uint32_t FRAME_MIN_MS = 100;  // at most 10 frames per second ...
 // ... and at least twice the time a frame takes, so the animation leaves half the CPU to the rest
 
-// Settings: network info lines; test sunrise / sunset and the weather override (cycles through its
-// options) for trying out the light scenes; display brightness slider in the usual slider row.
+// Light tests: test sunrise / sunset and the weather override (cycles through its options) for
+// trying out the light scenes; below them the running scenic effect and the weather in force.
+static constexpr Box TESTS_INFO{0, 164, W, H - 164};
+static const Control TESTS_CONTROLS[] = {
+    {C_SUNRISE_TEST, Kind::BUTTON, {8, 34, 148, 60}},
+    {C_SUNSET_TEST, Kind::BUTTON, {164, 34, 148, 60}},
+    {C_WEATHER_TEST, Kind::BUTTON, {8, 100, W - 16, 60}},
+};
+
+// Settings: network info lines; display brightness slider in the usual slider row.
 static constexpr Box SETTINGS_INFO{0, 30, W, 74};
 static const Control SETTINGS_CONTROLS[] = {
-    {C_SUNRISE_TEST, Kind::BUTTON, {8, 106, 148, 32}},
-    {C_SUNSET_TEST, Kind::BUTTON, {164, 106, 148, 32}},
-    {C_WEATHER_TEST, Kind::BUTTON, {8, 140, W - 16, 32}},
     {C_BACKLIGHT, Kind::SLIDER, SLIDER_BOX},
 };
 
@@ -509,10 +488,10 @@ class UI {
           case F_TEMP: p = Page::THERMO; break;
           case F_HUM: p = Page::HYGRO; break;
           case F_WIND: p = Page::WIND; break;
-          case F_CO2: p = Page::CO2; break;
           case F_GROW: p = Page::GROW; break;
           case F_SCENIC: p = Page::SCENIC; break;
           case F_SCALE: p = Page::GECKO; break;
+          case F_TEST_STATE: p = Page::TESTS; break;
           default: break;
         }
         const int tile = menu_index(p);
@@ -566,22 +545,17 @@ class UI {
           this->invalidate_all();
         }
         break;
-      case Page::CO2:
-        if (f == F_CO2) {
-          this->invalidate(VALUES_LEFT);
-        } else if (f == F_CO2_ALARM && !this->held_(C_CO2_ALARM)) {
-          this->invalidate(VALUES_LEFT);
-          this->invalidate(GRAPH_BOX);
-        } else if (f == F_CO2_SOUND) {
-          this->invalidate_ctl_(C_CO2_SOUND);
-        } else if (f == F_CO2_LEDS && !this->held_(C_CO2_LEDS)) {
-          this->invalidate_ctl_(C_CO2_LEDS);
-        }
-        break;
       case Page::GECKO:
         if (f == F_SCALE || f == F_CLOCK) {  // the clock ages the in / out duration
           this->invalidate(VALUES_LEFT);
           this->invalidate(GECKO_LOG);
+        }
+        break;
+      case Page::TESTS:
+        if (f == F_TEST_STATE) {
+          for (Ctl c : {C_SUNRISE_TEST, C_SUNSET_TEST, C_WEATHER_TEST})
+            this->invalidate_ctl_(c);
+          this->invalidate(TESTS_INFO);
         }
         break;
       case Page::SETTINGS:
@@ -589,9 +563,6 @@ class UI {
           this->invalidate(SETTINGS_INFO);
         else if (f == F_BACKLIGHT && !this->held_(C_BACKLIGHT))
           this->invalidate_ctl_(C_BACKLIGHT);
-        else if (f == F_TEST_STATE)
-          for (Ctl c : {C_SUNRISE_TEST, C_SUNSET_TEST, C_WEATHER_TEST})
-            this->invalidate_ctl_(c);
         break;
     }
   }
@@ -850,9 +821,9 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case Page::WIND: n = 3; return WIND_CONTROLS;
       case Page::GROW: n = 2; return GROW_CONTROLS;
       case Page::SCENIC: n = 3; return SCENIC_CONTROLS;
-      case Page::CO2: n = 5; return CO2_CONTROLS;
       case Page::GECKO: n = 1; return GECKO_CONTROLS;
-      case Page::SETTINGS: n = 4; return SETTINGS_CONTROLS;
+      case Page::TESTS: n = 3; return TESTS_CONTROLS;
+      case Page::SETTINGS: n = 1; return SETTINGS_CONTROLS;
       default: n = 0; return nullptr;
     }
   }
@@ -918,8 +889,6 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
           this->go_(Page::THERMO);
         else if (ST_HUM.contains(x, y))
           this->go_(Page::HYGRO);
-        else if (ST_CO2.contains(x, y))
-          this->go_(Page::CO2);
         else if (ST_SUN.contains(x, y))
           this->go_(Page::SCENIC);
         else if (ST_NEST.contains(x, y))
@@ -998,8 +967,6 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         return {12.f, 36.f, 0.5f, 0.5f, "%.1f°C", "%.1f°C (weather)"};
       case C_WIND_SPEED:  // number step 5
         return {0.f, 100.f, 5.f, 5.f, "%.0f%%", "%.0f%% (auto)"};
-      case C_CO2_ALARM:  // co2_alarm_threshold number range
-        return {800.f, 5000.f, 50.f, 50.f, "alarm %.0f ppm", "alarm %.0f ppm"};
       case C_BACKLIGHT:  // never fully dark: the screen must stay readable
         return {5.f, 100.f, 5.f, 5.f, "%.0f%%", "%.0f%%"};
       default:
@@ -1020,8 +987,6 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         const float v = sval(&id(fan_manual_speed));
         return std::isnan(v) ? 0.f : v;
       }
-      case C_CO2_ALARM:
-        return id(co2_alarm_threshold).state;
       case C_GROW_LEVEL: {
         const float b = sval(&id(grow_light_brightness));
         return id(grow_light_on).state && !std::isnan(b) ? b / 2.55f : 0.f;
@@ -1029,10 +994,6 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case C_SCENIC_BRI: {
         const float b = sval(&id(scenic_light_brightness));
         return id(scenic_light_on).state && !std::isnan(b) ? b / 2.55f : 0.f;
-      }
-      case C_CO2_LEDS: {
-        auto &v = id(rgb_leds).remote_values;
-        return v.is_on() ? v.get_brightness() * 100.f : 0.f;
       }
       case C_BACKLIGHT: {
         auto &v = id(backlight).remote_values;
@@ -1053,8 +1014,6 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
     this->invalidate_ctl_(c);
     if (c == C_SCENIC_BRI)
       this->invalidate(SCENIC_VALUES);
-    if (c == C_CO2_ALARM)
-      this->invalidate(GRAPH_BOX);  // the threshold line follows
   }
 
   // Current scenic hue (deg) / saturation (0-1) as shown.
@@ -1158,9 +1117,6 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case C_SCENIC_AUTO:
         this->ha_switch_(E_LIGHT_AUTO, !id(light_automation).state);
         break;
-      case C_CO2_SOUND:
-        id(co2_warning_sound).toggle();
-        break;
       case C_GRAPH:
         this->range_ = (this->range_ + 1) % HIST_RANGE_COUNT;
         this->graph_pushes_ = history.pushes(this->range_);
@@ -1172,10 +1128,6 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case C_REFILLED:
         if (this->confirmed_(C_REFILLED))
           id(ha_call).execute(std::string("button.press"), std::string(E_REFILLED));
-        break;
-      case C_CO2_CALIBRATE:
-        if (this->confirmed_(C_CO2_CALIBRATE))
-          id(co2_calibrate).execute();
         break;
       case C_SUNRISE_TEST:
         id(ha_call).execute(std::string("button.press"), std::string(E_SUNRISE_TEST));
@@ -1226,9 +1178,6 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case C_WIND_SPEED:
         id(ha_number).execute(std::string(E_WIND_SPEED), this->local_[c]);
         break;
-      case C_CO2_ALARM:  // a number on this device, no Home Assistant round trip
-        id(co2_alarm_threshold).make_call().set_value(this->local_[c]).perform();
-        break;
       case C_THERMO_SET:
         id(ha_climate_temperature).execute(std::string(E_THERMOSTAT), this->local_[c]);
         break;
@@ -1249,13 +1198,6 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
           id(ha_light_hs).execute(std::string(E_SCENIC_LIGHT), h, s * 100.f, (int) std::lround(b * 2.55f));
         else
           id(ha_call).execute(std::string("light.turn_off"), std::string(E_SCENIC_LIGHT));
-        break;
-      }
-      case C_CO2_LEDS: {
-        auto call = this->local_[c] > 0 ? id(rgb_leds).turn_on() : id(rgb_leds).turn_off();
-        if (this->local_[c] > 0)
-          call.set_brightness(this->local_[c] / 100.f);
-        call.perform();
         break;
       }
       case C_BACKLIGHT: {
@@ -1459,13 +1401,13 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         this->draw_header_(it, page_title(this->page_));
         this->draw_scenic_(it);
         break;
-      case Page::CO2:
-        this->draw_header_(it, page_title(this->page_));
-        this->draw_co2_(it);
-        break;
       case Page::GECKO:
         this->draw_header_(it, page_title(this->page_));
         this->draw_gecko_(it);
+        break;
+      case Page::TESTS:
+        this->draw_header_(it, page_title(this->page_));
+        this->draw_tests_(it);
         break;
       case Page::SETTINGS:
         this->draw_header_(it, page_title(this->page_));
@@ -1481,8 +1423,8 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case Page::WIND: return "Wind";
       case Page::GROW: return "Grow light";
       case Page::SCENIC: return "Scenic light";
-      case Page::CO2: return "CO₂";
       case Page::GECKO: return "Gecko";
+      case Page::TESTS: return "Light tests";
       case Page::SETTINGS: return "Settings";
       default: return "";
     }
@@ -1493,6 +1435,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       case Page::HYGRO: return "Hygro";
       case Page::GROW: return "Grow";
       case Page::SCENIC: return "Scenic";
+      case Page::TESTS: return "Tests";
       default: return page_title(p);
     }
   }
@@ -1552,13 +1495,6 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
     if (std::isnan(d))
       return NO_DATA;
     return Color(clamp(-36.4f * d, 0.f, 255.f), clamp(255.f - 5.2f * d * d, 0.f, 255.f), clamp(36.4f * d, 0.f, 255.f));
-  }
-  static const char *co2_status(float ppm) {
-    if (ppm < 1000)
-      return "good";
-    if (ppm < id(co2_alarm_threshold).state)
-      return "elevated";
-    return "alarm";
   }
 
   void draw_menu_tile_(Display &it, int i) {
@@ -1623,13 +1559,6 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
         }
         break;
       }
-      case Page::CO2: {
-        icon = ICON_MOLECULE_CO2;
-        if (id(co2_val).has_state() && !id(co2_sensor).status_has_warning())
-          snprintf(value, sizeof(value), "%.0f", id(co2_val).state);  // ppm does not fit
-        ic = id(color_co2);
-        break;
-      }
       case Page::GECKO:  // its weight while in the nest, "out" otherwise
         if (this->gecko_known_ && !this->gecko_in_) {
           snprintf(value, sizeof(value), "out");
@@ -1637,6 +1566,10 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
           const float g = sval(&id(scale_weight));
           snprintf(value, sizeof(value), std::isnan(g) ? "in" : "%.0f g", g);
         }
+        break;
+      case Page::TESTS:  // highlighted while a test runs
+        icon = ICON_SUNSET_UP;
+        ic = sweep_test() != nullptr || !weather_live() ? ARMED : TEXT;
         break;
       case Page::SETTINGS:
         icon = ICON_COG;
@@ -1660,7 +1593,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
   }
 
   // Values next to a graph: big current value with a legend dot in its trace colour, a status bar,
-  // up to three labelled lines. Shared by Thermo, Hygro & Rain, Wind and CO2.
+  // up to three labelled lines. Shared by Thermo, Hygro & Rain and Wind.
   void draw_values_left_(Display &it, const char *big, const char *unit, Color dot, Color bar, float bar_frac) {
     it.filled_circle(12, 52, 4, dot);
     this->text_(it, 80, 52, &id(big_font), TEXT, TextAlign::CENTER, big);
@@ -1681,7 +1614,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
 
   bool has_graph_() const {
     return this->page_ == Page::THERMO || this->page_ == Page::HYGRO || this->page_ == Page::WIND ||
-           this->page_ == Page::CO2 || this->page_ == Page::GECKO;
+           this->page_ == Page::GECKO;
   }
   // The graph and everything computed from its range
   void invalidate_graph_() {
@@ -1959,27 +1892,6 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
                    3);
   }
 
-  void draw_co2_(Display &it) {
-    if (this->vis_(VALUES_LEFT)) {
-      const bool ok = id(co2_val).has_state() && !id(co2_sensor).status_has_warning();
-      char buf[24];
-      snprintf(buf, sizeof(buf), ok ? "%.0f" : "-", id(co2_val).state);
-      this->draw_values_left_(it, buf, ok ? "ppm" : nullptr, id(color_co2), id(color_co2), -1.f);
-      this->value_line_(it, LINE_Y[0], "status", TEXT_DIM, ok ? co2_status(id(co2_val).state) : "no data");
-    }
-    this->draw_slider_(it, CO2_CONTROLS[0], Color(120, 30, 24));  // alarm threshold
-    this->draw_graph_(it, CO2_TRACES, 1, 200.f, -1, -1, this->slider_value_(C_CO2_ALARM));
-    const bool sound = id(co2_warning_sound).state;
-    this->draw_toggle_(it, CO2_CONTROLS[1], sound ? ICON_BELL_RING : ICON_BELL_OFF, "Warning sound", sound);
-    this->draw_slider_label_(it, "LED brightness");
-    this->draw_slider_(it, CO2_CONTROLS[2]);
-    // Zero-point calibration: sets the current reading to 400 ppm, so only in fresh air.
-    const bool armed = this->armed_(C_CO2_CALIBRATE);
-    this->draw_button_(it, CO2_CONTROLS[3], armed ? nullptr : ICON_MOLECULE_CO2, armed ? "Confirm?" : "Calibrate",
-                       armed ? ARMED : TILE_BG);
-    this->text_(it, 164 + 74, SLIDER_LABEL_Y, &id(tiny_font), TEXT_DIM, TextAlign::CENTER, "in fresh air");
-  }
-
   // ---------------------------------------------------------------- start page
   // The weather in force: the "Weather Override (test)" choice, else the live historic code.
   int weather_code_() const {
@@ -2099,17 +2011,11 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
   void draw_start_overlay_(Display &it) {
     char buf[32];
 
-    // status line: clock, CO2, wifi
+    // status line: clock, wifi
     auto now = id(ha_time).now();
     if (now.is_valid()) {
       snprintf(buf, sizeof(buf), "%02d:%02d", now.hour, now.minute);
       this->text_shadow_(it, 10, 14, &id(mid_font), TEXT, TextAlign::CENTER_LEFT, buf);
-    }
-    if (id(co2_val).has_state() && !id(co2_sensor).status_has_warning() && this->vis_(ST_CO2)) {
-      snprintf(buf, sizeof(buf), "%.0f ppm", id(co2_val).state);
-      it.filled_circle(ST_CO2.x + 8, 14, 5, Color(0, 0, 0));
-      it.filled_circle(ST_CO2.x + 8, 14, 4, id(color_co2));
-      this->text_shadow_(it, ST_CO2.x + 18, 13, &id(tiny_font), TEXT, TextAlign::CENTER_LEFT, buf);
     }
     this->draw_wifi_(it);
 
@@ -2294,6 +2200,40 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
     }
   }
 
+  // The test sweep the scenic light runs ("Sunrise" / "Sunset"), nullptr if none
+  static const char *sweep_test() {
+    const std::string &fx = id(scenic_light_effect).state;
+    return fx == "Sunrise Color" ? "Sunrise" : fx == "Sunset Color" ? "Sunset" : nullptr;
+  }
+  // No weather override in force (or its state unknown)
+  static bool weather_live() {
+    const auto &wx = id(weather_override);
+    return !wx.has_state() || wx.state.empty() || wx.state == "(live)";
+  }
+
+  void draw_tests_(Display &it) {
+    // Highlighted while the sweep runs / while a weather override is in force.
+    const std::string &fx = id(scenic_light_effect).state;
+    this->draw_button_(it, TESTS_CONTROLS[0], ICON_SUNSET_UP, "Test sunrise",
+                       fx == "Sunrise Color" ? ARMED : TILE_BG);
+    this->draw_button_(it, TESTS_CONTROLS[1], ICON_SUNSET_DOWN, "Test sunset",
+                       fx == "Sunset Color" ? ARMED : TILE_BG);
+    const auto &wx = id(weather_override);
+    const bool live = weather_live();
+    char label[48];
+    snprintf(label, sizeof(label), "Weather: %s", !wx.has_state() ? "-" : live ? "live" : wx.state.c_str());
+    this->draw_button_(it, TESTS_CONTROLS[2], ICON_PARTLY_CLOUDY, label, live ? TILE_BG : ARMED);
+    if (this->vis_(TESTS_INFO)) {
+      const char *sweep = sweep_test();
+      char buf[48] = "No sweep running";
+      if (sweep != nullptr)
+        snprintf(buf, sizeof(buf), "%s sweep running", sweep);
+      this->text_(it, 12, 182, &id(tiny_font), sweep != nullptr ? TEXT : TEXT_DIM, TextAlign::CENTER_LEFT, buf);
+      this->text_(it, 12, 208, &id(tiny_font), TEXT_DIM, TextAlign::CENTER_LEFT,
+                  "Tap Weather again for the next one");
+    }
+  }
+
   void draw_settings_(Display &it) {
     if (this->vis_(SETTINGS_INFO)) {
       auto line = [&](int y, const char *label, const char *value) {
@@ -2309,19 +2249,8 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       line(76, "Signal", buf);
       line(94, "ESPHome", ESPHOME_VERSION);
     }
-    // Highlighted while the sweep runs / while a weather override is in force.
-    const std::string &fx = id(scenic_light_effect).state;
-    this->draw_button_(it, SETTINGS_CONTROLS[0], ICON_SUNSET_UP, "Test sunrise",
-                       fx == "Sunrise Color" ? ARMED : TILE_BG);
-    this->draw_button_(it, SETTINGS_CONTROLS[1], ICON_SUNSET_DOWN, "Test sunset",
-                       fx == "Sunset Color" ? ARMED : TILE_BG);
-    const auto &wx = id(weather_override);
-    const bool live = !wx.has_state() || wx.state == "(live)" || wx.state.empty();
-    char label[48];
-    snprintf(label, sizeof(label), "Weather: %s", !wx.has_state() ? "-" : live ? "live" : wx.state.c_str());
-    this->draw_button_(it, SETTINGS_CONTROLS[2], ICON_PARTLY_CLOUDY, label, live ? TILE_BG : ARMED);
     this->draw_slider_label_(it, "Display brightness");
-    this->draw_slider_(it, SETTINGS_CONTROLS[3]);
+    this->draw_slider_(it, SETTINGS_CONTROLS[0]);
   }
 
   // ---------------------------------------------------------------- state
@@ -2384,8 +2313,6 @@ inline UI ui;
 // Samples every graphed value into the history; called every 2 s from gecko-console.yaml. Nothing is
 // recorded while Home Assistant is disconnected (the values would be stale), leaving a gap.
 inline void sample_history() {
-  static const bool scaled = (history.set_scale(S_CO2, 1.f), true);  // ppm: whole units fit int16
-  (void) scaled;
   float v[S_COUNT];
   for (auto &x : v)
     x = NAN;
@@ -2410,8 +2337,6 @@ inline void sample_history() {
     v[S_RESERVOIR] = sval(&id(reservoir_level));
     v[S_WIND] = sval(&id(multifan_percentage));
     v[S_WIND_WEATHER] = sval(&id(weather_windspeed));
-    if (!id(co2_sensor).status_has_warning())
-      v[S_CO2] = sval(&id(co2_val));
     const float g = sval(&id(scale_weight));
     if (g >= GECKO_MIN_G)  // the scale reads ~0 while the gecko is out of its nest
       v[S_WEIGHT] = g;
