@@ -126,6 +126,26 @@ switch:
       - lambda: |-
           id(lights_enabled) = false;
 
+  # Daylight lamp by hand, for testing: while on, the lamp holds "Daylight Manual Level" instead of
+  # following the thermostat, day and night (only PID calibration takes it over); it starts from the
+  # lamp's current level. Nothing switches it off by itself -- the climate alarms (geckoalarm below)
+  # report a terrarium running too hot or too cold. Off after a reboot, like the automations are on.
+  - platform: template
+    name: "Daylight Manual"
+    id: daylight_manual_switch
+    icon: mdi:lightbulb-on-outline
+    restore_mode: DISABLED      # mirrors geckolights; off at boot
+    lambda: |-
+      return id(gecko_lights).daylight_manual().has_value();
+    turn_on_action:
+      - lambda: |-
+          const auto &rv = id(day_light).remote_values;
+          id(gecko_lights).set_daylight_manual(rv.is_on() ? rv.get_brightness() : 0.0f);
+          id(daylight_manual_level).publish_state(rv.is_on() ? rv.get_brightness() * 100.0f : 0.0f);
+    turn_off_action:
+      - lambda: |-
+          id(gecko_lights).set_daylight_manual(nullopt);
+
   # Weather-driven thermostat setpoint: on = the historic Noumea temperature sets the thermostat
   # target on every update; off = the target stays where it was set manually (HA / Geckoconsole).
   # Default on; switching it back on applies the current weather temperature right away.
@@ -1058,6 +1078,33 @@ number:
           call.set_state(x > 0.0f);
           call.set_speed((int) x);
           call.perform();
+
+  # Daylight lamp level (%) while "Daylight Manual" is on. Always tracks the lamp's real level, so
+  # it also shows what the thermostat runs it at; a set is refused (and snaps back) while
+  # "Daylight Manual" is off, as with "Fan Manual Speed".
+  - platform: template
+    name: "Daylight Manual Level"
+    id: daylight_manual_level
+    icon: mdi:brightness-percent
+    unit_of_measurement: "%"
+    mode: slider
+    min_value: 0
+    max_value: 100
+    step: 1
+    update_interval: 5s
+    lambda: |-
+      const auto &rv = id(day_light).remote_values;
+      return rv.is_on() ? rv.get_brightness() * 100.0f : 0.0f;
+    set_action:
+      - lambda: |-
+          if (!id(gecko_lights).daylight_manual().has_value()) {
+            ESP_LOGW("gecko", "daylight level %.0f%% ignored: Daylight Manual is off", x);
+            const auto &rv = id(day_light).remote_values;
+            id(daylight_manual_level).publish_state(rv.is_on() ? rv.get_brightness() * 100.0f : 0.0f);
+            return;
+          }
+          id(gecko_lights).set_daylight_manual(x / 100.0f);
+          id(daylight_manual_level).publish_state(x);
 
 # Climate alarms (Home Assistant: "Problem" / "OK"). They look at the outcome only -- the
 # thermostat's and hygrostat's current value against their setpoint -- so they catch a blown lamp,

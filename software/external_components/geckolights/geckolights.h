@@ -179,6 +179,14 @@ class GeckoLights : public Component, public output::FloatOutput {
   static constexpr uint32_t TEST_SWEEP_STEP_MS = 10000;
   void test_sweep(bool sunrise);
 
+  // Daylight lamp by hand ("Daylight Manual" switch and level, for testing): while set, the lamp
+  // holds this level (0-1) instead of following the thermostat, day and night, until released with
+  // an empty value; only PID calibration takes it over. The heat lamp carries on as usual. Nothing
+  // releases it on its own -- the climate alarms (gecko_alarm.h) report a terrarium running too hot
+  // or too cold, whatever the cause.
+  void set_daylight_manual(optional<float> level);
+  optional<float> daylight_manual() const { return this->daylight_manual_; }
+
   // --- Illumination controller (see update_illumination_ in the .cpp for the whole scheme) ---
   // How bright the terrarium *looks*, as opposed to how much heat the daylight lamp is making.
   // Driven by the sky attenuation scaled by the sun's elevation, and rendered on the growlight
@@ -262,6 +270,7 @@ class GeckoLights : public Component, public output::FloatOutput {
   const char *test_effect_{nullptr};
   bool test_pace_{false};
   optional<float> last_heat_output_{};                // last thermostat demand, to re-route it at once
+  optional<float> daylight_manual_{};                 // daylight lamp level held by hand (0-1)
 
   // --- Illumination controller state ---
   sun::Sun *sun_{nullptr};

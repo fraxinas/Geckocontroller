@@ -440,6 +440,8 @@ static constexpr float LAMP_EPSILON = 1e-4f;
 static constexpr uint32_t DAYLIGHT_FADE_MS = 30000;
 // Growlight and daylight lamp out as the scene goes dark (a storm moving in), and the growlight back.
 static constexpr uint32_t DARK_FADE_MS = 5000;
+// The daylight lamp set by hand follows its slider promptly.
+static constexpr uint32_t MANUAL_FADE_MS = 1000;
 
 // The PID re-runs on every ceiling-temperature reading (15 s) and re-writes *both* of its outputs
 // each time -- including a plain 0.0 to the heater while it is cooling. The resulting lamp command
@@ -491,13 +493,18 @@ void GeckoLights::write_state(float state) {
   // Thermostat OFF means no heating, as with any thermostat: both heaters go off -- once, on
   // entering OFF. After that the PID's writes (a plain 0.0 every poll) are ignored, so the lamps are
   // free for manual control from HA until the thermostat is switched back on.
+  // A daylight lamp set by hand ("Daylight Manual") keeps its level through this too.
+  const optional<float> manual = this->daylight_manual_;
   if (!calibrating && this->thermostat_->mode == climate::CLIMATE_MODE_OFF) {
     if (!this->thermostat_off_) {
       this->thermostat_off_ = true;
-      drive_lamp_(this->day_light_, 0.0f, DAYLIGHT_FADE_MS);
+      if (!manual.has_value())
+        drive_lamp_(this->day_light_, 0.0f, DAYLIGHT_FADE_MS);
       drive_lamp_(this->heat_lamp_, 0.0f);
       ESP_LOGI(TAG, "thermostat off -> heaters off, lamps left to manual control");
     }
+    if (manual.has_value())
+      drive_lamp_(this->day_light_, *manual, MANUAL_FADE_MS);
     return;
   }
   this->thermostat_off_ = false;
@@ -520,14 +527,37 @@ void GeckoLights::write_state(float state) {
   // heater off, so a day/night flip from any source hands over on the next PID cycle.
   // A dark scene (thunderstorm, test sweep) keeps the bright daylight lamp off by day too -- it would
   // wash out the lightning -- and the heat lamp carries the demand as at night; storms last hours.
+  // A daylight lamp set by hand holds its level through all of this; the heat lamp is unaffected.
   float level = clamp(state, 0.0f, 1.0f);
   const bool dark = this->dark_scene_();
   const bool daylight = globals::id(this->is_daytime_) && !dark;
-  bool acted = drive_lamp_(this->day_light_, daylight ? level : 0.0f, daylight || !dark ? DAYLIGHT_FADE_MS : DARK_FADE_MS);
+  const float day_level = manual.has_value() ? *manual : (daylight ? level : 0.0f);
+  const uint32_t day_fade = manual.has_value() ? MANUAL_FADE_MS : (daylight || !dark ? DAYLIGHT_FADE_MS : DARK_FADE_MS);
+  bool acted = drive_lamp_(this->day_light_, day_level, day_fade);
   acted |= drive_lamp_(this->heat_lamp_, daylight ? 0.0f : level);
   // Logged after the fact, and only when a lamp actually moved: an unchanged poll says nothing.
   if (acted)
-    ESP_LOGD(TAG, "Thermostat PID Controller %s write_action: %.3f", daylight ? "daylight" : "heat lamp", state);
+    ESP_LOGD(TAG, "Thermostat PID Controller %s write_action: %.3f%s", daylight ? "daylight" : "heat lamp", state,
+             manual.has_value() ? " (daylight lamp manual)" : "");
+}
+
+void GeckoLights::set_daylight_manual(optional<float> level) {
+  if (level.has_value())
+    level = clamp(*level, 0.0f, 1.0f);
+  const bool was = this->daylight_manual_.has_value();
+  this->daylight_manual_ = level;
+  if (level.has_value()) {
+    if (!was)
+      ESP_LOGI(TAG, "daylight lamp manual: %.0f%%", *level * 100.0f);
+  } else if (was) {
+    ESP_LOGI(TAG, "daylight lamp back to the thermostat");
+    // With the thermostat off, let its OFF path switch the released lamp off like on entering OFF.
+    this->thermostat_off_ = false;
+  }
+  if (this->last_heat_output_.has_value())
+    this->reroute_heat_();  // now, not on the next PID cycle
+  else if (level.has_value())
+    drive_lamp_(this->day_light_, *level, MANUAL_FADE_MS);  // before the thermostat's first write
 }
 
 // ------------------- Illumination controller -------------------
