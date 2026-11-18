@@ -306,6 +306,15 @@ static constexpr Box ST_SUN{6, 168, 308, 33}, ST_NEST{6, 201, 308, 33};
 static constexpr uint32_t FRAME_MIN_MS = 100;  // at most 10 frames per second ...
 // ... and at least twice the time a frame takes, so the animation leaves half the CPU to the rest
 
+// Test sunrise / sunset on the start page, alongside the terrarium (see sweep_check()): over the
+// sweep the sun rises from below the horizon (or sets), the clouds glowing in sunrise colours.
+static constexpr uint32_t SHOW_STEP_MS = 10000;        // TEST_SWEEP_STEP_MS in geckolights.h
+static constexpr uint32_t SHOW_MS = 6 * SHOW_STEP_MS;  // the sweep's six colour steps
+static constexpr uint32_t SHOW_IN_MS = 2000, SHOW_OUT_MS = 6000;  // from / back to the real sky
+static constexpr float SHOW_LOW = -10.f, SHOW_HIGH = 18.f;      // the sun's way, degrees
+static constexpr float SHOW_COVER = 0.5f;  // at least partly cloudy: clouds to colour
+static constexpr time_t SHOW_PRESS_S = 30;  // a sweep this soon after its test button press is the test
+
 // Light tests: test sunrise / sunset and the weather override (cycles through its options) for
 // trying out the light scenes; below them the running scenic effect and the weather in force.
 static constexpr Box TESTS_INFO{0, 164, W, H - 164};
@@ -565,6 +574,32 @@ class UI {
           this->invalidate_ctl_(C_BACKLIGHT);
         break;
     }
+  }
+
+  // The scenic light's effect or the last press of a test sweep button changed. A test sweep is
+  // played on the start page; the real ones need no help, the sky follows the real sun anyway. Both
+  // run the same "Sunrise Color" / "Sunset Color" effect: a sweep starting within SHOW_PRESS_S of
+  // its button's press (Home Assistant keeps the time as the button's state) is the test, whether
+  // pressed here or in Home Assistant. Either update may arrive first, so both call this.
+  void sweep_check() {
+    const std::string &fx = id(scenic_light_effect).state;
+    const bool rise = fx == "Sunrise Color";
+    if (!rise && fx != "Sunset Color") {
+      this->show_stop_();
+      return;
+    }
+    if (this->show_ && !this->show_ending_ && this->show_rise_ == rise)
+      return;  // already playing
+    const time_t now = epoch_now();
+    const time_t pressed = parse_utc(id(rise ? sunrise_test_pressed : sunset_test_pressed).state);
+    if (now == 0 || pressed == 0 || now - pressed > SHOW_PRESS_S || pressed - now > SHOW_PRESS_S)
+      return;
+    ESP_LOGI(TAG, "test %s: shown on the start page", rise ? "sunrise" : "sunset");
+    this->show_ = true;
+    this->show_ending_ = false;
+    this->show_rise_ = rise;
+    this->show_start_ = millis();
+    this->go_(Page::OVERVIEW);
   }
 
   // "Gecko nest Log" from the controller: "<in>,<since>;<in>,<start>,<seconds>,<weight x10>;..."
@@ -1956,10 +1991,42 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
     in.sun_elevation = !std::isnan(e) ? e : (id(daytime).state ? 30.f : -20.f);
     const float m = sval(&id(moon_illumination));
     in.moon = std::isnan(m) ? 50.f : m;
+    if (this->show_)
+      this->show_inputs_(in, now);
     this->scene_.set_inputs(in);
     this->scene_.step(now);
     this->step_us_ += micros() - t0;
   }
+  // The test sweep's sky over the real one (sweep_check()): blended in over SHOW_IN_MS, and out
+  // over SHOW_OUT_MS once the sweep is over.
+  void show_inputs_(gecko_scene::Inputs &in, uint32_t now) {
+    if (!this->show_ending_ && now - this->show_start_ > SHOW_MS + SHOW_STEP_MS)
+      this->show_stop_();  // the end of the sweep went missing
+    float w = gecko_scene::smooth(0.f, (float) SHOW_IN_MS, (float) (now - this->show_start_));
+    if (this->show_ending_) {
+      const uint32_t out = now - this->show_end_;
+      if (out >= SHOW_OUT_MS) {
+        this->show_ = false;
+        return;
+      }
+      w = std::min(w, 1.f - gecko_scene::smooth(0.f, (float) SHOW_OUT_MS, (float) out));
+    }
+    // the sun: up from below the horizon (or down) at an even pace, held where it is when it ends
+    const uint32_t ran = (this->show_ending_ ? this->show_end_ : now) - this->show_start_;
+    const float k = gecko_scene::clamp01((float) ran / SHOW_MS);
+    const float e = this->show_rise_ ? SHOW_LOW + (SHOW_HIGH - SHOW_LOW) * k : SHOW_HIGH - (SHOW_HIGH - SHOW_LOW) * k;
+    in.sun_elevation += (e - in.sun_elevation) * w;
+    in.cover_min = SHOW_COVER * w;
+    in.sun_clear = w;
+    in.glow = w;
+  }
+  void show_stop_() {
+    if (!this->show_ || this->show_ending_)
+      return;
+    this->show_ending_ = true;
+    this->show_end_ = millis();
+  }
+
   void frame_done_(uint32_t start, uint32_t cost) {
     this->frame_start_ = start;
     this->frame_gap_ = std::max(FRAME_MIN_MS, 2 * cost);
@@ -2064,7 +2131,10 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       const time_t next = sunrise ? rise : set;
       if (fx == "Sunrise Color" || fx == "Sunset Color") {
         sunrise = fx == "Sunrise Color";
-        snprintf(buf, sizeof(buf), "%s now", sunrise ? "Sunrise" : "Sunset");
+        if (this->show_ && !this->show_ending_)
+          snprintf(buf, sizeof(buf), "Test %s", sunrise ? "sunrise" : "sunset");
+        else
+          snprintf(buf, sizeof(buf), "%s now", sunrise ? "Sunrise" : "Sunset");
       } else if (next == 0 || t == 0) {
         snprintf(buf, sizeof(buf), "-");
       } else {
@@ -2293,6 +2363,11 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
   uint32_t frame_gap_{FRAME_MIN_MS};
   uint32_t frame_count_{0}, frame_cost_sum_{0};
   uint32_t step_us_{0}, sky_us_{0}, overlay_us_{0};  // timing of the last 100 frames
+  // test sunrise / sunset on the start page (sweep_check())
+  bool show_{false};         // playing, or blending back to the real sky
+  bool show_ending_{false};  // the sweep is over: blending back
+  bool show_rise_{true};
+  uint32_t show_start_{0}, show_end_{0};
 
   // touch gesture tracking
   bool t_down_{false};

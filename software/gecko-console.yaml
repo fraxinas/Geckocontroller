@@ -365,13 +365,27 @@ text_sensor:
     attribute: hs_color
     on_value:
       - lambda: 'gecko_ui::ui.changed(gecko_ui::F_SCENIC);'
-  # Settings page test buttons: highlighted while their sweep runs / an override is in force
+  # Light tests page buttons: highlighted while their sweep runs / an override is in force. A test
+  # sunrise / sunset also plays on the start page: a sweep starting right after its button's last
+  # press (kept by Home Assistant as the button's state) is the test.
   - platform: homeassistant
     id: scenic_light_effect
     entity_id: light.geckocontrol_scenic_light
     attribute: effect
     on_value:
-      - lambda: 'gecko_ui::ui.changed(gecko_ui::F_TEST_STATE);'
+      - lambda: |-
+          gecko_ui::ui.changed(gecko_ui::F_TEST_STATE);
+          gecko_ui::ui.sweep_check();
+  - platform: homeassistant
+    id: sunrise_test_pressed
+    entity_id: button.geckocontrol_sunrise_test
+    on_value:
+      - lambda: 'gecko_ui::ui.sweep_check();'
+  - platform: homeassistant
+    id: sunset_test_pressed
+    entity_id: button.geckocontrol_sunset_test
+    on_value:
+      - lambda: 'gecko_ui::ui.sweep_check();'
   - platform: homeassistant
     id: weather_override
     entity_id: select.geckocontrol_weather_override_test

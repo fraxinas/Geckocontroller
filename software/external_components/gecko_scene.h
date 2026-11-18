@@ -54,18 +54,22 @@ struct Glass {
   int x, y, w, h;
 };
 
-struct Inputs {
-  int wmo{-1};
-  float sun_elevation{30.f};  // degrees
-  float moon{50.f};           // illuminated share, 0-100
-};
-
 struct RGB {
   float r, g, b;
 };
 inline RGB mix(const RGB &a, const RGB &b, float t) {
   return {a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t};
 }
+
+struct Inputs {
+  int wmo{-1};
+  float sun_elevation{30.f};  // degrees
+  float moon{50.f};           // illuminated share, 0-100
+  // For showing the terrarium's sunrise / sunset sweep:
+  float glow{0.f};       // 0-1: clouds lit like a vivid sunrise / sunset, by the sun's elevation
+  float cover_min{0.f};  // at least this much cloud cover, whatever the weather: clouds to colour
+  float sun_clear{0.f};  // 0-1: keep the clouds off the sun, so it shows in any weather
+};
 inline float clamp01(float v) { return v < 0.f ? 0.f : (v > 1.f ? 1.f : v); }
 inline float smooth(float e0, float e1, float x) {
   const float t = clamp01((x - e0) / (e1 - e0));
@@ -100,6 +104,7 @@ class Scene {
     this->t_ += dt;
     this->sky_ = sky_for_wmo(this->in_.wmo);
     this->look_ = look_for_wmo(this->in_.wmo);
+    this->look_.cover = std::max(this->look_.cover, this->in_.cover_min);
     this->derive_colours_();
     this->step_field_();
     this->step_particles_(dt);
@@ -131,9 +136,10 @@ class Scene {
           }
         }
         // sun: glow, rays when the sky is clear enough to show them
+        float sun_d2 = 1e9f;
         if (this->sun_vis_ > 0.f) {
           const float dx = x - this->sun_x_, dy = y - this->sun_y_;
-          const float d2 = dx * dx + dy * dy;
+          const float d2 = sun_d2 = dx * dx + dy * dy;
           if (d2 < 120.f * 120.f) {
             const float core = this->sun_r_ * this->sun_r_;
             float g = core * 2.2f / (d2 + core * 2.2f);
@@ -163,7 +169,10 @@ class Scene {
         // clouds from the grid: density -> coverage, bump shading towards the sun -> light
         if (this->look_.cover > 0.f) {
           const float n = field_at<GRID>(this->cloud_, x, y);
-          const float a = smooth(cover_th, cover_th + 0.2f, n);
+          float a = smooth(cover_th, cover_th + 0.2f, n);
+          if (this->in_.sun_clear > 0.f && sun_d2 < SUN_CLEAR_R * SUN_CLEAR_R)
+            a *= 1.f - this->in_.sun_clear * this->sun_vis_ *
+                           (1.f - smooth(0.12f, 1.f, sun_d2 * (1.f / (SUN_CLEAR_R * SUN_CLEAR_R))));
           if (a > 0.f) {
             const float lit =
                 clamp01(0.5f + (n - field_at<GRID>(this->cloud_, x + this->light_dx_, y + this->light_dy_)) *
@@ -290,6 +299,7 @@ class Scene {
 
  protected:
   static constexpr int MOON_X = 278, MOON_Y = 62;
+  static constexpr float SUN_CLEAR_R = 64.f;  // the clear sky around the sun with sun_clear
   static constexpr int MAX_DROPS = 220, MAX_FLAKES = 120;  // drops: rain + hail
 
   // What a weather looks like. dark: how grey and dim the sky and clouds get.
@@ -387,6 +397,23 @@ class Scene {
     return k;
   }
 
+  // Clouds at sunrise / sunset, lit from below by the sun near the horizon: violet in the blue hour,
+  // rose, then fiery red-orange, orange and gold as the sun clears the horizon, white higher up.
+  static RGB glow_colour(float e) {
+    static const struct {
+      float elev;
+      RGB c;
+    } G[] = {{-9.f, {70, 48, 110}},  {-6.f, {150, 72, 140}},  {-3.5f, {235, 100, 130}}, {-1.f, {255, 105, 70}},
+             {2.f, {255, 140, 60}},  {6.f, {255, 196, 110}}, {12.f, {255, 238, 210}}};
+    constexpr int N = sizeof(G) / sizeof(G[0]);
+    if (e <= G[0].elev)
+      return G[0].c;
+    for (int i = 0; i + 1 < N; i++)
+      if (e < G[i + 1].elev)
+        return mix(G[i].c, G[i + 1].c, (e - G[i].elev) / (G[i + 1].elev - G[i].elev));
+    return G[N - 1].c;
+  }
+
   // Density grids, 0..255: clouds (3 octaves) every GRID px, fog (1 octave, smoother) every FOG_GRID px
   static constexpr int GRID = 4, FOG_GRID = 8;
   template<int G> struct Grid {
@@ -481,6 +508,13 @@ class Scene {
     RGB lo = mix(RGB{16, 18, 28}, RGB{150, 156, 172}, day);
     hi = mix(hi, RGB{255, 178, 140}, golden * 0.75f);
     lo = mix(lo, RGB{110, 70, 92}, golden * 0.6f);
+    // vivid sunrise / sunset: the lit side takes the glow colour, the shaded side a darker shade
+    if (this->in_.glow > 0.f) {
+      const float a = clamp01(this->in_.glow) * smooth(-10.f, -6.f, e) * (1.f - smooth(7.f, 16.f, e));
+      const RGB t = glow_colour(e);
+      hi = mix(hi, t, a * 0.85f);
+      lo = mix(lo, RGB{t.r * 0.45f, t.g * 0.38f, t.b * 0.5f}, a * 0.6f);
+    }
     const float d = 1.f - 0.72f * dark;
     this->cloud_hi_ = {hi.r * d, hi.g * d, hi.b * d * 1.04f};
     this->cloud_lo_ = {lo.r * d * 0.8f, lo.g * d * 0.82f, lo.b * d * 0.95f};
@@ -491,7 +525,8 @@ class Scene {
     this->drop_col_ = mix(RGB{130, 140, 170}, RGB{225, 235, 250}, day);
 
     // sun: from the horizon up the right-hand side, orange when low
-    this->sun_vis_ = clamp01((e + 3.f) / 3.f) * (1.f - 0.85f * clamp01((this->look_.cover - 0.55f) * 2.5f));
+    this->sun_vis_ = clamp01((e + 3.f) / 3.f) *
+                     (1.f - 0.85f * clamp01((this->look_.cover - 0.55f) * 2.5f) * (1.f - this->in_.sun_clear));
     this->sun_x_ = 278.f;
     this->sun_y_ = 172.f - clamp01((e + 3.f) / 60.f) * 136.f;
     this->sun_r_ = 9.f + 4.f * golden;
