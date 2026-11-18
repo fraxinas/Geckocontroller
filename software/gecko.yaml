@@ -744,19 +744,19 @@ sensor:
     icon: mdi:scale
     update_interval: never
 
-  - platform: dallas_temp
-    one_wire_id: bus_dallas
-    address: !secret DsAddressSubstrate
-    name: "Temperature Substrate"
-    id: temperature_substrate
-    update_interval: 10s
-    accuracy_decimals: 1
-    filters:
-      # DS18B20 power-on/error default (85.0) and disconnected (-127.0) are not real readings.
-      # Anchored per entry so other DS18B20 sensors can reuse them and still add their own.
-      - filter_out: 85.0
-      - filter_out: -127.0
-      - delta: 0.5
+  # - platform: dallas_temp
+  #   one_wire_id: bus_dallas
+  #   address: !secret DsAddressSubstrate
+  #   name: "Temperature Substrate"
+  #   id: temperature_substrate
+  #   update_interval: 10s
+  #   accuracy_decimals: 1
+  #   filters:
+  #     # DS18B20 power-on/error default (85.0) and disconnected (-127.0) are not real readings.
+  #     # Anchored per entry so other DS18B20 sensors can reuse them and still add their own.
+  #     - filter_out: 85.0
+  #     - filter_out: -127.0
+  #     - delta: 0.5
 
   # Vicinity = the room temperature where the terrarium stands, taken from the current
   # temperature (Ist-Temperatur) of the climate.arbeit entity in Home Assistant.
@@ -1145,8 +1145,8 @@ geckoalarm:
     - humidity_ceiling
     - temperature_ground
     - humidity_ground
-    - sensor: temperature_substrate
-      raw: true
+    # - sensor: temperature_substrate
+    #   raw: true
     - sensor: gecko_scale
       raw: true
   weather:
