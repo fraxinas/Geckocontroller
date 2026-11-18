@@ -330,8 +330,10 @@ static constexpr time_t SHOW_PRESS_S = 30;  // a sweep this soon after its test 
 
 // Climate alarms of the controller (geckoalarm). A raised one takes the start page's sun row,
 // pulsing red; two at once (too hot / cold and too dry) take turns. Tapping it opens its page.
-enum class Alarm : uint8_t { OVERTEMPERATURE, UNDERTEMPERATURE, LOW_HUMIDITY, COUNT, NONE = COUNT };
-static constexpr int ALARM_COUNT = static_cast<int>(Alarm::COUNT);
+// Sensor problems (a watched sensor without valid readings, missing or stuck historic weather) take
+// turns there too, one entry per sensor named in "Sensor Problem Details".
+enum class Alarm : uint8_t { OVERTEMPERATURE, UNDERTEMPERATURE, LOW_HUMIDITY, SENSOR, COUNT, NONE = COUNT };
+static constexpr int CLIMATE_ALARMS = 3;  // the ones before SENSOR
 static constexpr uint32_t ALARM_TURN_MS = 3000;
 
 // Light tests: test sunrise / sunset and the weather override (cycles through its options) for
@@ -622,6 +624,23 @@ class UI {
     this->show_rise_ = rise;
     this->show_start_ = millis();
     this->go_(Page::OVERVIEW);
+  }
+
+  // "Sensor Problem Details" from the controller: the names of the sensors without valid readings,
+  // ", "-separated, empty if none.
+  void sensor_problems(const std::string &details) {
+    this->problem_sensors_.clear();
+    if (details == "unavailable" || details == "unknown")
+      return;  // Home Assistant's states for a controller it does not reach: no list to show
+    size_t start = 0;
+    while (start < details.size()) {
+      size_t end = details.find(", ", start);
+      if (end == std::string::npos)
+        end = details.size();
+      if (end > start)
+        this->problem_sensors_.push_back(details.substr(start, end - start));
+      start = end + 2;
+    }
   }
 
   // "Gecko nest Log" from the controller: "<in>,<since>;<in>,<start>,<seconds>,<weight x10>;..."
@@ -2154,11 +2173,12 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       climate(ST_HUM, cur, tgt, "%.0f%%", "%+.0f", "set %.0f", hum_color(cur - tgt));
     }
 
-    // a climate alarm, in place of the next sunrise / sunset
-    this->alarm_shown_ = this->alarm_due_();
+    // a climate alarm or sensor problem, in place of the next sunrise / sunset
+    int sensor = -1;
+    this->alarm_shown_ = this->alarm_due_(sensor);
     if (this->alarm_shown_ != Alarm::NONE) {
       if (this->vis_(ST_SUN))
-        this->draw_alarm_(it, this->alarm_shown_);
+        this->draw_alarm_(it, this->alarm_shown_, sensor);
     }
     // next sunrise / sunset (the colour sweeps start then)
     else if (this->vis_(ST_SUN)) {
@@ -2316,23 +2336,45 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       default: return false;
     }
   }
-  // The raised alarm to show now: one of them in turn, NONE if none is raised
-  static Alarm alarm_due_() {
-    Alarm on[ALARM_COUNT];
+  // What to show now, taking turns: a raised climate alarm, or SENSOR with `sensor` the index of
+  // the sensor in problem_sensors_; NONE if there is nothing.
+  Alarm alarm_due_(int &sensor) const {
+    Alarm on[CLIMATE_ALARMS];
     int n = 0;
-    for (int i = 0; i < ALARM_COUNT; i++)
+    for (int i = 0; i < CLIMATE_ALARMS; i++)
       if (alarm_on(static_cast<Alarm>(i)))
         on[n++] = static_cast<Alarm>(i);
-    return n == 0 ? Alarm::NONE : on[(millis() / ALARM_TURN_MS) % n];
+    const int total = n + (int) this->problem_sensors_.size();
+    if (total == 0)
+      return Alarm::NONE;
+    const int k = (int) ((millis() / ALARM_TURN_MS) % total);
+    if (k < n)
+      return on[k];
+    sensor = k - n;
+    return Alarm::SENSOR;
   }
-  static Page alarm_page(Alarm a) { return a == Alarm::LOW_HUMIDITY ? Page::HYGRO : Page::THERMO; }
+  static Page alarm_page(Alarm a) {
+    switch (a) {
+      case Alarm::LOW_HUMIDITY: return Page::HYGRO;
+      case Alarm::SENSOR: return Page::MENU;  // no page of its own
+      default: return Page::THERMO;
+    }
+  }
 
-  void draw_alarm_(Display &it, Alarm a) {
+  void draw_alarm_(Display &it, Alarm a, int sensor) {
     // pulsing at 1 Hz, inside the glass panel's rounded corners
     const float p = 0.5f + 0.5f * std::sin(millis() * (2.f * (float) M_PI / 1000.f));
     this->fill_(it, Box{ST_SUN.x + 4, ST_SUN.y + 3, ST_SUN.w - 8, ST_SUN.h - 3},
                 Color(130 + (int) (80 * p), 12 + (int) (18 * p), 12 + (int) (10 * p)));
     const int cy = ST_SUN.y + ST_SUN.h / 2 + 1;
+    this->text_(it, ST_SUN.x + 12, cy, &id(icon_small), TEXT, TextAlign::CENTER_LEFT, ICON_ALERT);
+    if (a == Alarm::SENSOR) {  // "No data", the sensor's name
+      this->text_(it, ST_SUN.x + 40, cy, &id(mid_font), TEXT, TextAlign::CENTER_LEFT, "No data");
+      if (sensor >= 0 && sensor < (int) this->problem_sensors_.size())
+        this->text_(it, ST_SUN.x + ST_SUN.w - 10, cy, &id(tiny_font), TEXT, TextAlign::CENTER_RIGHT,
+                    this->problem_sensors_[sensor].c_str());
+      return;
+    }
     const bool temp = a != Alarm::LOW_HUMIDITY;
     const float cur = temp ? sval(&id(thermostat_current_temperature)) : sval(&id(humidity_current));
     const float set = temp ? sval(&id(thermostat_target_temperature)) : sval(&id(humidity_target));
@@ -2340,7 +2382,6 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
     char buf[32] = "";
     if (!std::isnan(cur) && !std::isnan(set))
       snprintf(buf, sizeof(buf), temp ? "%.1f° / set %.1f°" : "%.0f%% / set %.0f%%", cur, set);
-    this->text_(it, ST_SUN.x + 12, cy, &id(icon_small), TEXT, TextAlign::CENTER_LEFT, ICON_ALERT);
     this->text_(it, ST_SUN.x + 40, cy, &id(mid_font), TEXT, TextAlign::CENTER_LEFT, label);
     this->text_(it, ST_SUN.x + ST_SUN.w - 10, cy, &id(tiny_font), TEXT, TextAlign::CENTER_RIGHT, buf);
   }
@@ -2444,6 +2485,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
   bool show_rise_{true};
   uint32_t show_start_{0}, show_end_{0};
   Alarm alarm_shown_{Alarm::NONE};  // in the sun row, as last drawn
+  std::vector<std::string> problem_sensors_;  // sensors without valid readings (sensor_problems())
 
   // touch gesture tracking
   bool t_down_{false};

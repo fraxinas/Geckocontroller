@@ -421,6 +421,12 @@ text_sensor:
   - platform: homeassistant
     id: next_sunset
     entity_id: sensor.geckocontrol_next_sunset
+  # Sensors of the controller without valid readings (geckoalarm), shown on the start page
+  - platform: homeassistant
+    id: sensor_problem_details
+    entity_id: sensor.geckocontrol_sensor_problem_details
+    on_value:
+      - lambda: 'gecko_ui::ui.sensor_problems(x);'
   # Shown on the Settings page
   - platform: wifi_info
     ssid:
