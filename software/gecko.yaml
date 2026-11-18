@@ -17,7 +17,13 @@ esphome:
   # their template switches carry restore_mode: DISABLED so they mirror the global instead of
   # driving it off during setup().
   on_boot:
-    priority: -100
+  # Outlet 2: apply the restored mode / Aux Power state as soon as the hardware is set up
+  # (relay_k92 and the restored globals all set up at HARDWARE = 800). An outlet that should be on
+  # still drops while the ESP resets: GPIO2 is low until then.
+  - priority: 700
+    then:
+      - script.execute: outlet2_apply
+  - priority: -100
     then:
       - climate.control:
           id: thermostat_air
@@ -188,20 +194,71 @@ switch:
     turn_off_action:
       - lambda: 'id(gecko_pid).abort_calibration();'
 
-  # HW Rev 2.0: mains supply of the growlight via relay K92 (Relay2_out). Normally driven by the
-  # "Grow Light" fader below -- any level > 0 powers it, and it drops 30 s after the fader hits 0.
+  # HW Rev 2.0: relay K92 (Relay2_out) switching the 2nd mains outlet. Internal: what drives it is
+  # set by "Outlet 2 Mode" (select below) -- the "Grow Light" fader, or the "Aux Power" switch.
+  # Comes up off; on_boot applies the mode right after.
   - platform: gpio
     pin: 2
-    id: growlight_power
-    name: "Grow Light Power"
-    icon: mdi:power-plug
+    id: relay_k92
     restore_mode: ALWAYS_OFF
     on_turn_on:
-      - logger.log: "Grow Light Power ON"
+      - logger.log: "Outlet 2 (K92) ON"
     on_turn_off:
-      - logger.log: "Grow Light Power OFF"
+      - logger.log: "Outlet 2 (K92) OFF"
+
+  # Manual on/off of outlet 2 in "Aux Power" mode (currently the Geckoconsole's PSU). In
+  # "Grow Light" mode the fader owns the outlet: the switch reads off and refuses to be switched.
+  # The on/off state is persisted (default on), so it survives reboots and mode round trips.
+  - platform: template
+    name: "Aux Power"
+    id: aux_power_switch
+    icon: mdi:power-socket-de
+    restore_mode: DISABLED      # mirrors id(outlet2_aux_on); must not drive it at boot
+    lambda: |-
+      return id(outlet2_aux) && id(outlet2_aux_on);
+    turn_on_action:
+      - if:
+          condition:
+            lambda: 'return id(outlet2_aux);'
+          then:
+            - lambda: 'id(outlet2_aux_on) = true;'
+            - switch.turn_on: relay_k92
+          else:
+            - logger.log:
+                level: WARN
+                format: "Outlet 2 is in Grow Light mode: Aux Power switch disabled"
+    turn_off_action:
+      - if:
+          condition:
+            lambda: 'return id(outlet2_aux);'
+          then:
+            - lambda: 'id(outlet2_aux_on) = false;'
+            - switch.turn_off: relay_k92
+          else:
+            - logger.log:
+                level: WARN
+                format: "Outlet 2 is in Grow Light mode: Aux Power switch disabled"
 
 select:
+  # What outlet 2 (relay K92) supplies. "Grow Light": the growlight PSU's mains, switched with the
+  # "Grow Light" fader. "Aux Power": something else hangs on it (currently the Geckoconsole's PSU);
+  # the growlight leaves it alone and the "Aux Power" switch turns it on/off. Persisted; the default
+  # is Aux Power so a fresh flash never cuts the console.
+  - platform: template
+    name: "Outlet 2 Mode"
+    id: outlet2_mode_select
+    icon: mdi:power-socket-de
+    entity_category: config
+    options:
+      - "Grow Light"
+      - "Aux Power"
+    lambda: |-
+      return std::string(id(outlet2_aux) ? "Aux Power" : "Grow Light");
+    set_action:
+      - lambda: 'id(outlet2_aux) = (x == "Aux Power");'
+      - component.update: outlet2_mode_select
+      - script.execute: outlet2_apply
+
   - platform: template
     name: "Calibration Target"
     id: calibration_target_select
@@ -526,9 +583,10 @@ geckolights:
     blue: component_blue
 
 # Growlight PWM fader on the HW Rev 2.0 white channel. Driven by the illumination controller
-# (`growlight_light` above) and manually from HA. Any level > 0 powers relay K92 ("Grow Light
-# Power"); going to 0 drops it after 30 s. gamma 1.0 keeps the duty linear, so the level follows
-# the sun's sin(elevation) the way the controller computes it.
+# (`growlight_light` above) and manually from HA. With "Outlet 2 Mode" = "Grow Light", any level
+# > 0 powers relay K92 (outlet 2) and going to 0 drops it after 30 s; in "Aux Power" mode the
+# fader leaves the outlet alone. gamma 1.0 keeps the duty linear, so the level follows the sun's
+# sin(elevation) the way the controller computes it.
 light:
   - platform: monochromatic
     id: grow_light
@@ -543,28 +601,58 @@ light:
                    rv.get_brightness() * 100.0f);
       - if:
           condition:
-            lambda: 'return id(grow_light).remote_values.is_on();'
+            lambda: 'return !id(outlet2_aux) && id(grow_light).remote_values.is_on();'
           then:
             - script.stop: growlight_power_off_delayed
             - if:
                 condition:
-                  switch.is_off: growlight_power
+                  switch.is_off: relay_k92
                 then:
-                  - switch.turn_on: growlight_power
+                  - switch.turn_on: relay_k92
     on_turn_off:
-      - script.execute: growlight_power_off_delayed
+      - if:
+          condition:
+            lambda: 'return !id(outlet2_aux);'
+          then:
+            - script.execute: growlight_power_off_delayed
 
 script:
+  # Drives outlet 2 per the current mode: "Aux Power" -> the Aux Power switch's state; "Grow Light"
+  # -> the fader (on if lit, else off after the usual 30 s). Run at boot and on every mode change.
+  - id: outlet2_apply
+    then:
+      - if:
+          condition:
+            lambda: 'return id(outlet2_aux);'
+          then:
+            - script.stop: growlight_power_off_delayed
+            - if:
+                condition:
+                  lambda: 'return id(outlet2_aux_on);'
+                then:
+                  - switch.turn_on: relay_k92
+                else:
+                  - switch.turn_off: relay_k92
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(grow_light).remote_values.is_on();'
+                then:
+                  - switch.turn_on: relay_k92
+                else:
+                  - script.execute: growlight_power_off_delayed
+
+  # Grow Light mode only: the aux check is repeated at the end in case the mode flipped meanwhile.
   - id: growlight_power_off_delayed
     mode: restart
     then:
-      - logger.log: "Grow Light at 0%: cutting Grow Light Power in 30s"
+      - logger.log: "Grow Light at 0%: cutting outlet 2 (K92) in 30s"
       - delay: 30s
       - if:
           condition:
-            lambda: 'return !id(grow_light).remote_values.is_on();'
+            lambda: 'return !id(outlet2_aux) && !id(grow_light).remote_values.is_on();'
           then:
-            - switch.turn_off: growlight_power
+            - switch.turn_off: relay_k92
 
 fan:
   - platform: geckofan
@@ -1026,6 +1114,20 @@ globals:
    - id: rain_enabled
      type: bool
      restore_value: no          # always ENABLED on power-on (see esphome.on_boot comment)
+     initial_value: 'true'
+
+   # Outlet 2 (relay K92) mode: false = "Grow Light" (coupled to the fader), true = "Aux Power".
+   # A wiring fact, not an automation enable, so it is restored across reboots. Default Aux: a fresh
+   # flash must not cut whatever hangs on the outlet.
+   - id: outlet2_aux
+     type: bool
+     restore_value: yes
+     initial_value: 'true'
+
+   # Outlet 2 on/off in "Aux Power" mode (the "Aux Power" switch). Restored; default on.
+   - id: outlet2_aux_on
+     type: bool
+     restore_value: yes
      initial_value: 'true'
 
    # PID calibration target: 0 none · 1 heat_day · 2 heat_night · 3 cool · 4 humidify · 5 dehumidify.
