@@ -850,10 +850,14 @@ sensor:
   # on to the setpoint sensors below, or its fallback cycle while HA does not provide them.
   - platform: homeassistant   # actual historic temperature
     id: weather_temperature
+    name: "Historic Temperature"   # named for "Sensor Problem Details"; internal, HA has it already
+    internal: true
     entity_id: sensor.temperature_in_france_noumea_182_days_ago
 
   - platform: homeassistant   # actual historic humidity
     id: weather_humidity
+    name: "Historic Humidity"
+    internal: true
     entity_id: sensor.humidity_in_france_noumea_182_days_ago
 
   # The temperature/humidity the climates follow, published by geckoweather: the historic value, or
@@ -935,6 +939,8 @@ sensor:
   # rain intensity and a light effect. (Replaces the old back-converted 0..22 "sky" sensor.)
   - platform: homeassistant
     id: weather_code
+    name: "Historic Weather Code"
+    internal: true
     entity_id: sensor.weather_code_in_france_noumea_182_days_ago
 
   # Consumed by the geckolights component (moon -> scenic moonlight at night).
@@ -1111,6 +1117,12 @@ number:
 # a clogged rain pipe or a lamp left on by hand, with the automations on or off. Raised after the
 # value has been out of range for `delay` without a break; cleared once it has been back inside the
 # limit by the hysteresis for `clear_delay`.
+# Sensor health ("Sensor Problem", "Sensor Problem Details" naming them): a watched sensor without a
+# valid reading for `sensor_timeout` -- missing, broken, failing its reads. Scale and substrate are
+# judged by their raw readings, as their delta filters hold steady values back for hours. The
+# historic weather counts too: missing while geckoweather's fallback stands in for a feed, stuck while
+# the historic temperature (hourly, 0.1 °C) has not changed for `stale_timeout`. Not judged while
+# Home Assistant is away -- a restart of it does not end in a sensor problem.
 geckoalarm:
   id: gecko_alarm
   thermostat: thermostat_air
@@ -1127,6 +1139,23 @@ geckoalarm:
     name: "Undertemperature Alarm"
   low_humidity:
     name: "Low Humidity Alarm"
+  sensor_timeout: 2min
+  sensors:
+    - temperature_ceiling
+    - humidity_ceiling
+    - temperature_ground
+    - humidity_ground
+    - sensor: temperature_substrate
+      raw: true
+    - sensor: gecko_scale
+      raw: true
+  weather:
+    id: gecko_weather
+    stale_timeout: 3h
+  sensor_problem:
+    name: "Sensor Problem"
+  sensor_problem_details:
+    name: "Sensor Problem Details"
 
 # PID auto-calibration: owns 5 tuned parameter sets (heat_day/heat_night/cool/humidify/dehumidify),
 # persists them, and swaps the active set per climate action. The thermostat's heating set is

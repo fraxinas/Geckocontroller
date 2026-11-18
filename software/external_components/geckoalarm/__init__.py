@@ -1,11 +1,13 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import binary_sensor, climate
-from esphome.const import CONF_ID, DEVICE_CLASS_PROBLEM
+from esphome.components import binary_sensor, climate, sensor, text_sensor
+from esphome.const import CONF_ID, CONF_SENSOR, CONF_SENSORS, CONF_TIMEOUT, DEVICE_CLASS_PROBLEM
+
+from ..geckoweather import GeckoWeather
 
 CODEOWNERS = ["@fraxinas"]
 DEPENDENCIES = ["climate"]
-AUTO_LOAD = ["binary_sensor"]
+AUTO_LOAD = ["binary_sensor", "text_sensor"]
 
 geckoalarm_ns = cg.esphome_ns.namespace("geckoalarm")
 GeckoAlarm = geckoalarm_ns.class_("GeckoAlarm", cg.Component)
@@ -19,6 +21,23 @@ CONF_TEMPERATURE_HYSTERESIS = "temperature_hysteresis"
 CONF_HUMIDITY_HYSTERESIS = "humidity_hysteresis"
 CONF_DELAY = "delay"
 CONF_CLEAR_DELAY = "clear_delay"
+CONF_SENSOR_TIMEOUT = "sensor_timeout"
+CONF_SENSOR_PROBLEM = "sensor_problem"
+CONF_SENSOR_PROBLEM_DETAILS = "sensor_problem_details"
+CONF_RAW = "raw"
+CONF_WEATHER = "weather"
+CONF_STALE_TIMEOUT = "stale_timeout"
+
+# A watched sensor: its id alone, or with a timeout of its own. `raw`: judged by the driver's
+# readings before the filters -- for sensors whose filters hold steady values back (delta).
+WATCHED_SENSOR_SCHEMA = cv.maybe_simple_value(
+    {
+        cv.Required(CONF_SENSOR): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_TIMEOUT): cv.positive_time_period_milliseconds,
+        cv.Optional(CONF_RAW, default=False): cv.boolean,
+    },
+    key=CONF_SENSOR,
+)
 
 # Alarm binary sensors (device class "problem"), in the order of the C++ enum
 ALARMS = {
@@ -43,6 +62,26 @@ CONFIG_SCHEMA = cv.Schema(
         # this long.
         cv.Optional(CONF_DELAY, default="10min"): cv.positive_time_period_milliseconds,
         cv.Optional(CONF_CLEAR_DELAY, default="2min"): cv.positive_time_period_milliseconds,
+        # Sensor health: a watched sensor without a valid reading for its timeout (missing, broken,
+        # read errors) is a problem; `sensor_problem_details` names the sensors concerned.
+        cv.Optional(CONF_SENSOR_TIMEOUT, default="2min"): cv.positive_time_period_milliseconds,
+        cv.Optional(CONF_SENSORS, default=[]): cv.ensure_list(WATCHED_SENSOR_SCHEMA),
+        # The historic weather feeds from Home Assistant: a sensor problem while geckoweather's
+        # fallback stands in for one (missing), or while the historic temperature -- the one feed
+        # that changes nearly every hour -- has not changed for `stale_timeout` (stuck).
+        cv.Optional(CONF_WEATHER): cv.maybe_simple_value(
+            {
+                cv.Required(CONF_ID): cv.use_id(GeckoWeather),
+                cv.Optional(CONF_STALE_TIMEOUT, default="3h"): cv.positive_time_period_milliseconds,
+            },
+            key=CONF_ID,
+        ),
+        cv.Optional(CONF_SENSOR_PROBLEM): binary_sensor.binary_sensor_schema(
+            device_class=DEVICE_CLASS_PROBLEM, icon="mdi:alert-circle-outline"
+        ),
+        cv.Optional(CONF_SENSOR_PROBLEM_DETAILS): text_sensor.text_sensor_schema(
+            icon="mdi:alert-circle-outline"
+        ),
         **{
             cv.Optional(key): binary_sensor.binary_sensor_schema(
                 device_class=DEVICE_CLASS_PROBLEM, icon=icon
@@ -68,3 +107,15 @@ async def to_code(config):
         if key in config:
             sens = await binary_sensor.new_binary_sensor(config[key])
             cg.add(var.set_sensor(alarm, sens))
+    for watched in config[CONF_SENSORS]:
+        sens = await cg.get_variable(watched[CONF_SENSOR])
+        timeout = watched.get(CONF_TIMEOUT, config[CONF_SENSOR_TIMEOUT])
+        cg.add(var.add_watched_sensor(sens, timeout, watched[CONF_RAW]))
+    if CONF_WEATHER in config:
+        cg.add_define("USE_GECKOALARM_WEATHER")
+        weather = await cg.get_variable(config[CONF_WEATHER][CONF_ID])
+        cg.add(var.set_weather(weather, config[CONF_WEATHER][CONF_STALE_TIMEOUT]))
+    if CONF_SENSOR_PROBLEM in config:
+        cg.add(var.set_sensor_problem(await binary_sensor.new_binary_sensor(config[CONF_SENSOR_PROBLEM])))
+    if CONF_SENSOR_PROBLEM_DETAILS in config:
+        cg.add(var.set_sensor_problem_details(await text_sensor.new_text_sensor(config[CONF_SENSOR_PROBLEM_DETAILS])))

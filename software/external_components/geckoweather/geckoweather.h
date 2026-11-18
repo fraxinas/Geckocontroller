@@ -49,6 +49,9 @@ struct Feed {
   bool fallback{false};  // lost for longer than the timeout: the standard cycle stands in
 };
 
+// The historic feeds, by name for other components (geckoalarm's sensor health)
+enum class WeatherFeed : uint8_t { CODE, TEMPERATURE, HUMIDITY, COUNT };
+
 // Owns the WMO weather matrix and the resolved weather state: the one place that answers "what is
 // the weather doing right now". It writes the outputs every consumer shares -- the sky attenuation
 // global, the rain-intensity sensor the pump reads, and the temperature/humidity setpoint sensors
@@ -110,6 +113,10 @@ class GeckoWeather : public Component {
   bool in_fallback() const {
     return this->temperature_.fallback || this->humidity_.fallback || this->code_.fallback;
   }
+  // One feed: its Home Assistant sensor (nullptr if not configured), and whether the standard cycle
+  // stands in for it -- lost for longer than the fallback timeout.
+  sensor::Sensor *feed_input(WeatherFeed f) const { return this->feed_(f).input; }
+  bool feed_in_fallback(WeatherFeed f) const { return this->feed_(f).fallback; }
 
   void add_on_weather_callback(std::function<void(const WeatherState &)> &&cb) {
     this->callback_.add(std::move(cb));
@@ -122,6 +129,9 @@ class GeckoWeather : public Component {
 
  protected:
   void resolve_(int code, bool from_override);
+  const Feed &feed_(WeatherFeed f) const {
+    return f == WeatherFeed::CODE ? this->code_ : f == WeatherFeed::TEMPERATURE ? this->temperature_ : this->humidity_;
+  }
   // The code the feed says is in force: the live code, or the fallback sky while it is lost.
   int feed_code_() const { return this->code_.fallback ? this->fallback_code_ : this->last_live_code_; }
 
