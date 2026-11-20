@@ -27,6 +27,9 @@ CONF_SENSOR_PROBLEM_DETAILS = "sensor_problem_details"
 CONF_RAW = "raw"
 CONF_WEATHER = "weather"
 CONF_STALE_TIMEOUT = "stale_timeout"
+CONF_MAX_TEMPERATURE = "max_temperature"
+CONF_MAX_TEMPERATURE_DELAY = "max_temperature_delay"
+CONF_MAX = "max"
 
 # A watched sensor: its id alone, or with a timeout of its own. `raw`: judged by the driver's
 # readings before the filters -- for sensors whose filters hold steady values back (delta).
@@ -62,6 +65,17 @@ CONFIG_SCHEMA = cv.Schema(
         # this long.
         cv.Optional(CONF_DELAY, default="10min"): cv.positive_time_period_milliseconds,
         cv.Optional(CONF_CLEAR_DELAY, default="2min"): cv.positive_time_period_milliseconds,
+        # Absolute maximum temperatures, whatever the setpoint: a sensor above its `max` (°C) for
+        # `max_temperature_delay` raises the overtemperature alarm as well.
+        cv.Optional(CONF_MAX_TEMPERATURE, default=[]): cv.ensure_list(
+            cv.Schema(
+                {
+                    cv.Required(CONF_SENSOR): cv.use_id(sensor.Sensor),
+                    cv.Required(CONF_MAX): cv.float_,
+                }
+            )
+        ),
+        cv.Optional(CONF_MAX_TEMPERATURE_DELAY, default="2min"): cv.positive_time_period_milliseconds,
         # Sensor health: a watched sensor without a valid reading for its timeout (missing, broken,
         # read errors) is a problem; `sensor_problem_details` names the sensors concerned.
         cv.Optional(CONF_SENSOR_TIMEOUT, default="2min"): cv.positive_time_period_milliseconds,
@@ -103,6 +117,9 @@ async def to_code(config):
     cg.add(var.set_humidity_hysteresis(config[CONF_HUMIDITY_HYSTERESIS]))
     cg.add(var.set_delay(config[CONF_DELAY]))
     cg.add(var.set_clear_delay(config[CONF_CLEAR_DELAY]))
+    for m in config[CONF_MAX_TEMPERATURE]:
+        cg.add(var.add_max_temperature(await cg.get_variable(m[CONF_SENSOR]), m[CONF_MAX]))
+    cg.add(var.set_max_temperature_delay(config[CONF_MAX_TEMPERATURE_DELAY]))
     for key, (alarm, _) in ALARMS.items():
         if key in config:
             sens = await binary_sensor.new_binary_sensor(config[key])

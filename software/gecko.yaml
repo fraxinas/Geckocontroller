@@ -6,6 +6,13 @@ substitutions:
   day_shift_hours: 1
   # Actual longitude of the installation.
   local_longitude: 9.15
+  # Absolute maximum temperatures (°C) for the species kept, never to be exceeded: above them the
+  # overtemperature alarm goes off whatever the setpoint.
+  max_temperature_ceiling: 33
+  max_temperature_ground: 29
+  # The weather temperature setpoint never goes above this (°C): a hotter historic value is
+  # replaced by it as it arrives.
+  max_weather_temperature: 31
 
 esphome:
   name: geckocontrol
@@ -434,6 +441,7 @@ geckoweather:
   humidity_sensor: weather_humidity
   temperature_setpoint: weather_temperature_setpoint
   humidity_setpoint: weather_humidity_setpoint
+  max_temperature: ${max_weather_temperature}   # the thermostat target never follows above it
   precipitation: weather_precipitation
   attenuation: skycond_attenuation
   # Standard day/night cycle for when the historic feed is missing -- HA unreachable, or no record
@@ -1133,6 +1141,13 @@ geckoalarm:
   humidity_hysteresis: 2        # %RH
   delay: 10min
   clear_delay: 2min
+  # Absolute maxima, whatever the setpoint: above one for `max_temperature_delay` is overtemperature.
+  max_temperature:
+    - sensor: temperature_ceiling
+      max: ${max_temperature_ceiling}
+    - sensor: temperature_ground
+      max: ${max_temperature_ground}
+  max_temperature_delay: 2min
   overtemperature:
     name: "Overtemperature Alarm"
   undertemperature:

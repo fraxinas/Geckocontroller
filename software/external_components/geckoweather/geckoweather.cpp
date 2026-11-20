@@ -33,7 +33,7 @@ void GeckoWeather::setup() {
   });
   this->watch_feed_(this->temperature_, "temperature", [this](float x) {
     if (this->temperature_out_ != nullptr)
-      this->temperature_out_->publish_state(x);
+      this->temperature_out_->publish_state(this->capped_temperature_(x));
   });
   this->watch_feed_(this->humidity_, "humidity", [this](float x) {
     if (this->humidity_out_ != nullptr)
@@ -106,7 +106,7 @@ void GeckoWeather::check_fallback_() {
     float t = std::isnan(h) ? (this->temp_day_ + this->temp_night_) / 2.0f : this->cycle_(this->temp_day_, this->temp_night_, h);
     if (temp_due)
       ESP_LOGI(TAG, "fallback temperature %.1f °C", t);
-    publish_rounded_(this->temperature_out_, t, 0.1f);
+    publish_rounded_(this->temperature_out_, this->capped_temperature_(t), 0.1f);
   }
   if (this->humidity_.fallback) {
     float rh = std::isnan(h) ? (this->hum_day_ + this->hum_night_) / 2.0f : this->cycle_(this->hum_day_, this->hum_night_, h);
@@ -144,6 +144,14 @@ float GeckoWeather::solar_hour_() {
 float GeckoWeather::cycle_(float day, float night, float solar_hour) const {
   float phase = (solar_hour - this->warmest_hour_) * (2.0f * (float) M_PI / 24.0f);
   return (day + night) / 2.0f + (day - night) / 2.0f * std::cos(phase);
+}
+
+// The temperature setpoint never goes above the configured maximum: a hotter value is replaced by it.
+float GeckoWeather::capped_temperature_(float t) const {
+  if (std::isnan(this->max_temperature_) || t <= this->max_temperature_)
+    return t;
+  ESP_LOGW(TAG, "temperature %.1f °C above the maximum, setpoint capped at %.1f °C", t, this->max_temperature_);
+  return this->max_temperature_;
 }
 
 // Publish only when the value moves by a visible step: the climates take every publish as a new
@@ -200,6 +208,8 @@ void GeckoWeather::resolve_(int code, bool from_override) {
 void GeckoWeather::dump_config() {
   ESP_LOGCONFIG(TAG, "GeckoWeather:");
   ESP_LOGCONFIG(TAG, "  mapped WMO codes: %u", (unsigned) this->rules_.size());
+  if (!std::isnan(this->max_temperature_))
+    ESP_LOGCONFIG(TAG, "  temperature setpoint capped at %.1f °C", this->max_temperature_);
   ESP_LOGCONFIG(TAG, "  default: attenuation %.2f, rain %.1f", this->default_.attenuation, this->default_.rain);
   if (this->fallback_configured_()) {
     ESP_LOGCONFIG(TAG, "  fallback after %u s: temperature %.1f/%.1f °C, humidity %.0f/%.0f %% (day/night), "

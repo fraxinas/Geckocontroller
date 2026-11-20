@@ -16,6 +16,7 @@ CONF_TEMPERATURE_SENSOR = "temperature_sensor"
 CONF_HUMIDITY_SENSOR = "humidity_sensor"
 CONF_TEMPERATURE_SETPOINT = "temperature_setpoint"
 CONF_HUMIDITY_SETPOINT = "humidity_setpoint"
+CONF_MAX_TEMPERATURE = "max_temperature"
 CONF_FALLBACK = "fallback"
 CONF_LONGITUDE = "longitude"
 CONF_WARMEST_HOUR = "warmest_hour"
@@ -97,6 +98,9 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_HUMIDITY_SENSOR): cv.use_id(sensor.Sensor),
         cv.Optional(CONF_TEMPERATURE_SETPOINT): cv.use_id(sensor.Sensor),
         cv.Optional(CONF_HUMIDITY_SETPOINT): cv.use_id(sensor.Sensor),
+        # Cap (°C) of the temperature setpoint: a hotter historic (or fallback) value is passed on as
+        # this, never above it.
+        cv.Optional(CONF_MAX_TEMPERATURE): cv.float_,
         cv.Optional(CONF_PRECIPITATION): cv.use_id(sensor.Sensor),
         cv.Optional(CONF_ATTENUATION): cv.use_id(globals.GlobalsComponent),
         cv.Optional(CONF_DEFAULT): cv.Schema(_RULE_BODY),
@@ -121,6 +125,8 @@ async def to_code(config):
     ]:
         if key in config:
             cg.add(setter(await cg.get_variable(config[key])))
+    if CONF_MAX_TEMPERATURE in config:
+        cg.add(var.set_max_temperature(config[CONF_MAX_TEMPERATURE]))
     if CONF_PRECIPITATION in config:
         cg.add(var.set_precipitation_sensor(await cg.get_variable(config[CONF_PRECIPITATION])))
     if CONF_ATTENUATION in config:

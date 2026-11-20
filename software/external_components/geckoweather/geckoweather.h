@@ -6,6 +6,7 @@
 #include "esphome/components/globals/globals_component.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/time/real_time_clock.h"
+#include <cmath>
 #include <map>
 #include <string>
 
@@ -74,6 +75,8 @@ class GeckoWeather : public Component {
   void set_humidity_sensor(sensor::Sensor *s) { this->humidity_.input = s; }
   void set_temperature_setpoint_sensor(sensor::Sensor *s) { this->temperature_out_ = s; }
   void set_humidity_setpoint_sensor(sensor::Sensor *s) { this->humidity_out_ = s; }
+  // Cap of the temperature setpoint: a hotter value is published as this.
+  void set_max_temperature(float t) { this->max_temperature_ = t; }
   void set_precipitation_sensor(sensor::Sensor *s) { this->precip_sens_ = s; }
   void set_attenuation(globals::GlobalsComponent<float> *g) { this->attenuation_ = g; }
   // Matrix, flattened to one entry per WMO code at codegen time.
@@ -143,12 +146,14 @@ class GeckoWeather : public Component {
   float solar_hour_();
   float cycle_(float day, float night, float solar_hour) const;
   static void publish_rounded_(sensor::Sensor *s, float value, float step);
+  float capped_temperature_(float t) const;
 
   Feed code_;
   Feed temperature_;
   Feed humidity_;
   sensor::Sensor *temperature_out_{nullptr};
   sensor::Sensor *humidity_out_{nullptr};
+  float max_temperature_{NAN};  // NAN: no cap
   sensor::Sensor *precip_sens_{nullptr};
   globals::GlobalsComponent<float> *attenuation_{nullptr};
   std::map<int, WeatherRule> rules_;  // WMO code -> behaviour

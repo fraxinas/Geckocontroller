@@ -70,9 +70,24 @@ void GeckoAlarm::setup() {
 void GeckoAlarm::check_() {
   const float t = this->thermostat_->current_temperature, ts = this->thermostat_->target_temperature;
   const float h = this->hygrostat_->current_temperature, hs = this->hygrostat_->target_temperature;
-  this->update_(Alarm::OVERTEMPERATURE, t - ts, this->temp_deviation_, this->temp_hysteresis_, t, ts);
-  this->update_(Alarm::UNDERTEMPERATURE, ts - t, this->temp_deviation_, this->temp_hysteresis_, t, ts);
-  this->update_(Alarm::LOW_HUMIDITY, hs - h, this->hum_deficit_, this->hum_hysteresis_, h, hs);
+  const float dev = this->temp_deviation_;
+  State &over = this->state_[idx(Alarm::OVERTEMPERATURE)], &under = this->state_[idx(Alarm::UNDERTEMPERATURE)];
+  State &dry = this->state_[idx(Alarm::LOW_HUMIDITY)];
+
+  // too hot: above the setpoint by the deviation, or any sensor above its absolute maximum
+  std::vector<Cond> &hot = this->hot_;
+  hot.clear();
+  hot.push_back({t - ts - dev, &over.raise, this->delay_ms_, nullptr, t, ts});
+  for (auto &m : this->max_temps_) {
+    const float v = m.sensor->has_state() ? m.sensor->state : NAN;
+    hot.push_back({v - m.max, &m.raise, this->max_temp_delay_ms_, m.sensor->get_name().c_str(), v, m.max});
+  }
+  this->update_(Alarm::OVERTEMPERATURE, hot.data(), hot.size(), this->temp_hysteresis_);
+
+  const Cond cold{ts - t - dev, &under.raise, this->delay_ms_, nullptr, t, ts};
+  this->update_(Alarm::UNDERTEMPERATURE, &cold, 1, this->temp_hysteresis_);
+  const Cond low{hs - h - this->hum_deficit_, &dry.raise, this->delay_ms_, nullptr, h, hs};
+  this->update_(Alarm::LOW_HUMIDITY, &low, 1, this->hum_hysteresis_);
   this->check_sensors_();
 }
 
@@ -114,47 +129,53 @@ void GeckoAlarm::check_sensors_() {
   State &s = this->sensor_problem_;
   bool publish = false;
   if (any) {
-    s.timing = false;
+    s.clear.running = false;
     publish = !s.on;
     s.on = true;
-  } else if (s.on) {
-    if (!s.timing) {
-      s.timing = true;
-      s.since = now;
-    }
-    if (now - s.since >= this->clear_delay_ms_) {
-      s.on = false;
-      s.timing = false;
-      publish = true;
-    }
+  } else if (s.on && s.clear.held(true, now, this->clear_delay_ms_)) {
+    s.on = false;
+    s.clear.running = false;
+    publish = true;
   }
   if (publish && s.sensor != nullptr)
     s.sensor->publish_state(s.on);
 }
 
-void GeckoAlarm::update_(Alarm a, float excess, float limit, float hysteresis, float value, float setpoint) {
-  if (std::isnan(excess))
-    return;  // no reading: leave the alarm as it is
+// Off: raised once one condition has been out of range for its delay. On: cleared once every
+// condition with a reading has been back inside by the hysteresis for clear_delay. A condition
+// without a reading counts for neither; with none at all the alarm stays as it is.
+void GeckoAlarm::update_(Alarm a, const Cond *conds, size_t n, float hysteresis) {
   State &s = this->state_[idx(a)];
-  // Off: waiting for the value to stay out of range. On: waiting for it to stay back inside.
-  const bool changing = s.on ? excess < limit - hysteresis : excess > limit;
-  if (!changing) {
-    s.timing = false;
-    return;
-  }
   const uint32_t now = millis();
-  if (!s.timing) {
-    s.timing = true;
-    s.since = now;
+  bool known = false, back = true;
+  const Cond *raised = nullptr;
+  for (size_t i = 0; i < n; i++) {
+    const Cond &c = conds[i];
+    if (std::isnan(c.excess))
+      continue;  // no reading: leave its timer as it is
+    known = true;
+    back &= c.excess < -hysteresis;
+    if (c.raise->held(!s.on && c.excess > 0.0f, now, c.delay_ms) && raised == nullptr)
+      raised = &c;
   }
-  if (now - s.since < (s.on ? this->clear_delay_ms_ : this->delay_ms_))
+  if (!known)
     return;
-  s.on = !s.on;
-  s.timing = false;
-  if (s.on)
-    ESP_LOGW(TAG, "%s alarm: %.1f, setpoint %.1f", LOG_NAMES[idx(a)], value, setpoint);
-  else
-    ESP_LOGI(TAG, "%s alarm cleared: %.1f, setpoint %.1f", LOG_NAMES[idx(a)], value, setpoint);
+  if (!s.on) {
+    if (raised == nullptr)
+      return;
+    s.on = true;
+    s.clear.running = false;
+    if (raised->name == nullptr)
+      ESP_LOGW(TAG, "%s alarm: %.1f, setpoint %.1f", LOG_NAMES[idx(a)], raised->value, raised->ref);
+    else
+      ESP_LOGW(TAG, "%s alarm: %s %.1f, maximum %.1f", LOG_NAMES[idx(a)], raised->name, raised->value, raised->ref);
+  } else {
+    if (!s.clear.held(back, now, this->clear_delay_ms_))
+      return;
+    s.on = false;
+    s.clear.running = false;
+    ESP_LOGI(TAG, "%s alarm cleared: %.1f, setpoint %.1f", LOG_NAMES[idx(a)], conds[0].value, conds[0].ref);
+  }
   if (s.sensor != nullptr)
     s.sensor->publish_state(s.on);
 }
@@ -178,6 +199,9 @@ void GeckoAlarm::dump_config() {
   ESP_LOGCONFIG(TAG, "Gecko climate alarms:");
   ESP_LOGCONFIG(TAG, "  temperature: setpoint +/- %.1f K (clears %.1f K inside)", this->temp_deviation_,
                 this->temp_hysteresis_);
+  for (auto &m : this->max_temps_)
+    ESP_LOGCONFIG(TAG, "  '%s': at most %.1f °C (raised after %u s)", m.sensor->get_name().c_str(), m.max,
+                  (unsigned) (this->max_temp_delay_ms_ / 1000));
   ESP_LOGCONFIG(TAG, "  humidity: setpoint - %.0f %%RH (clears %.0f %%RH inside)", this->hum_deficit_,
                 this->hum_hysteresis_);
   ESP_LOGCONFIG(TAG, "  raised after %u s, cleared after %u s", (unsigned) (this->delay_ms_ / 1000),
