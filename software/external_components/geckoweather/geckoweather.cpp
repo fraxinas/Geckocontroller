@@ -2,6 +2,7 @@
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 
+#include <algorithm>
 #include <cmath>
 
 #ifdef USE_API
@@ -39,6 +40,8 @@ void GeckoWeather::setup() {
     if (this->humidity_out_ != nullptr)
       this->humidity_out_->publish_state(x);
   });
+  this->watch_feed_(this->sky_brightness_, "sky brightness", [this](float) { this->update_(); });
+  this->watch_feed_(this->precipitation_, "precipitation", [this](float) { this->update_(); });
 
   if (this->fallback_configured_())
     this->set_interval("fallback", CHECK_INTERVAL_MS, [this]() { this->check_fallback_(); });
@@ -54,6 +57,7 @@ void GeckoWeather::watch_feed_(Feed &feed, const char *name, std::function<void(
       return;
     }
     feed.lost = false;
+    feed.value = x;
     if (feed.fallback) {
       feed.fallback = false;
       ESP_LOGI(TAG, "%s: historic feed back (%.1f), fallback ends", name, x);
@@ -82,6 +86,8 @@ void GeckoWeather::check_fallback_() {
     this->mark_lost_(this->code_, "weather code", now);
     this->mark_lost_(this->temperature_, "temperature", now);
     this->mark_lost_(this->humidity_, "humidity", now);
+    this->mark_lost_(this->sky_brightness_, "sky brightness", now);
+    this->mark_lost_(this->precipitation_, "precipitation", now);
   }
   this->api_was_connected_ = api;
 
@@ -95,8 +101,13 @@ void GeckoWeather::check_fallback_() {
   };
   bool temp_due = due(this->temperature_, "temperature");
   bool hum_due = due(this->humidity_, "humidity");
-  if (due(this->code_, "weather code"))
+  bool code_due = due(this->code_, "weather code");
+  bool sky_due = due(this->sky_brightness_, "sky brightness");
+  bool precip_due = due(this->precipitation_, "precipitation");
+  if (code_due)
     this->set_weather_code(this->fallback_code_, false);  // ignored while the test override pins a code
+  else if (sky_due || precip_due)
+    this->update_();  // the code's typical value stands in
 
   float h = this->solar_hour_();
 
@@ -117,11 +128,13 @@ void GeckoWeather::check_fallback_() {
 
   // Daily shower, in the morning so the simulated sun dries the excess water off by day instead of
   // leaving it damp overnight. Fires on crossing rain_hour, so a fallback that starts later in the
-  // day does not rain at once -- HA's weather may well have rained that day already.
+  // day does not rain at once -- HA's weather may well have rained that day already. Only while
+  // nothing tells the rain any more: a live weather code still brings its typical precipitation.
   if (!std::isnan(h)) {
     bool crossed = !std::isnan(this->last_solar_hour_) && this->last_solar_hour_ < this->rain_hour_ &&
                    h >= this->rain_hour_ && h > this->last_solar_hour_;
-    if (crossed && this->code_.fallback) {
+    bool rain_unknown = this->code_.fallback && (this->precipitation_.input == nullptr || this->precipitation_.fallback);
+    if (crossed && rain_unknown) {
       ESP_LOGI(TAG, "fallback: daily rain");
       this->rain_callback_.call();
     }
@@ -174,34 +187,59 @@ void GeckoWeather::set_weather_code(int code, bool from_override) {
 }
 
 void GeckoWeather::reapply() {
-  if (this->state_.code >= 0)
+  if (this->resolved_)
     this->resolve_(this->state_.code, this->override_active_);
+}
+
+// A measured value changed or was lost: resolve the code in force again.
+void GeckoWeather::update_() {
+  int code = this->override_active_ ? this->state_.code : this->feed_code_();
+  this->resolve_(code, this->override_active_);
+}
+
+// The measured value while the feed gives one -- held over a short loss, until the fallback takes
+// over -- else the typical value of the code in force. The test override always takes the typical
+// value: picking "Heavy rain" has to rain, whatever the sky is doing.
+float GeckoWeather::measured_or_(const Feed &feed, float typical) const {
+  if (this->override_active_ || feed.input == nullptr || feed.fallback || std::isnan(feed.value))
+    return typical;
+  return feed.value;
 }
 
 void GeckoWeather::clear_override() {
   this->override_active_ = false;
   int code = this->feed_code_();
   ESP_LOGD(TAG, "override cleared -> %s code %d", this->code_.fallback ? "fallback" : "live", code);
-  if (code >= 0)
-    this->set_weather_code(code, false);
+  this->update_();  // back to the measured cover and precipitation too
 }
 
-// Look the code up and publish the result. Both outputs are written unconditionally: this component
-// reports what the weather is doing, and whether to act on it is each consumer's own business (they
-// have their own master enables). Subscribers get the full resolved state last, so they see the
-// attenuation global already updated.
+// Resolve the weather and publish the result. The code gives passing clouds and the effect; sky
+// brightness and precipitation are measured (or the code's typical values) and are the sky
+// attenuation and the precipitation the rain pump follows. Both outputs are written
+// unconditionally: this component reports what the weather is doing, and whether to act on it is
+// each consumer's own business (they have their own master enables). Subscribers get the full resolved state last, so they see the attenuation global
+// already updated. Before the first code (-1) the default rule stands in.
 void GeckoWeather::resolve_(int code, bool from_override) {
   auto it = this->rules_.find(code);
   const WeatherRule &r = (it != this->rules_.end()) ? it->second : this->default_;
 
-  this->state_ = WeatherState{code, r.attenuation, r.clouds, r.rain, r.effect, from_override};
-  ESP_LOGD(TAG, "code %d%s -> attenuation %.2f, clouds %.2f, rain %.1f, effect '%s'", code,
-           from_override ? " (override)" : "", r.attenuation, r.clouds, r.rain, r.effect.c_str());
+  float attenuation = this->measured_or_(this->sky_brightness_, r.sky_brightness * 100.0f);
+  attenuation = clamp(attenuation / 100.0f, 0.0f, 1.0f);
+  float mm = std::max(this->measured_or_(this->precipitation_, r.precipitation), 0.0f);
+
+  WeatherState s{code, mm, attenuation, r.clouds, r.effect, from_override};
+  bool changed = !this->resolved_ || s.code != this->state_.code || s.from_override != this->state_.from_override ||
+                 s.attenuation != this->state_.attenuation || s.precipitation != this->state_.precipitation;
+  this->state_ = s;
+  this->resolved_ = true;
+  if (changed)
+    ESP_LOGD(TAG, "code %d%s: sky brightness %.0f %%, %.1f mm, clouds %.2f, effect '%s'", code,
+             from_override ? " (override)" : "", attenuation * 100.0f, mm, r.clouds, r.effect.c_str());
 
   if (this->attenuation_ != nullptr)
-    globals::id(this->attenuation_) = r.attenuation;
+    globals::id(this->attenuation_) = attenuation;
   if (this->precip_sens_ != nullptr)
-    this->precip_sens_->publish_state(r.rain);
+    this->precip_sens_->publish_state(mm);
   this->callback_.call(this->state_);
 }
 
@@ -210,7 +248,9 @@ void GeckoWeather::dump_config() {
   ESP_LOGCONFIG(TAG, "  mapped WMO codes: %u", (unsigned) this->rules_.size());
   if (!std::isnan(this->max_temperature_))
     ESP_LOGCONFIG(TAG, "  temperature setpoint capped at %.1f °C", this->max_temperature_);
-  ESP_LOGCONFIG(TAG, "  default: attenuation %.2f, rain %.1f", this->default_.attenuation, this->default_.rain);
+  ESP_LOGCONFIG(TAG, "  sky brightness: %s, precipitation: %s",
+                this->sky_brightness_.input != nullptr ? "measured" : "typical of the code",
+                this->precipitation_.input != nullptr ? "measured" : "typical of the code");
   if (this->fallback_configured_()) {
     ESP_LOGCONFIG(TAG, "  fallback after %u s: temperature %.1f/%.1f °C, humidity %.0f/%.0f %% (day/night), "
                        "warmest at %.1f h solar, code %d, daily rain at %.1f h solar",

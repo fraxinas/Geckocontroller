@@ -291,12 +291,12 @@ sensor:
   # Historic weather the controller follows
   - platform: homeassistant
     id: weather_temperature
-    entity_id: sensor.temperature_in_france_noumea_182_days_ago
+    entity_id: sensor.temperature_in_new_caledonia_ile_des_pins_182_days_ago
     on_value:
       - lambda: 'gecko_ui::ui.changed(gecko_ui::F_TEMP);'
   - platform: homeassistant
     id: weather_humidity
-    entity_id: sensor.humidity_in_france_noumea_182_days_ago
+    entity_id: sensor.humidity_in_new_caledonia_ile_des_pins_182_days_ago
     on_value:
       - lambda: 'gecko_ui::ui.changed(gecko_ui::F_HUM);'
   # Rain reservoir
@@ -326,7 +326,7 @@ sensor:
   # Wind (terrarium Multifan) and the weather wind (km/h) that bounds its speed
   - platform: homeassistant
     id: weather_windspeed
-    entity_id: sensor.windspeed_in_france_noumea_182_days_ago
+    entity_id: sensor.windspeed_in_new_caledonia_ile_des_pins_182_days_ago
     on_value:
       - lambda: 'gecko_ui::ui.changed(gecko_ui::F_WIND);'
   - platform: homeassistant
@@ -361,13 +361,13 @@ sensor:
   # (its day is shifted, see gecko.yaml) and the historic moon
   - platform: homeassistant
     id: weather_wmo
-    entity_id: sensor.weather_code_in_france_noumea_182_days_ago
+    entity_id: sensor.weather_code_in_new_caledonia_ile_des_pins_182_days_ago
   - platform: homeassistant
     id: sun_elevation
     entity_id: sensor.geckocontrol_sun_elevation
   - platform: homeassistant
     id: moon_illumination
-    entity_id: sensor.moon_in_france_noumea_182_days_ago
+    entity_id: sensor.moon_in_new_caledonia_ile_des_pins_182_days_ago
   # Gecko scale (g) under its nest; ~0 while the gecko is out
   - platform: homeassistant
     id: scale_weight

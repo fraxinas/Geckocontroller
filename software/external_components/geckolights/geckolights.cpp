@@ -142,7 +142,7 @@ void GeckoLights::setup() {
 
   ESP_LOGD(TAG, "Added Sun light effects");
 
-  // geckoweather resolves the WMO code; this component reacts to the resolved state.
+  // geckoweather resolves the weather; this component reacts to the resolved state.
   if (this->weather_ != nullptr)
     this->weather_->add_on_weather_callback([this](const geckoweather::WeatherState &w) { this->on_weather_(w); });
   if (this->moon_sens_ != nullptr)
@@ -735,7 +735,7 @@ void GeckoLights::update_illumination_() {
 
 // ------------------- Passing clouds -------------------
 //
-// Broken cloud drifting across the sun, on top of the steady sky the weather's oktas already set.
+// Broken cloud drifting across the sun, on top of the steady sky the sky brightness already set.
 // The weather's `clouds` (0..1) says how much of it there is: the more, the shorter the clear gaps
 // and the deeper the clouds. Each cloud is one event -- it slides in, sits, and slides off again --
 // rendered by fading the illumination setpoint, and with it the growlight.

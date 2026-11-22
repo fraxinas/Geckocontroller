@@ -153,7 +153,7 @@ switch:
       - lambda: |-
           id(gecko_lights).set_daylight_manual(nullopt);
 
-  # Weather-driven thermostat setpoint: on = the historic Noumea temperature sets the thermostat
+  # Weather-driven thermostat setpoint: on = the historic Île des Pins temperature sets the thermostat
   # target on every update; off = the target stays where it was set manually (HA / Geckoconsole).
   # Default on; switching it back on applies the current weather temperature right away.
   - platform: template
@@ -302,9 +302,10 @@ select:
     on_value:
       - lambda: 'id(gecko_pid).set_selected_target(i + 1);'
 
-  # Testing aid: pick a weather condition and the geckolights matrix immediately drives the
-  # terrarium (illumination + rain + effect). "(live)" releases back to the historic weather_code
-  # feed. Partly cloudy and shower codes send passing clouds across the sun.
+  # Testing aid: pick a weather condition and the geckoweather matrix immediately drives the
+  # terrarium -- illumination and rain from the condition's typical sky brightness and precipitation
+  # instead of the measured ones, plus its passing clouds and effect. "(live)" releases back to the
+  # historic feeds. Partly cloudy and shower codes send passing clouds across the sun.
   # The labels' WMO codes are listed in `codes[]` below (index-aligned to the options).
   - platform: template
     name: "Weather Override (test)"
@@ -429,20 +430,30 @@ output:
     reservoir_level: reservoir_level
     reservoir_runtime_sensor: reservoir_runtime
 
-# The WMO weather matrix and the resolved weather state, owned separately from the lights: it is
-# the single answer to "what is the weather doing right now", and its consumers are unrelated to
-# each other -- the rain pump reads the precipitation sensor, the illumination controller reads the
-# attenuation global, and geckolights subscribes for the light effect. None of that belongs to a
-# lights component.
+# The resolved weather state, owned separately from the lights: it is the single answer to "what is
+# the weather doing right now", and its consumers are unrelated to each other -- the rain pump reads
+# the precipitation sensor, the illumination controller reads the attenuation global, and
+# geckolights subscribes for passing clouds and the light effect. None of that belongs to a lights
+# component.
 geckoweather:
   id: gecko_weather
   code_sensor: weather_code
   temperature_sensor: weather_temperature
   humidity_sensor: weather_humidity
+  sky_brightness_sensor: weather_sky_brightness
+  precipitation_sensor: weather_rainfall
   temperature_setpoint: weather_temperature_setpoint
   humidity_setpoint: weather_humidity_setpoint
   max_temperature: ${max_weather_temperature}   # the thermostat target never follows above it
-  precipitation: weather_precipitation
+  # Rain: the precipitation in force (mm in the hour), published to weather_precipitation for the
+  # rain pump, which sprays it as water (see `rain_pump_float`).
+  precipitation_setpoint: weather_precipitation
+  # Daylight: the sky attenuation, i.e. how bright the terrarium *looks* -- it drives the growlight
+  # by day and the moonlight by night, and nothing else. The daylight lamp is not weather-dimmed any
+  # more: it is the daytime heater and belongs to the PID. It is the historic sky brightness as it
+  # comes: how bright the sky is against a clear one, which the HA historic_weather component works
+  # out from the radiation by day (clearness, independent of the sun's height there) and from the
+  # cloud cover by night. The sun's height here is applied by the illumination controller.
   attenuation: skycond_attenuation
   # Standard day/night cycle for when the historic feed is missing -- HA unreachable, or no record
   # for this hour ("unavailable"). Without it the terrarium would sit on whatever HA sent last, a hot
@@ -458,8 +469,10 @@ geckoweather:
     temperature: { day: 26, night: 21 }
     humidity: { day: 65, night: 80 }
     code: 1                                     # mainly clear, a few passing clouds
-    # With the weather code lost there is no rain at all, so give a short shower once a day -- in
-    # the morning, so the simulated sun dries the excess water rather than it staying damp overnight.
+    # Sky brightness and precipitation lost: the typical values of the code in force stand in (see the
+    # matrix below). With the weather code lost as well there is no rain at all, so give a short
+    # shower once a day -- in the morning, so the simulated sun dries the excess water rather than it
+    # staying damp overnight.
     # Through geckorain, so it honours "Rain Automation" and the reservoir lockout.
     rain_hour: 8
     on_rain:
@@ -468,82 +481,79 @@ geckoweather:
             lambda: 'return id(rain_enabled);'
           then:
             - lambda: 'id(rain_pump_float).run_manual(5000);'
-  # WMO weather-code matrix: maps each Open-Meteo weather_code to cloud cover in oktas, rain
-  # intensity (0..5, published to weather_precipitation for the pump) and an optional light effect.
+  # WMO weather-code matrix: what the Open-Meteo weather_code adds to the measured figures above --
+  # the character of the weather, which the numbers cannot tell. Rain and brightness levels are
+  # not set here; they follow the measured precipitation and sky brightness.
   #
-  # oktas (0 = clear .. 8 = overcast) is the single sky-attenuation input: the device turns it into
-  # a brightness factor as 1 - oktas/9, i.e. 0 -> 100%, 1 -> 89%, 2 -> 78%, 3 -> 67%, 4 -> 56%,
-  # 5 -> 44%, 6 -> 33%, 7 -> 22%, 8 -> 11%. That factor is what the terrarium *looks* like: it
-  # drives the growlight by day and the moonlight by night, and nothing else. The daylight lamp
-  # is not weather-dimmed any more -- it is the daytime heater and belongs to the PID.
-  # So these are illumination figures, not heater figures: overcast is a dull day (3 oktas / 67%),
-  # not the near-dark the old heater-facing scale used.
+  # passing_clouds (0..100%) is broken cloud drifting across the sun on top of the steady sky:
+  # single clouds slide in over 30-90 s, sit for up to two minutes and slide off, dimming the
+  # growlight. The more clouds, the shorter the clear gaps and the deeper they go (up to 70% at
+  # 100%). Uniform overcast, fog and steady rain have none -- nothing to drift.
   #
-  # clouds (0..100%) is broken cloud drifting across the sun on top of that steady sky: single
-  # clouds slide in over 30-90 s, sit for up to two minutes and slide off, dimming the growlight.
-  # The more clouds, the shorter the clear gaps and the deeper they go (up to 70% at 100%).
-  # Uniform overcast, fog and steady rain have none -- nothing to drift.
+  # effect: "Lightning" (scenic RGB flicker). While the weather has an effect the scene is dark,
+  # whatever the sky says: growlight and daylight lamp off, the heat lamp heats instead (as at
+  # night).
   #
-  # Effect: "Lightning" (scenic RGB flicker). While the weather has an effect the scene is dark,
-  # whatever the oktas say: growlight and daylight lamp off, the heat lamp heats instead (as at
-  # night). Edit freely.
-  default: { oktas: 0, rain: 0 }               # unmapped code -> clear
+  # sky_brightness (%, against a clear sky; default 100%) and precipitation (mm) are the condition's
+  # typical values. They only stand in for the measured ones: under "Weather Override (test)", so
+  # that picking "Heavy rain" rains and darkens, and while the historic sky brightness /
+  # precipitation is lost. Edit freely.
+  default: {}                                   # unmapped code -> clear
   rules:
     - codes: [0]                                # clear
-      oktas: 0
     - codes: [1]                                # mainly clear
-      oktas: 1
-      clouds: 25%
+      passing_clouds: 25%
+      sky_brightness: 90%
     - codes: [2]                                # partly cloudy
-      oktas: 2
-      clouds: 50%
+      passing_clouds: 50%
+      sky_brightness: 75%
     - codes: [3]                                # overcast
-      oktas: 3
+      sky_brightness: 50%
     - codes: [45, 48]                           # fog / rime fog
-      oktas: 5
+      sky_brightness: 40%
     - codes: [51, 56]                           # light drizzle
-      oktas: 4
-      rain: 1
+      sky_brightness: 45%
+      precipitation: 0.1
     - codes: [53, 57]                           # drizzle
-      oktas: 5
-      rain: 2
+      sky_brightness: 40%
+      precipitation: 0.3
     - codes: [55]                               # heavy drizzle
-      oktas: 6
-      rain: 3
+      sky_brightness: 35%
+      precipitation: 1.0
     - codes: [61]                               # light rain
-      oktas: 5
-      rain: 4
+      sky_brightness: 35%
+      precipitation: 2.5
     - codes: [63, 66]                           # rain
-      oktas: 6
-      rain: 5
+      sky_brightness: 25%
+      precipitation: 7.6
     - codes: [65, 67]                           # heavy rain
-      oktas: 7
-      rain: 6
+      sky_brightness: 15%
+      precipitation: 10
     - codes: [71, 77]                           # light snow / grains
-      oktas: 4
-      rain: 1
+      sky_brightness: 45%
+      precipitation: 0.1
     - codes: [73]                               # snow
-      oktas: 6
-      rain: 4
+      sky_brightness: 30%
+      precipitation: 2.5
     - codes: [75]                               # heavy snow
-      oktas: 7
-      rain: 5
+      sky_brightness: 20%
+      precipitation: 7.6
     - codes: [80, 85]                           # light rain / snow showers
-      oktas: 4
-      rain: 2
-      clouds: 60%
+      passing_clouds: 60%
+      sky_brightness: 60%
+      precipitation: 0.3
     - codes: [81, 86]                           # rain / snow showers
-      oktas: 5
-      rain: 3
-      clouds: 70%
+      passing_clouds: 70%
+      sky_brightness: 45%
+      precipitation: 1.0
     - codes: [82]                               # violent rain showers
-      oktas: 7
-      rain: 5
-      clouds: 80%
+      passing_clouds: 80%
+      sky_brightness: 25%
+      precipitation: 10
     - codes: [95, 96, 99]                       # thunderstorms
-      oktas: 8
-      rain: 4
       effect: "Lightning"
+      sky_brightness: 15%
+      precipitation: 2.5
 
 # The three lights (heat lamp, daylight lamp, RGB) plus the Sun light effects and the
 # thermostat-driven daylight/heatlamp logic are owned by the geckolights component.
@@ -558,7 +568,7 @@ geckolights:
   weather: gecko_weather
   # Visible illumination: what the terrarium *looks* like, which since the daylight lamp became a
   # pure heater (it follows the PID demand down to zero) is no longer the daylight lamp's job. The
-  # setpoint is the weather matrix's illumination factor scaled by the sun's current elevation, and
+  # setpoint is the weather's sky attenuation scaled by the sun's current elevation, and
   # the growlight alone renders it: the scenic RGB is no daylight, it stays dark by day and is only
   # there for the sunrise/sunset sweeps, Lightning and the moon. The growlight is still lit when the
   # sunset sweep starts and fades out over its first step while the first colour fades in, so the
@@ -570,7 +580,7 @@ geckolights:
   # HA) and only when the level moves. A switched `growlight` would be slow-PWM'd over `period`.
   # Human sleeping hours: from 23:30 local until the night ends at sunrise, halve the scenic
   # moonlight so it stops glowing into the room. Local clock on purpose -- the weather feed runs on
-  # Noumea time, but whoever is trying to sleep is here.
+  # New Caledonia time, but whoever is trying to sleep is here.
   # The sun-driven day, all from `illumination.sun` below: the "Sunrise Color" sweep starts as the
   # rising sun passes 5°, and the day -- the daylight lamp taking over heating -- begins once it has
   # played (~18 min). "Sunset Color" starts at 5° on the way down, and so does the night: the
@@ -856,17 +866,33 @@ sensor:
 
   # Historic temperature/humidity from HA. Not applied directly: geckoweather passes valid values
   # on to the setpoint sensors below, or its fallback cycle while HA does not provide them.
+  # (Like the other "*_182_days_ago" sensors: Île des Pins, New Caledonia, half a year ago.)
   - platform: homeassistant   # actual historic temperature
     id: weather_temperature
     name: "Historic Temperature"   # named for "Sensor Problem Details"; internal, HA has it already
     internal: true
-    entity_id: sensor.temperature_in_france_noumea_182_days_ago
+    entity_id: sensor.temperature_in_new_caledonia_ile_des_pins_182_days_ago
 
   - platform: homeassistant   # actual historic humidity
     id: weather_humidity
     name: "Historic Humidity"
     internal: true
-    entity_id: sensor.humidity_in_france_noumea_182_days_ago
+    entity_id: sensor.humidity_in_new_caledonia_ile_des_pins_182_days_ago
+
+  # Historic sky brightness (%, against a clear sky) and precipitation (mm in the hour) from HA.
+  # geckoweather passes them on as the sky attenuation (growlight / moonlight) and the precipitation
+  # the rain pump sprays.
+  - platform: homeassistant
+    id: weather_sky_brightness
+    name: "Historic Sky Brightness"
+    internal: true
+    entity_id: sensor.sky_brightness_in_new_caledonia_ile_des_pins_182_days_ago
+
+  - platform: homeassistant
+    id: weather_rainfall
+    name: "Historic Precipitation"
+    internal: true
+    entity_id: sensor.precipitation_in_new_caledonia_ile_des_pins_182_days_ago
 
   # The temperature/humidity the climates follow, published by geckoweather: the historic value, or
   # the standard day/night cycle while the feed is lost (see "Weather Fallback").
@@ -903,7 +929,7 @@ sensor:
                 return x;
 
   # Visible-illumination setpoint (0-100%) published by the geckolights illumination controller:
-  # the weather matrix's illumination factor scaled by the sun's elevation. Read-only readout --
+  # the sky attenuation (historic sky brightness) scaled by the sun's elevation. Read-only readout --
   # it is the growlight's level.
   - platform: template
     id: illumination_setpoint
@@ -912,12 +938,15 @@ sensor:
     icon: mdi:brightness-5
     accuracy_decimals: 0
 
-  # Rain intensity (0-5) is now derived from the WMO weather code by the geckolights weather
-  # matrix and published here; the geckorain rain-pump component consumes it as before.
+  # Precipitation in force (mm in the hour), published by geckoweather: the historic value, or the
+  # weather code's typical one under the test override or while the feed is lost. The geckorain
+  # rain pump sprays it.
   - platform: template
     id: weather_precipitation
-    name: "Rain intensity"
-    accuracy_decimals: 0
+    name: "Weather Precipitation"
+    unit_of_measurement: "mm"
+    icon: mdi:weather-rainy
+    accuracy_decimals: 1
 
   # Remaining fill of the rain pump's reservoir, published by geckorain from the pump runtime left.
   - platform: template
@@ -940,21 +969,21 @@ sensor:
 
   - platform: homeassistant   # actual historic rain intensity (range 0-5)
     id: weather_windspeed
-    entity_id: sensor.windspeed_in_france_noumea_182_days_ago
+    entity_id: sensor.windspeed_in_new_caledonia_ile_des_pins_182_days_ago
 
   # Raw WMO weather interpretation code (Open-Meteo weather_code) from the HA historic-weather
-  # plugin. Single source of truth: the geckolights weather matrix maps it to cloud-cover dimming,
-  # rain intensity and a light effect. (Replaces the old back-converted 0..22 "sky" sensor.)
+  # plugin. The geckoweather matrix maps it to passing clouds and a light effect; the levels come
+  # from the sky brightness and precipitation above. (Replaces the old back-converted 0..22 "sky" sensor.)
   - platform: homeassistant
     id: weather_code
     name: "Historic Weather Code"
     internal: true
-    entity_id: sensor.weather_code_in_france_noumea_182_days_ago
+    entity_id: sensor.weather_code_in_new_caledonia_ile_des_pins_182_days_ago
 
   # Consumed by the geckolights component (moon -> scenic moonlight at night).
   - platform: homeassistant
     id: moon
-    entity_id: sensor.moon_in_france_noumea_182_days_ago
+    entity_id: sensor.moon_in_new_caledonia_ile_des_pins_182_days_ago
 
   - platform: template
     name: "Combined humidity"
@@ -988,11 +1017,11 @@ sun:
   id: remote_sun
   # Sun ephemeris on local time. The terrarium stands in the northern hemisphere, so its day/night
   # cycle and seasons are local: summer solstice ~June 20, sun high, long summer days. Only the
-  # *weather* feed comes from Noumea 182 days ago, via the historic HA sensors.
+  # *weather* feed comes from Île des Pins 182 days ago, via the historic HA sensors.
   time_id: esptime
   #latitude: -22.6
   #longitude: 167.5
-  # Original Noumea latitude (22.6°S) mirrored to the northern hemisphere, i.e. kept near the
+  # Original Île des Pins latitude (22.6°S) mirrored to the northern hemisphere, i.e. kept near the
   # equator for a tropical day length, paired with the actual local installation longitude, moved
   # west by `day_shift_hours` (15° per hour) so that the sun runs that much later.
   latitude: 22.6
@@ -1189,7 +1218,7 @@ globals:
      restore_value: no
      initial_value: '0'
 
-   # The one sky-attenuation figure (0..1, from the weather matrix's oktas): how bright the
+   # The one sky-attenuation figure (0..1, the historic sky brightness): how bright the
    # terrarium looks under the current weather. Scales the growlight/scenic pair by day and the
    # moonlight by night. Not the daylight lamp -- that one is the daytime heater, driven by the PID.
    - id: skycond_attenuation

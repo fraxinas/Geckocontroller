@@ -27,35 +27,28 @@ CONF_NIGHT = "night"
 CONF_CODE = "code"
 CONF_RAIN_HOUR = "rain_hour"
 CONF_ON_RAIN = "on_rain"
-CONF_PRECIPITATION = "precipitation"
+CONF_SKY_BRIGHTNESS_SENSOR = "sky_brightness_sensor"
+CONF_PRECIPITATION_SENSOR = "precipitation_sensor"
+CONF_PRECIPITATION_SETPOINT = "precipitation_setpoint"
 CONF_ATTENUATION = "attenuation"
 CONF_DEFAULT = "default"
 CONF_RULES = "rules"
 CONF_CODES = "codes"
-CONF_OKTAS = "oktas"
-CONF_CLOUDS = "clouds"
-CONF_RAIN = "rain"
+CONF_PASSING_CLOUDS = "passing_clouds"
 CONF_EFFECT = "effect"
+CONF_SKY_BRIGHTNESS = "sky_brightness"
+CONF_PRECIPITATION = "precipitation"
 
 
-# Cloud cover in oktas (0 = clear .. 8 = overcast) -> sky attenuation, 0..1. This is the one
-# attenuation figure in the system: it says how bright the terrarium *looks* under this weather,
-# driving the growlight/scenic pair by day and the moonlight by night. The daylight lamp is not
-# weather-dimmed -- it is the daytime heater and answers to the thermostat PID alone.
-#
-# /9 rather than /8 keeps a floor, so even full overcast is dim rather than fully dark.
-def _atten(oktas):
-    return 1.0 - oktas / 9.0
-
-
-# One weather behaviour (cloud cover in oktas 0..8, passing clouds 0..100%, rain 0..5, optional
-# named light effect). `oktas` is the steady sky; `clouds` is broken cloud drifting across the sun
-# on top of it, which the illumination controller renders as individual clouds dimming the light.
+# What one WMO code says: broken cloud drifting across the sun (0..100%, rendered by the
+# illumination controller as single clouds dimming the light) and an optional named light effect.
+# `sky_brightness` (%) and `precipitation` (mm) are the condition's typical values: they stand in
+# for the measured ones only under the test override or while a measured feed is lost.
 _RULE_BODY = {
-    cv.Optional(CONF_OKTAS, default=0): cv.int_range(min=0, max=8),
-    cv.Optional(CONF_CLOUDS, default=0.0): cv.percentage,
-    cv.Optional(CONF_RAIN, default=0.0): cv.float_,
+    cv.Optional(CONF_PASSING_CLOUDS, default=0.0): cv.percentage,
     cv.Optional(CONF_EFFECT, default=""): cv.string,
+    cv.Optional(CONF_SKY_BRIGHTNESS, default="100%"): cv.percentage,
+    cv.Optional(CONF_PRECIPITATION, default=0.0): cv.float_range(min=0.0),
 }
 
 
@@ -96,12 +89,19 @@ CONFIG_SCHEMA = cv.Schema(
         # follow -- or, while the feed is lost, the fallback cycle.
         cv.Optional(CONF_TEMPERATURE_SENSOR): cv.use_id(sensor.Sensor),
         cv.Optional(CONF_HUMIDITY_SENSOR): cv.use_id(sensor.Sensor),
+        # Historic sky brightness (%, against a clear sky) and precipitation (mm) from HA: they are
+        # the sky attenuation and the precipitation the rain pump follows. Without them, the typical
+        # values of the code in force stand in.
+        cv.Optional(CONF_SKY_BRIGHTNESS_SENSOR): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_PRECIPITATION_SENSOR): cv.use_id(sensor.Sensor),
         cv.Optional(CONF_TEMPERATURE_SETPOINT): cv.use_id(sensor.Sensor),
         cv.Optional(CONF_HUMIDITY_SETPOINT): cv.use_id(sensor.Sensor),
         # Cap (°C) of the temperature setpoint: a hotter historic (or fallback) value is passed on as
         # this, never above it.
         cv.Optional(CONF_MAX_TEMPERATURE): cv.float_,
-        cv.Optional(CONF_PRECIPITATION): cv.use_id(sensor.Sensor),
+        # Output: the precipitation in force (mm in the hour), which the rain pump follows.
+        cv.Optional(CONF_PRECIPITATION_SETPOINT): cv.use_id(sensor.Sensor),
+        # Output: sky attenuation 0..1, the sky brightness.
         cv.Optional(CONF_ATTENUATION): cv.use_id(globals.GlobalsComponent),
         cv.Optional(CONF_DEFAULT): cv.Schema(_RULE_BODY),
         cv.Optional(CONF_RULES, default=[]): cv.ensure_list(
@@ -120,6 +120,8 @@ async def to_code(config):
     for key, setter in [
         (CONF_TEMPERATURE_SENSOR, var.set_temperature_sensor),
         (CONF_HUMIDITY_SENSOR, var.set_humidity_sensor),
+        (CONF_SKY_BRIGHTNESS_SENSOR, var.set_sky_brightness_sensor),
+        (CONF_PRECIPITATION_SENSOR, var.set_precipitation_sensor),
         (CONF_TEMPERATURE_SETPOINT, var.set_temperature_setpoint_sensor),
         (CONF_HUMIDITY_SETPOINT, var.set_humidity_setpoint_sensor),
     ]:
@@ -127,17 +129,20 @@ async def to_code(config):
             cg.add(setter(await cg.get_variable(config[key])))
     if CONF_MAX_TEMPERATURE in config:
         cg.add(var.set_max_temperature(config[CONF_MAX_TEMPERATURE]))
-    if CONF_PRECIPITATION in config:
-        cg.add(var.set_precipitation_sensor(await cg.get_variable(config[CONF_PRECIPITATION])))
+    if CONF_PRECIPITATION_SETPOINT in config:
+        cg.add(var.set_precipitation_setpoint_sensor(await cg.get_variable(config[CONF_PRECIPITATION_SETPOINT])))
     if CONF_ATTENUATION in config:
         cg.add(var.set_attenuation(await cg.get_variable(config[CONF_ATTENUATION])))
+
+    def rule_args(r):
+        return (r[CONF_PASSING_CLOUDS], r[CONF_EFFECT], r[CONF_SKY_BRIGHTNESS], r[CONF_PRECIPITATION])
+
     if CONF_DEFAULT in config:
-        d = config[CONF_DEFAULT]
-        cg.add(var.set_default_rule(_atten(d[CONF_OKTAS]), d[CONF_CLOUDS], d[CONF_RAIN], d[CONF_EFFECT]))
+        cg.add(var.set_default_rule(*rule_args(config[CONF_DEFAULT])))
     # Flatten each rule's code list into one add_rule call per WMO code.
     for rule in config[CONF_RULES]:
         for code in rule[CONF_CODES]:
-            cg.add(var.add_rule(code, _atten(rule[CONF_OKTAS]), rule[CONF_CLOUDS], rule[CONF_RAIN], rule[CONF_EFFECT]))
+            cg.add(var.add_rule(code, *rule_args(rule)))
 
     if CONF_FALLBACK in config:
         fb = config[CONF_FALLBACK]

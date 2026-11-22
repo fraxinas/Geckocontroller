@@ -77,8 +77,8 @@ ILLUMINATION_SCHEMA = cv.All(
 )
 
 # Sleeping hours. From `start` on the LOCAL wall clock (this is about the people in the room, not
-# the simulated Noumea weather feed) until the night ends at sunrise, the scenic moonlight is scaled
-# by `factor` so the terrarium does not glow into a dark room.
+# the simulated New Caledonia weather feed) until the night ends at sunrise, the scenic moonlight is
+# scaled by `factor` so the terrarium does not glow into a dark room.
 QUIET_HOURS_SCHEMA = cv.Schema(
     {
         cv.Required(CONF_TIME): cv.use_id(time_.RealTimeClock),
