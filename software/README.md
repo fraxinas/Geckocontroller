@@ -37,13 +37,25 @@ Using esphome, the Geckocontroller shows up as a device in your Home Assistant a
 
 ## Calibration
 
-### Rain Pump Reservoir
+### Rain Pump Water
 
-The rain pump is fed from a 1 l bottle and must not run dry. `reservoir_runtime` of the `geckorain` output in `gecko.yaml` is the pump runtime one filling lasts (`0s` disables the tracking). Measure it instead of guessing:
+The rain pump sprays rain and the misting for humidity, fed from a 1 l bottle that must not run dry. Everything it does is reckoned in water, at the pump's `flow` through the spray nozzles (`geckorain` output in `gecko.yaml`): the water sprayed is in proportion to the pump's on-time. No pulse is shorter than `min_spray` (200 ms), no rain pulse longer than `max_spray` (3 s).
 
-* fill the bottle and switch on "Reservoir Calibration": the pump runs continuously
-* switch it off as soon as the pump draws air: 95 % of the measured time becomes the reservoir runtime, shown as "Reservoir Runtime" and kept in flash (until `reservoir_runtime` is edited in the YAML)
-* "Reservoir Level" shows the remaining fill in %; at 0 % the pump is locked out and "Rain Automation" switches off
+With a MistKing diaphragm misting pump MKP-125-50 with one Value T double misting assembly and one Value L misting assembly attached, the flow is 2.66 ml/s, and the pump draws 970 ml from one filling of the bottle (its intake sits a few cm above the bottom).
+
+Flow and the usable reservoir volume are calibrated on the device and kept in flash ("Pump Flow", "Reservoir Volume"); the YAML values stand in until then. Calibrate with the spray nozzles attached (the flow through them is far lower than the pump's open flow):
+
+* fill the bottle as usual, hold measuring cups under the nozzles and switch on "Reservoir Calibration": 5 s later the pump starts and runs continuously ("Reservoir Calibration Runtime"), everything else held off; with the nozzles in the terrarium the cups are held by hand for the run (about 6 min)
+* press "Reservoir empty" as soon as the pump draws air: the pump stops and the runtime is kept
+* enter the ml in the measuring cups (all together) as "Reservoir Calibration Result": that over the runtime becomes the flow, and the ml themselves the "Reservoir Volume" -- what the pump really draws from one filling
+* switching "Reservoir Calibration" off instead aborts, nothing changes; after `calibration_limit` (10 min) the run ends by itself and the reservoir counts as empty
+* refill the bottle and press "Reservoir refilled"
+
+Rain: the weather's precipitation (mm in the hour) on the 60 × 40 cm floor, 15 % of it (`rain_share`), capped at `max_rain`. Heavier rain comes in bigger pulses and more often: at `max_rain` a pulse every `rain_interval` (30 s), lighter rain √(max_rain / mm) times further apart, each pulse the water of its interval, its length at the flow within `min_spray` .. `max_spray`. Misting sprays at most `max_misting` (ml per hour, at full humidify demand) in pulses of `min_spray`.
+
+The reservoir (`reservoir_volume`) is tracked at the same flow; every pump run (rain, misting, "Let it rain") is deducted from it:
+
+* "Reservoir Level" shows the remaining fill in %; once only `reserve` (10 %) is left, the pump is locked out and "Rain Automation" switches off. "Reservoir empty" does the same right away
 * after refilling, press "Reservoir refilled": the level returns to 100 % and the automation switches back on
 
 ### HX711 Load Cell

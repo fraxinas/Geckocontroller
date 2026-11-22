@@ -194,9 +194,13 @@ switch:
       - lambda: |-
           id(rain_enabled) = false;
 
-  # Measures the rain pump's reservoir runtime: fill the reservoir, switch on (the pump runs
-  # continuously), switch off once the pump draws air. 95 % of the measured time becomes the
-  # reservoir runtime; then refill and press "Reservoir refilled". Gives up after 30 min.
+  # Flow calibration of the rain pump: with the spray nozzles attached and aimed into measuring
+  # cups, fill the reservoir and switch on -- 5 s later the pump starts and runs continuously
+  # ("Reservoir Calibration Runtime"), everything else held off. Press "Reservoir empty" as soon
+  # as the pump draws air, then enter the ml in the cup as "Reservoir Calibration Result": that
+  # over the runtime becomes the flow ("Pump Flow"), and the ml the usable reservoir volume
+  # ("Reservoir Volume" -- the intake sits above the bottom). Then refill and press "Reservoir
+  # refilled". Switching off aborts, nothing changes. Not resumed after a reboot.
   - platform: template
     name: "Reservoir Calibration"
     id: reservoir_calibration_switch
@@ -279,8 +283,12 @@ select:
     options:
       - "Grow Light"
       - "Aux Power"
+    # published only when the mode has changed, not on every poll (the default 60 s)
     lambda: |-
-      return std::string(id(outlet2_aux) ? "Aux Power" : "Grow Light");
+      const char *mode = id(outlet2_aux) ? "Aux Power" : "Grow Light";
+      if (id(outlet2_mode_select).has_state() && id(outlet2_mode_select).current_option() == mode)
+        return {};
+      return std::string(mode);
     set_action:
       - lambda: 'id(outlet2_aux) = (x == "Aux Power");'
       - component.update: outlet2_mode_select
@@ -354,11 +362,11 @@ button:
     id: pump_button
     name: "Let it rain"
     icon: "mdi:weather-rainy"
-    # Runs through geckorain so the runtime is deducted from the reservoir; refused when it is empty.
+    # Runs through geckorain so the spray time is deducted from the reservoir; refused when it is empty.
     on_press:
       - lambda: 'id(rain_pump_float).run_manual(4000);'
 
-  # Press after refilling the rain pump's reservoir: restores the full pump runtime and switches the
+  # Press after refilling the rain pump's reservoir: restores the full spray time and switches the
   # rain automation back on if the empty reservoir had switched it off.
   - platform: template
     id: reservoir_refilled_button
@@ -366,6 +374,15 @@ button:
     icon: mdi:cup-water
     on_press:
       - lambda: 'id(rain_pump_float).refill_reservoir();'
+
+  # Press when the reservoir is (nearly) empty: ends a "Reservoir Calibration", adopting its count;
+  # otherwise locks the pump out as if the runtime had run out, until "Reservoir refilled".
+  - platform: template
+    id: reservoir_empty_button
+    name: "Reservoir empty"
+    icon: mdi:cup-outline
+    on_press:
+      - lambda: 'id(rain_pump_float).reservoir_empty();'
 
 output:
   - platform: ac_dimmer
@@ -410,25 +427,56 @@ output:
     frequency: 25000 hz
     channel: 7
   # Rain pump: serves both historic-weather rain simulation and humidification (hygrostat
-  # heat_output). Duty is arbitrated inside the component (see PID_CALIBRATION.md); internal
-  # caps replace the old max_power. period default 180s.
+  # heat_output). What it sprays is arbitrated inside the component (see PID_CALIBRATION.md); rain
+  # and misting both come as pulses of measured water. `period` (default 180s) is only the slow-PWM
+  # of the humidify calibration, where the PID relay drives the pump directly.
   - platform: geckorain
     id: rain_pump_float
     pump: rain_pump
     # period: 30min
+    # The pump's flow through the spray nozzles: the water is in proportion to the on-time.
+    # Measured with "Reservoir Calibration" (MistKing MKP-125-50 with a Value T double and a Value L
+    # misting assembly: 2.66 ml/s), kept in flash; this value stands in until then. Editing it (or
+    # reservoir_volume) drops the calibration. No pulse is shorter than `min_spray`, no rain pulse
+    # longer than `max_spray`.
+    flow: 2.66              # ml/s
+    min_spray: 200ms
+    max_spray: 3s
+    # Rain: the weather's precipitation (mm in the hour) on the 60 x 40 cm floor, 1 mm being 0.24 l.
+    # Only `rain_share` of it is sprayed and heavy rain is capped at `max_rain`, so that the reservoir
+    # lasts: heavy rain 10 x 15% x 0.24 = 360 ml/h, light rain (1 mm/h) 36 ml/h, drizzle (0.2 mm/h)
+    # 7 ml/h. Heavier rain comes in bigger pulses and more often: at max_rain one every
+    # `rain_interval`, lighter rain sqrt(max_rain / mm) times further apart, each pulse the water of
+    # its interval, its length at the flow within `min_spray` .. `max_spray`. At 2.66 ml/s:
+    #   heavy rain: 3 ml (~1.1 s) every 30 s; moderate rain (2.5 mm/h): 1.5 ml (~0.56 s) every
+    #   minute; light rain: ~1 ml (~0.36 s) every ~1.5 min; drizzle: 0.53 ml (0.2 s) every ~4.5 min
+    # Every pulse is a switch of the mechanical relay.
     weather: weather_precipitation
+    floor_area: 0.24        # m²
+    rain_share: 15%
+    max_rain: 10.0          # mm in the hour
+    rain_interval: 30s
+    # Misting for humidity: at most `max_misting` (ml per hour, at full humidify demand), in pulses
+    # of `min_spray`.
+    max_misting: 120        # ml/h
     humidity: humidity_combined
     hygrostat: hygrostat
     calibration_target: calibration_target
     enabled: rain_enabled
-    # Pump runtime one filling of the 1 l reservoir bottle lasts, minus a safety margin; every pump
-    # run (rain, misting, calibration, "Let it rain") is deducted from it. When it is used up, the
-    # pump is locked out and the rain automation switches off until "Reservoir refilled" is pressed.
-    # "Reservoir Calibration" measures and replaces it (kept in flash, until this value is edited).
-    # 0s disables reservoir tracking.
-    reservoir_runtime: 1min
+    # The 1 l reservoir bottle: what the pump draws from one filling (less than the bottle: the
+    # intake sits above the bottom), until the flow calibration measures it ("Reservoir Volume":
+    # 970 ml). Every pump run (rain, misting, "Let it rain") is deducted from it at the flow above.
+    # Once only `reserve` is left, the pump is locked out and the rain automation switches off until
+    # "Reservoir refilled" is pressed. 0 disables reservoir tracking.
+    reservoir_volume: 1.00  # l
+    reserve: 10%
     reservoir_level: reservoir_level
-    reservoir_runtime_sensor: reservoir_runtime
+    # The flow and volume in force, and the flow calibration: past the limit without "Reservoir empty"
+    # it ends by itself and the reservoir counts as empty, so the pump cannot run dry indefinitely.
+    flow_sensor: pump_flow
+    volume_sensor: reservoir_volume
+    calibration_sensor: reservoir_calibration_runtime
+    calibration_limit: 10min
 
 # The resolved weather state, owned separately from the lights: it is the single answer to "what is
 # the weather doing right now", and its consumers are unrelated to each other -- the rain pump reads
@@ -948,7 +996,7 @@ sensor:
     icon: mdi:weather-rainy
     accuracy_decimals: 1
 
-  # Remaining fill of the rain pump's reservoir, published by geckorain from the pump runtime left.
+  # Remaining fill of the rain pump's reservoir, published by geckorain from the spray time left.
   - platform: template
     id: reservoir_level
     name: "Reservoir Level"
@@ -957,13 +1005,32 @@ sensor:
     accuracy_decimals: 0
     state_class: measurement
 
-  # Pump runtime one reservoir filling lasts, as configured or as measured by "Reservoir Calibration".
+  # Pump runtime of a "Reservoir Calibration" (flow calibration) in progress or awaiting its result
+  # (unknown otherwise).
   - platform: template
-    id: reservoir_runtime
-    name: "Reservoir Runtime"
+    id: reservoir_calibration_runtime
+    name: "Reservoir Calibration Runtime"
     unit_of_measurement: "s"
     device_class: duration
-    icon: mdi:timer-sand
+    icon: mdi:timer-play-outline
+    accuracy_decimals: 0
+    entity_category: diagnostic
+
+  # The rain pump's flow through the spray nozzles in force, calibrated or from the YAML.
+  - platform: template
+    id: pump_flow
+    name: "Pump Flow"
+    unit_of_measurement: "mL/s"
+    icon: mdi:water-pump
+    accuracy_decimals: 2
+    entity_category: diagnostic
+  # What the pump draws from one reservoir filling, calibrated or from the YAML.
+  - platform: template
+    id: reservoir_volume
+    name: "Reservoir Volume"
+    unit_of_measurement: "mL"
+    device_class: volume
+    icon: mdi:cup-water
     accuracy_decimals: 0
     entity_category: diagnostic
 
@@ -1068,6 +1135,21 @@ climate:
 # Expose its humidity setpoint as a proper percentage instead. Current humidity is the
 # "Combined humidity" sensor (%).
 number:
+  # The ml the flow calibration ("Reservoir Calibration") pumped into the measuring cups: sets the
+  # flow and the reservoir volume.
+  - platform: template
+    id: reservoir_calibration_result
+    name: "Reservoir Calibration Result"
+    icon: mdi:beaker-outline
+    entity_category: config
+    unit_of_measurement: mL
+    mode: box
+    min_value: 0
+    max_value: 2000
+    step: 5
+    optimistic: true
+    on_value:
+      - lambda: 'if (x > 0) id(rain_pump_float).calibrate_flow(x);'
   - platform: template
     name: "Target Humidity"
     id: target_humidity_number
@@ -1078,8 +1160,12 @@ number:
     min_value: 30
     max_value: 100
     step: 2
+    # published only when the setpoint has changed, not on every poll (the default 60 s)
     lambda: |-
-      return id(hygrostat).target_temperature;
+      const float v = id(hygrostat).target_temperature;
+      if (id(target_humidity_number).has_state() && id(target_humidity_number).state == v)
+        return {};
+      return v;
     set_action:
       - climate.control:
           id: hygrostat
@@ -1100,8 +1186,12 @@ number:
     max_value: 100
     step: 5
     update_interval: 15s
+    # published only when the speed has moved, not on every poll
     lambda: |-
-      return (float) (id(multifan_status).state ? id(multifan_status).speed : 0);
+      const float v = (float) (id(multifan_status).state ? id(multifan_status).speed : 0);
+      if (id(fan_manual_speed).has_state() && id(fan_manual_speed).state == v)
+        return {};
+      return v;
     set_action:
       - lambda: |-
           auto current = [] { return (float) (id(multifan_status).state ? id(multifan_status).speed : 0); };
@@ -1135,9 +1225,13 @@ number:
     max_value: 100
     step: 1
     update_interval: 5s
+    # published only when the level has moved, not on every poll
     lambda: |-
       const auto &rv = id(day_light).remote_values;
-      return rv.is_on() ? rv.get_brightness() * 100.0f : 0.0f;
+      const float v = rv.is_on() ? rv.get_brightness() * 100.0f : 0.0f;
+      if (id(daylight_manual_level).has_state() && std::fabs(id(daylight_manual_level).state - v) < 0.5f)
+        return {};
+      return v;
     set_action:
       - lambda: |-
           if (!id(gecko_lights).daylight_manual().has_value()) {
@@ -1304,6 +1398,11 @@ text_sensor:
     elevation: 5°
     format: "%Y-%m-%dT%H:%M:%SZ"
     device_class: timestamp
+    filters:   # recomputed every minute; published only when the time has changed
+      - lambda: |-
+          if (id(next_sunrise).has_state() && id(next_sunrise).get_state() == x)
+            return {};
+          return x;
   - platform: sun
     sun_id: remote_sun
     name: "Next Sunset"
@@ -1312,6 +1411,11 @@ text_sensor:
     elevation: 5°
     format: "%Y-%m-%dT%H:%M:%SZ"
     device_class: timestamp
+    filters:   # recomputed every minute; published only when the time has changed
+      - lambda: |-
+          if (id(next_sunset).has_state() && id(next_sunset).get_state() == x)
+            return {};
+          return x;
 
   # gecko_nest.h: start of the current in / out period, and state + last periods for the console
   - platform: template
