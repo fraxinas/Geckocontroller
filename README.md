@@ -97,39 +97,22 @@
 * [How-to Setup & Calibrate](software/README.md)
 
 ## Console unit
-| ![](hardware/Geckoconsole-PCB-front.png)    | ![](hardware/Geckoconsole-PCB-back.png)    |
-| :------------------------------------------ | :----------------------------------------- |
-* Stand-alone device based on ESP32
-* remote controls the main unit through home assistant via WiFi
-* 240x240 IPS Display
-* Rotary encoder + navigation button
-* MH-Z19 CO<sub>2</sub> Sensor
-* 6x WS2812 addressable RGB LEDs
-* Piezo Buzzer for audio alerts
-* USB-C powered
-* custom esphome components:
-  * controls for thermostat, hygrostat, rain, fogger
-  * HSV color picker for scenic light
+* ESP32-DevKitC with a 2.4" ILI9341 320x240 touch display (MSP2402), wired with dupont wires
+  (wiring in [gecko-console.yaml](software/gecko-console.yaml))
+* remote controls the main unit through home assistant via WiFi, operated by touch
+* start page with a live animated sky following the simulated weather and sun
+* pages for thermostat, hygrostat & rain, wind, lights with HSL color picker for scenic light, gecko nest & weight, light scene tests, settings
+* Original dedicated console hardware platform with rotary encoder, MH-Z19 CO<sub>2</sub> sensor, piezo buzzer and RGB LEDs got a new life as an independent ESPHome air quality monitor
 
 ## TODO
-### Console unit
-- [X] schematic & PCB layout
-- [ ] 3d case
-- [X] CO2 sensor
-- [X] WS2812 RGB LEDs
-- [X] buzzer
-- [X] software for ST7789 display
-- [X] software for rotary encoder
-- [ ] VCNL4040 support
-- [ ] photos / documentation
-
 ### Controller unit
 - [x] 3d-printed cases for BME280 sensor and console
 - [x] rainfall/humidity automation
 - [x] ventilation automation
 - [x] moonlight simulation
 - [x] thunderstorm simulation
-- [ ] photos / documentation
+- [x] climate failover + alarms
+- [x] photos / documentation
 
 ## Project Diary
 | Date       | Version | Milestone                                        |
@@ -146,3 +129,5 @@
 | 2022-02-18 |         | Assembled Console PCB                            |
 | 2022-03-07 | v2.0    | New Hardware Revision of Console PCB             |
 | 2026-09-21 | v2.0    | New Hardware Revision of Controller PCB          |
+| 2026-10-17 |         | Deploy new Controller Hardware                   |
+| 2026-11-18 |         | Replace HW of Console with ESP32-DevkitC         |
