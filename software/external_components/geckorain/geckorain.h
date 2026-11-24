@@ -25,8 +25,13 @@ static const int CAL_HUMIDIFY = 4;  // calibration_target value for humidificati
 //
 // Water: everything here is reckoned in ml -- the reservoir, the rain and the misting -- at the
 // pump's `flow` through the spray nozzles, the water in proportion to the pump's on-time. No pulse
-// is shorter than `min_spray`. The flow is measured on the device (see the flow calibration below)
-// and kept in flash; the YAML value stands in until then.
+// is shorter than `min_spray`. A pump idle for `prime_after` (or since boot) first has to spin up and
+// pressurize the line to the nozzles: the first automatic pulse after that runs `prime` longer, not
+// counted as sprayed water (it is still drawn from the reservoir). After the reservoir was marked empty
+// (reservoir_empty(), also the end of a flow calibration) the line has run dry: the next prime is
+// `empty_prime_factor` times as long, regardless of the idle time, until a run that long. The flow
+// is measured on the device (see the flow calibration below) and kept in flash; the YAML value
+// stands in until then.
 //
 // Rain is real water: the weather's precipitation (mm in the hour) falls on the terrarium floor,
 // 1 mm on 1 m² being 1 l. Only `rain_share` of it is sprayed, and rain heavier than `max_rain` counts
@@ -61,6 +66,11 @@ class RainPumpOutput : public output::FloatOutput, public Component {
   void set_flow(float ml_per_s) { this->flow_ = ml_per_s; }
   void set_min_spray(uint32_t ms) { this->min_spray_ = ms; }
   void set_max_spray(uint32_t ms) { this->max_spray_ = ms; }
+  // After `prime_after` of idle pump (and after a boot) the first automatic pulse runs `prime` longer.
+  void set_prime(uint32_t ms) { this->prime_ = ms; }
+  void set_prime_after(uint32_t ms) { this->prime_after_ = ms; }
+  // After the reservoir was marked empty (the line ran dry), the next prime is this many times `prime`.
+  void set_empty_prime_factor(float f) { this->empty_prime_factor_ = f; }
   // The weather's precipitation, mm in the hour.
   void set_weather_sensor(sensor::Sensor *s) { this->weather_sens_ = s; }
   void set_floor_area(float m2) { this->floor_area_ = m2; }
@@ -150,6 +160,13 @@ class RainPumpOutput : public output::FloatOutput, public Component {
   float flow_{2.66f};         // ml/s through the nozzles
   uint32_t min_spray_{200};   // ms, shortest pulse
   uint32_t max_spray_{3000};  // ms, longest rain pulse
+  uint32_t prime_{0};                    // ms added to the first pulse after an idle spell; 0 = off
+  uint32_t prime_after_{60 * 60 * 1000};  // ms of idle pump after which the next pulse primes
+  uint32_t last_off_{0};                 // when the pump was last switched off
+  bool ran_since_boot_{false};           // last_off_ is valid
+  float empty_prime_factor_{6.0f};       // prime x this after the reservoir ran dry
+  bool dry_{false};                      // the line ran dry, no run long enough to prime it since
+  uint32_t dry_prime_ms_() const { return (uint32_t) (this->prime_ * this->empty_prime_factor_); }
 
   float humidify_demand_{0};  // latest hygrostat humidify demand from write_state
   float duty_{0};             // the calibration's slow-PWM duty

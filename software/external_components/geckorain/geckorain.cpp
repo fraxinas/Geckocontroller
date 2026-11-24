@@ -46,6 +46,8 @@ void RainPumpOutput::setup() {
     this->remaining_ml_ = std::isfinite(p.remaining_ml) ? clamp(p.remaining_ml, 0.0f, this->reservoir_ml_)
                                                         : this->reservoir_ml_;
   }
+  // Marked empty (0 ml; the tracking alone stops at the reserve): the line ran dry.
+  this->dry_ = this->reservoir_tracked_() && this->remaining_ml_ <= 0.0f;
   this->publish_model_();
   this->publish_level_(true);
   this->publish_calibration_();
@@ -118,8 +120,10 @@ void RainPumpOutput::reservoir_empty() {
     this->set_pump_(false);
     ESP_LOGI(TAG, "reservoir marked empty");
   }
-  // The pump is locked out and the automation switches off (loop) until "Reservoir refilled".
+  // The pump is locked out and the automation switches off (loop) until "Reservoir refilled"; the
+  // line has run dry and wants the long prime then.
   this->remaining_ml_ = 0;
+  this->dry_ = true;
   this->save_reservoir_();
   this->publish_level_(true);
 }
@@ -248,19 +252,26 @@ void RainPumpOutput::set_pump_(bool on) {
     return;
   uint32_t now = millis();
   if (on) {
+    ESP_LOGD(TAG, "rain pump ON");
     this->run_start_ = this->last_account_time_ = now;
     this->current_state_ = true;
     this->pump_->turn_on();
     this->high_freq_.start();
   } else {
+    ESP_LOGD(TAG, "rain pump OFF after %u ms (~%.1f ml)", now - this->run_start_, this->water_ml_(now - this->run_start_));
     this->account_(now);
     this->pump_->turn_off();
     this->current_state_ = false;
+    this->last_off_ = now;
+    this->ran_since_boot_ = true;
+    if (this->dry_ && !this->calibrating_ && now - this->run_start_ >= this->dry_prime_ms_()) {
+      this->dry_ = false;
+      ESP_LOGD(TAG, "line primed after running dry");
+    }
     this->high_freq_.stop();
     this->save_reservoir_();
     this->publish_level_(true);
   }
-  ESP_LOGV(TAG, "rain pump %s", on ? "ON" : "OFF");
 }
 
 // Latest humidify demand from the hygrostat PID (heat_output). Stored, not applied directly;
@@ -327,11 +338,19 @@ bool RainPumpOutput::spray_wants_pump_(uint32_t now, float ml_per_hour, uint32_t
   float ml = this->water_ml_(pulse_ms);
   if (ml_per_hour <= 0.0f || ml <= 0.0f || this->owed_ml_ < ml)
     return false;
-  this->pulse_ms_ = pulse_ms;
+  // An idle pump first spins up and pressurizes the line: prime it, on top of the pulse's water.
+  uint32_t prime = 0;
+  if (this->prime_ > 0 && !this->current_state_) {
+    if (this->dry_)
+      prime = this->dry_prime_ms_();
+    else if (!this->ran_since_boot_ || now - this->last_off_ >= this->prime_after_)
+      prime = this->prime_;
+  }
+  this->pulse_ms_ = pulse_ms + prime;
   this->pulse_start_ = now;
   this->owed_ml_ -= ml;
-  ESP_LOGV(TAG, "%s: %u ms pulse, %.1f ml (%.0f ml per hour, one every %.0f s)", rain ? "rain" : "misting", pulse_ms,
-           ml, ml_per_hour, ml / ml_per_hour * 3600.0f);
+  ESP_LOGD(TAG, "%s: %u ms pulse%s, %.1f ml (%.1f ml per hour, one every %.0f s)", rain ? "rain" : "misting",
+           this->pulse_ms_, prime == 0 ? "" : this->dry_ ? " (primed, line ran dry)" : " (primed)", ml, ml_per_hour, ml / ml_per_hour * 3600.0f);
   return true;
 }
 
@@ -353,6 +372,7 @@ void RainPumpOutput::loop() {
       this->calibrating_ = false;
       this->set_pump_(false);
       this->remaining_ml_ = 0;
+      this->dry_ = true;
       this->save_reservoir_();
       this->publish_level_(true);
       this->publish_calibration_();
@@ -453,6 +473,9 @@ void RainPumpOutput::dump_config() {
     ESP_LOGCONFIG(TAG, "  Rain pulses: every %u s at max_rain, %u .. %u ms", this->rain_interval_ / 1000,
                   this->min_spray_, this->max_spray_);
   }
+  if (this->prime_ > 0)
+    ESP_LOGCONFIG(TAG, "  Priming: %u ms on the first pulse after %u s idle, %u ms after running dry%s", this->prime_,
+                  this->prime_after_ / 1000, this->dry_prime_ms_(), this->dry_ ? " (pending)" : "");
   ESP_LOGCONFIG(TAG, "  Misting: at most %.0f ml/h in pulses of %u ms", this->max_misting_, this->min_spray_);
   if (this->reservoir_tracked_()) {
     ESP_LOGCONFIG(TAG, "  Reservoir: %.0f ml, %.0f %% reserve, remaining %.0f ml", this->reservoir_ml_,

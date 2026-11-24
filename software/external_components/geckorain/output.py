@@ -14,6 +14,9 @@ CONF_PUMP = "pump"
 CONF_FLOW = "flow"
 CONF_MIN_SPRAY = "min_spray"
 CONF_MAX_SPRAY = "max_spray"
+CONF_PRIME = "prime"
+CONF_PRIME_AFTER = "prime_after"
+CONF_EMPTY_PRIME_FACTOR = "empty_prime_factor"
 CONF_WEATHER = "weather"
 CONF_FLOOR_AREA = "floor_area"
 CONF_RAIN_SHARE = "rain_share"
@@ -47,6 +50,14 @@ CONFIG_SCHEMA = output.FLOAT_OUTPUT_SCHEMA.extend(
         cv.Optional(CONF_FLOW, default=2.66): cv.positive_float,
         cv.Optional(CONF_MIN_SPRAY, default="200ms"): cv.positive_time_period_milliseconds,
         cv.Optional(CONF_MAX_SPRAY, default="3s"): cv.positive_time_period_milliseconds,
+        # After `prime_after` without any pump run (and after a boot), the first automatic pulse runs
+        # `prime` longer: the motor spin-up and the pressure build-up to the nozzles' check valves.
+        # Drawn from the reservoir, but not counted as sprayed rain or misting. 0s disables it.
+        cv.Optional(CONF_PRIME, default="0s"): cv.positive_time_period_milliseconds,
+        cv.Optional(CONF_PRIME_AFTER, default="1h"): cv.positive_time_period_milliseconds,
+        # After "Reservoir empty" (or a flow calibration, which ends with it) the line has run dry:
+        # the first automatic pulse after the refill primes `empty_prime_factor` x `prime`.
+        cv.Optional(CONF_EMPTY_PRIME_FACTOR, default=6.0): cv.positive_float,
         # The weather's precipitation in mm in the hour. Rain is this water on `floor_area` (m²),
         # 1 mm on 1 m² = 1 l, of which `rain_share` is sprayed; heavier than `max_rain` (mm in the
         # hour) counts as that. At max_rain a pulse every `rain_interval`, lighter rain
@@ -88,6 +99,9 @@ async def to_code(config):
     cg.add(var.set_flow(config[CONF_FLOW]))
     cg.add(var.set_min_spray(config[CONF_MIN_SPRAY]))
     cg.add(var.set_max_spray(config[CONF_MAX_SPRAY]))
+    cg.add(var.set_prime(config[CONF_PRIME]))
+    cg.add(var.set_prime_after(config[CONF_PRIME_AFTER]))
+    cg.add(var.set_empty_prime_factor(config[CONF_EMPTY_PRIME_FACTOR]))
     cg.add(var.set_floor_area(config[CONF_FLOOR_AREA]))
     cg.add(var.set_rain_share(config[CONF_RAIN_SHARE]))
     cg.add(var.set_max_rain(config[CONF_MAX_RAIN]))

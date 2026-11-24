@@ -442,6 +442,14 @@ output:
     flow: 2.66              # ml/s
     min_spray: 200ms
     max_spray: 3s
+    # The pump idle for `prime_after` (or since boot) first spins up and pressurizes the line to the
+    # nozzles' check valves -- a bare 200 ms pulse then only clicks the relay. The first pulse after
+    # that runs `prime` longer (drawn from the reservoir, not counted as sprayed water).
+    # After "Reservoir empty" (also the end of the flow calibration) the line has run dry: the first
+    # pulse after the refill primes `empty_prime_factor` x `prime`.
+    prime: 1s
+    prime_after: 1h
+    empty_prime_factor: 6
     # Rain: the weather's precipitation (mm in the hour) on the 60 x 40 cm floor, 1 mm being 0.24 l.
     # Only `rain_share` of it is sprayed and heavy rain is capped at `max_rain`, so that the reservoir
     # lasts: heavy rain 10 x 15% x 0.24 = 360 ml/h, light rain (1 mm/h) 36 ml/h, drizzle (0.2 mm/h)
