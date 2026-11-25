@@ -134,6 +134,7 @@ static const Color T_GROUND(230, 90, 200);   // color_ground
 static const Color T_DAYLIGHT(255, 150, 40);   // daylight lamp level (Thermo graph, own 0-100% scale)
 static const Color T_HEAT_LAMP(255, 60, 120);  // heat lamp: graph background tint by its duty
 static const Color T_GECKO(170, 110, 255);     // gecko weight, a light shade of the logo's purple
+static const Color T_GECKO_OUT(70, 90, 120);   // gecko graph background while the nest is empty
 static const Color GRID(60, 66, 74);
 
 // ------------------------------------------------------------------ history
@@ -152,7 +153,9 @@ enum Series : uint8_t {
   S_RESERVOIR,
   S_WIND,
   S_WIND_WEATHER,
-  S_WEIGHT,  // gecko weight, only while it sits on the scale (gaps otherwise)
+  S_WEIGHT,         // gecko weight, only while it sits on the scale (gaps otherwise)
+  S_WEIGHT_STABLE,  // "Gecko Weight": only while it rests (not while it climbs in / out)
+  S_GECKO_OUT,      // 100 while the nest is empty, 0 while the gecko is in it
   S_COUNT,
 };
 inline History<S_COUNT> history;
@@ -308,6 +311,9 @@ static const Control SCENIC_CONTROLS[] = {
 static constexpr Box GECKO_LOG{0, 136, W, H - 136};
 static constexpr int GECKO_LOG_ROWS = 5;
 static constexpr float GECKO_MIN_G = 5.f;  // graph only readings from here on (as gecko_nest.h)
+// The graph's y axis spans the lowest resting weight ("Gecko Weight", decided by the controller) to
+// the highest reading, GECKO_MARGIN_G beyond each, so the small changes of its weight show.
+static constexpr float GECKO_MARGIN_G = 1.f;
 static const Control GECKO_CONTROLS[] = {
     {C_GRAPH, Kind::BUTTON, GRAPH_BOX},
 };
@@ -1714,12 +1720,14 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
   }
 
   // History graph in GRAPH_BOX for the selected range, oldest left, now at the right edge. The y
-  // axis fits all traces, widened to whole multiples of y_grid (one dotted line per multiple).
-  // Optional extras on their own 0-100% scale: `band` tints each column's background by its level,
-  // `level` is drawn as a line wherever it is above 0. `mark` is a dashed red reference line (an
-  // alarm threshold), always inside the y range. Drawn column by column, clipped to area_.
+  // axis fits all traces, widened to whole multiples of y_grid (one dotted line per multiple), or
+  // spans y_lo..y_hi as given (traces beyond it run along the edge).
+  // Optional extras on their own 0-100% scale: `band` tints each column's background by its level
+  // in `band_color`, `level` is drawn as a line wherever it is above 0. `mark` is a dashed red
+  // reference line (an alarm threshold), always inside the y range. Drawn column by column, clipped
+  // to area_.
   void draw_graph_(Display &it, const Trace *traces, int n, float y_grid, int band = -1, int level = -1,
-                   float mark = NAN) {
+                   float mark = NAN, Color band_color = T_HEAT_LAMP, float y_lo = NAN, float y_hi = NAN) {
     const Box g = GRAPH_BOX;
     const Box clip = g.intersect(this->area_);
     if (clip.empty())
@@ -1742,7 +1750,10 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       hi = std::isnan(hi) ? mark : std::max(hi, mark);
     }
     float yn = 0.f, ym = y_grid;
-    if (!std::isnan(lo)) {
+    if (!std::isnan(y_lo) && !std::isnan(y_hi) && y_hi > y_lo) {
+      yn = y_lo;
+      ym = y_hi;
+    } else if (!std::isnan(lo)) {
       yn = std::floor(lo / y_grid) * y_grid;
       ym = std::max(std::ceil(hi / y_grid) * y_grid, yn + y_grid);
     }
@@ -1772,13 +1783,13 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
           continue;
         const float a = clamp(v / 100.f, 0.f, 1.f) * 0.55f;
         auto mix = [a](uint8_t from, uint8_t to) { return (uint8_t) std::lround(from + (to - from) * a); };
-        const Color c(mix(BG.r, T_HEAT_LAMP.r), mix(BG.g, T_HEAT_LAMP.g), mix(BG.b, T_HEAT_LAMP.b));
+        const Color c(mix(BG.r, band_color.r), mix(BG.g, band_color.g), mix(BG.b, band_color.b));
         vrun(g.x + x, g.y, bottom, c);
       }
     }
 
     // grid: dotted lines per y step, and per time step counted back from now (right edge)
-    for (float v = yn + step; v < ym - step / 2.f; v += step) {
+    for (float v = std::floor(yn / step) * step + step; v < ym - step / 4.f; v += step) {
       const int y = to_y(v, yn, ym);
       for (int x = x0 - (x0 & 1); x < x1; x += 2)
         px(g.x + x, y, GRID);
@@ -2284,7 +2295,7 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       float sum = 0.f;
       int n = 0;
       for (int x = 0; x < HIST_LEN; x++) {
-        const float v = history.get(S_WEIGHT, this->range_, x);
+        const float v = history.get(S_WEIGHT_STABLE, this->range_, x);
         if (!std::isnan(v)) {
           sum += v;
           n++;
@@ -2297,7 +2308,23 @@ static constexpr Box BACK_FOCUS = {2, 1, 30, HEADER_H - 2};  // encoder focus fr
       fmt_clock(buf, sizeof(buf), this->gecko_known_ ? this->gecko_since_ : 0);
       this->value_line_(it, LINE_Y[2], "since", TEXT_DIM, buf);
     }
-    this->draw_graph_(it, GECKO_TRACES, 1, 5.f);
+    // y axis: lowest stable to highest reading of the range, a gram beyond each; the empty nest
+    // as its own background (the weight line breaks there)
+    float lo = NAN, lo_any = NAN, hi = NAN;
+    for (int x = 0; x < HIST_LEN; x++) {
+      const float s = history.get(S_WEIGHT_STABLE, this->range_, x);
+      const float v = history.get(S_WEIGHT, this->range_, x);
+      if (!std::isnan(s))
+        lo = std::isnan(lo) ? s : std::min(lo, s);
+      if (!std::isnan(v)) {
+        lo_any = std::isnan(lo_any) ? v : std::min(lo_any, v);
+        hi = std::isnan(hi) ? v : std::max(hi, v);
+      }
+    }
+    if (std::isnan(lo))
+      lo = lo_any;  // nothing stable yet
+    this->draw_graph_(it, GECKO_TRACES, 1, 1.f, S_GECKO_OUT, -1, NAN, T_GECKO_OUT, lo - GECKO_MARGIN_G,
+                      hi + GECKO_MARGIN_G);
     if (this->vis_(GECKO_LOG))
       this->draw_gecko_log_(it);
   }
@@ -2531,8 +2558,14 @@ inline void sample_history() {
     v[S_WIND] = sval(&id(multifan_percentage));
     v[S_WIND_WEATHER] = sval(&id(weather_windspeed));
     const float g = sval(&id(scale_weight));
-    if (g >= GECKO_MIN_G)  // the scale reads ~0 while the gecko is out of its nest
-      v[S_WEIGHT] = g;
+    if (!std::isnan(g)) {
+      const bool in = g >= GECKO_MIN_G;  // the scale reads ~0 while the gecko is out of its nest
+      v[S_GECKO_OUT] = in ? 0.f : 100.f;
+      if (in) {
+        v[S_WEIGHT] = g;
+        v[S_WEIGHT_STABLE] = sval(&id(gecko_weight));
+      }
+    }
   }
   history.sample(v);
 }

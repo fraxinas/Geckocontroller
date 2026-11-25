@@ -374,6 +374,10 @@ sensor:
     entity_id: sensor.geckocontrol_scale
     on_value:
       - lambda: 'gecko_ui::ui.changed(gecko_ui::F_SCALE);'
+  # The gecko's weight while it rests in the nest, unknown otherwise (Gecko page graph's y axis)
+  - platform: homeassistant
+    id: gecko_weight
+    entity_id: sensor.geckocontrol_gecko_weight
 
 text_sensor:
   - platform: homeassistant
