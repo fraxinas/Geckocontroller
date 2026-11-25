@@ -16,12 +16,14 @@
 // after `max_temperature_delay`. It clears once the setpoint deviation and every maximum are back
 // inside by the temperature hysteresis for `clear_delay`.
 //
-// Sensor health: a watched sensor that has not delivered a valid reading (not NaN, through its
-// filters -- or before them with `raw`) for its timeout is a problem -- missing (never found at boot), broken, or failing its
-// reads, whether the driver then skips publishing or publishes NaN. "Sensor Problem" (device
-// class "problem") goes on as soon as one is, and off once none has been for `clear_delay`;
-// "Sensor Problem Details" names the sensors concerned, by their entity names, and is published
-// before the binary sensor so an automation triggered by it reads the current list.
+// Sensor health: a watched sensor that has not delivered a valid reading (not NaN and inside its
+// `min` / `max`, through its filters -- or before them with `raw`) for its timeout is a problem --
+// missing (never found at boot), broken, unplugged from an analog front end that still reads
+// something, or failing its reads, whether the driver then skips publishing or publishes NaN.
+// "Sensor Problem" (device class "problem") goes on as soon as one is, and off once none has been
+// for `clear_delay`; "Sensor Problem Details" names the sensors concerned, by their entity names,
+// and is published before the binary sensor so an automation triggered by it reads the current
+// list.
 //
 // The historic weather feeds from Home Assistant count as sensors too (`weather:`): missing while
 // geckoweather's fallback stands in for one, stuck while the historic temperature has not changed
@@ -34,6 +36,7 @@
 #include "esphome/components/climate/climate.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
+#include <cmath>
 #include <vector>
 #ifdef USE_GECKOALARM_WEATHER
 #include "esphome/components/geckoweather/geckoweather.h"
@@ -63,8 +66,11 @@ class GeckoAlarm : public Component {
   void add_max_temperature(sensor::Sensor *s, float max) { this->max_temps_.push_back({s, max}); }
   void set_max_temperature_delay(uint32_t ms) { this->max_temp_delay_ms_ = ms; }
   void set_sensor(Alarm a, binary_sensor::BinarySensor *s) { this->state_[idx(a)].sensor = s; }
-  void add_watched_sensor(sensor::Sensor *s, uint32_t timeout_ms, bool raw) {
-    this->watched_.push_back({s, timeout_ms, raw});
+  void add_watched_sensor(sensor::Sensor *s, uint32_t timeout_ms, bool raw, float min, float max) {
+    Watched w{s, timeout_ms, raw};
+    w.min = min;
+    w.max = max;
+    this->watched_.push_back(w);
   }
   void set_sensor_problem(binary_sensor::BinarySensor *s) { this->sensor_problem_.sensor = s; }
   void set_sensor_problem_details(text_sensor::TextSensor *s) { this->details_ = s; }
@@ -131,7 +137,9 @@ class GeckoAlarm : public Component {
     sensor::Sensor *sensor;
     uint32_t timeout_ms;
     bool raw;             // readings before the filters count
-    int8_t feed{-1};      // a geckoweather feed (WeatherFeed), judged by its fallback; 0 timeout = none
+    float min{-INFINITY};  // valid readings lie inside min..max
+    float max{INFINITY};
+    int8_t feed{-1};       // a geckoweather feed (WeatherFeed), judged by its fallback; 0 timeout = none
     uint32_t last_ok{0};  // millis() of the last valid reading (or of setup)
     bool bad{false};
   };

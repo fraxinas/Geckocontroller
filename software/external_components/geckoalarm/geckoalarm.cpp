@@ -56,8 +56,9 @@ void GeckoAlarm::setup() {
   for (size_t i = 0; i < this->watched_.size(); i++) {
     this->watched_[i].last_ok = now;
     auto ok = [this, i](float x) {
-      if (!std::isnan(x))
-        this->watched_[i].last_ok = millis();
+      Watched &w = this->watched_[i];
+      if (!std::isnan(x) && x >= w.min && x <= w.max)
+        w.last_ok = millis();
     };
     if (this->watched_[i].raw)
       this->watched_[i].sensor->add_on_raw_state_callback(ok);
@@ -214,8 +215,9 @@ void GeckoAlarm::dump_config() {
       ESP_LOGCONFIG(TAG, "  watching historic feed '%s': missing (fallback)%s", w.sensor->get_name().c_str(),
                     w.timeout_ms > 0 ? ", or unchanged for the stale timeout" : "");
     else
-      ESP_LOGCONFIG(TAG, "  watching '%s': valid reading%s at least every %u s", w.sensor->get_name().c_str(),
-                    w.raw ? " (raw)" : "", (unsigned) (w.timeout_ms / 1000));
+      ESP_LOGCONFIG(TAG, "  watching '%s': valid reading%s in %g..%g at least every %u s",
+                    w.sensor->get_name().c_str(), w.raw ? " (raw)" : "", w.min, w.max,
+                    (unsigned) (w.timeout_ms / 1000));
   }
   LOG_BINARY_SENSOR("  ", "sensor problem", this->sensor_problem_.sensor);
   LOG_TEXT_SENSOR("  ", "sensor problem details", this->details_);

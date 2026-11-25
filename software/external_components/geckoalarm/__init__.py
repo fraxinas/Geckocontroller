@@ -30,14 +30,19 @@ CONF_STALE_TIMEOUT = "stale_timeout"
 CONF_MAX_TEMPERATURE = "max_temperature"
 CONF_MAX_TEMPERATURE_DELAY = "max_temperature_delay"
 CONF_MAX = "max"
+CONF_MIN = "min"
 
 # A watched sensor: its id alone, or with a timeout of its own. `raw`: judged by the driver's
 # readings before the filters -- for sensors whose filters hold steady values back (delta).
+# `min` / `max`: readings outside are not valid either -- for analog front ends that still read
+# something with the sensor unplugged (a load cell amplifier's open inputs).
 WATCHED_SENSOR_SCHEMA = cv.maybe_simple_value(
     {
         cv.Required(CONF_SENSOR): cv.use_id(sensor.Sensor),
         cv.Optional(CONF_TIMEOUT): cv.positive_time_period_milliseconds,
         cv.Optional(CONF_RAW, default=False): cv.boolean,
+        cv.Optional(CONF_MIN): cv.float_,
+        cv.Optional(CONF_MAX): cv.float_,
     },
     key=CONF_SENSOR,
 )
@@ -127,7 +132,9 @@ async def to_code(config):
     for watched in config[CONF_SENSORS]:
         sens = await cg.get_variable(watched[CONF_SENSOR])
         timeout = watched.get(CONF_TIMEOUT, config[CONF_SENSOR_TIMEOUT])
-        cg.add(var.add_watched_sensor(sens, timeout, watched[CONF_RAW]))
+        lo = watched.get(CONF_MIN, cg.RawExpression("-INFINITY"))
+        hi = watched.get(CONF_MAX, cg.RawExpression("INFINITY"))
+        cg.add(var.add_watched_sensor(sens, timeout, watched[CONF_RAW], lo, hi))
     if CONF_WEATHER in config:
         cg.add_define("USE_GECKOALARM_WEATHER")
         weather = await cg.get_variable(config[CONF_WEATHER][CONF_ID])

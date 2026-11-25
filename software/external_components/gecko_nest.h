@@ -4,13 +4,14 @@
 // A change between in and out counts once it has held for DEBOUNCE_MS (the gecko crossing the
 // nest, readings while it climbs in or out) and is dated back to when it began. The current state,
 // since when, and the last LOG_LEN completed periods are kept in flash, so they survive a reboot.
+// A faulty scale (NaN) leaves "Gecko in nest" unknown until it reads again.
 //
 // Published:
 //  * "Gecko in nest" (binary, occupancy) -- in Home Assistant's logbook
-//  * "Gecko nest Since" (timestamp) -- start of the current period
-//  * "Gecko Stay Weight" (g) -- mean weight of a stay in the nest, when the gecko leaves
 //  * "Gecko nest Log" -- compact state + log for the Geckoconsole:
 //      "<in>,<since>;<in>,<start>,<seconds>,<weight x10>;..."   newest period first, UTC epochs
+//    The weight of a stay is its mean while the gecko rested ("Gecko Weight" known, see
+//    gecko.yaml), not while it climbed in or out.
 #pragma once
 
 #include "esphome.h"
@@ -57,9 +58,26 @@ class nest {
 
   void tick() {
     const float g = id(gecko_scale).state;
+    if (std::isnan(g)) {
+      // NaN after a reading: the scale is faulty (gecko.yaml's raw range) -- in or out is unknown,
+      // not "out". The period goes on; a change that was pending starts over once it reads again.
+      if (id(gecko_scale).has_state() && !this->fault_) {
+        this->fault_ = true;
+        this->pending_ = false;
+        id(gecko_in_nest).invalidate_state();
+        ESP_LOGW(TAG, "scale faulty: gecko in / out of the nest unknown");
+      }
+      return;  // wait for a reading
+    }
     const ESPTime t = id(esptime).now();
-    if (std::isnan(g) || !t.is_valid())
-      return;  // wait for a reading and the clock
+    if (!t.is_valid())
+      return;  // wait for the clock
+    if (this->fault_) {
+      this->fault_ = false;
+      ESP_LOGI(TAG, "scale reads again");
+      if (this->s_.valid)
+        id(gecko_in_nest).publish_state(this->s_.in);
+    }
     const uint32_t now = t.timestamp;
     const uint32_t ms = millis();
     const bool in = g >= MIN_G;
@@ -75,10 +93,13 @@ class nest {
 
     if (in == this->s_.in) {
       this->pending_ = false;
+      const float w = id(gecko_weight).state;  // NaN unless it rests
       if (in && ms - this->last_sample_ >= SAMPLE_MS) {
         this->last_sample_ = ms;
-        this->sum_ += g;
-        this->samples_++;
+        if (id(gecko_weight).has_state() && !std::isnan(w)) {
+          this->sum_ += w;
+          this->samples_++;
+        }
       }
       return;
     }
@@ -102,9 +123,6 @@ class nest {
     this->s_.head = (this->s_.head + 1) % LOG_LEN;
     if (this->s_.n < LOG_LEN)
       this->s_.n++;
-    if (p.in && !std::isnan(mean))
-      id(gecko_stay_weight).publish_state(mean);
-
     this->s_.in = in;
     this->s_.since = event;
     this->pending_ = false;
@@ -122,7 +140,6 @@ class nest {
 
   void publish_() {
     id(gecko_in_nest).publish_state(this->s_.in);
-    id(gecko_nest_since).publish_state(ESPTime::from_epoch_utc(this->s_.since).strftime("%Y-%m-%dT%H:%M:%S+00:00"));
     std::string log = str_sprintf("%u,%u", (unsigned) this->s_.in, (unsigned) this->s_.since);
     for (int i = 0; i < this->s_.n; i++) {
       const Period &p = this->s_.log[(this->s_.head + LOG_LEN - 1 - i) % LOG_LEN];
@@ -134,6 +151,7 @@ class nest {
 
   ESPPreferenceObject pref_;
   Saved s_{};
+  bool fault_{false};  // the scale reads NaN, "Gecko in nest" invalidated
   bool pending_{false};
   uint32_t pending_ms_{0};
   uint32_t last_sample_{0};

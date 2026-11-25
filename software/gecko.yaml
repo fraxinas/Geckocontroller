@@ -13,6 +13,12 @@ substitutions:
   # The weather temperature setpoint never goes above this (°C): a hotter historic value is
   # replaced by it as it arrives.
   max_weather_temperature: 31
+  # Plausible raw readings of the scale (NAU7802 counts). Its inputs still read something with the
+  # load cell unplugged -- around 1075 with the whole cable off, far negative with one or two wires
+  # missing, the rails (+/- 8388607) when floating -- while the bridge with the nest on it sits
+  # far above. Outside this range the scale is faulty, not empty.
+  scale_raw_min: "50000"
+  scale_raw_max: "8000000"
 
 esphome:
   name: geckocontrol
@@ -64,6 +70,8 @@ wifi:
 # Enable logging
 logger:
   level: DEBUG
+  logs:
+    nau7802: INFO  # "Got value" every second (gecko_scale)
 
 # Enable Home Assistant API
 api:
@@ -781,18 +789,38 @@ one_wire:
 sensor:
   # HW Rev 2.0: NAU7802 on the I2C bus (0x2A) replaces the HX711. AVDD comes from the internal
   # LDO (DVDD via JP61), so ldo_voltage must stay below 3V3 - 0.3 V.
+  #
+  # Read every second, one reading every 15 s: the median of those 15, so a moment of the gecko
+  # moving (or a single noisy conversion) does not count. gecko_nest.h decides in / out on it; Home
+  # Assistant gets it as "Scale" (only on a change), and as "Gecko Weight" while it holds steady.
   - platform: nau7802
-    name: "Scale"
     id: gecko_scale
+    internal: true
     i2c_id: bus_a
     address: 0x2A
     ldo_voltage: "3.0V"
     gain: 128
     samples_per_second: 10
-    update_interval: 15s
+    update_interval: 1s
     accuracy_decimals: 1
     unit_of_measurement: g
     filters:
+      # Sensor fault (load cell unplugged, wire broken): NaN, so the scale reads "unknown" and the
+      # nest keeps its state rather than going empty. Sensor Problem judges the same range (geckoalarm).
+      # The raw reading goes to the log once a minute, and at once when it leaves or re-enters the range.
+      - lambda: |-
+            static uint32_t last_log = 0;
+            static bool was_bad = false;
+            const bool bad = std::isnan(x) || x < ${scale_raw_min} || x > ${scale_raw_max};
+            if (bad != was_bad || last_log == 0 || millis() - last_log >= 60000) {
+              last_log = millis();
+              if (bad)
+                ESP_LOGW("scale", "raw %.0f outside ${scale_raw_min}..${scale_raw_max}: fault", x);
+              else
+                ESP_LOGI("scale", "raw %.0f", x);
+            }
+            was_bad = bad;
+            return bad ? NAN : x;
       # TODO: points were measured with the HX711 on HW Rev 1.2 -- re-calibrate on the NAU7802.
       - calibrate_linear:
           - 212500 -> 0
@@ -800,23 +828,76 @@ sensor:
           - 253900 -> 20
           - 316700 -> 50
           - 419000 -> 100
-      - delta: 0.5
+      - lambda: 'return std::isnan(x) || x >= 0 ? x : 0.f;'
+      # The median skips NaN: a fault reads NaN once the whole window is faulty (<= 30 s).
+      - median:
+          window_size: 15
+          send_every: 15
+      - lambda: 'return x < 2.5f ? 0.f : x;'
+
+  - platform: copy
+    source_id: gecko_scale
+    name: "Scale"
+    filters:
+      # `delta: 0.5` by hand, as that one swallows the NaN of a fault: passed on once instead.
       - lambda: |-
-            if (x < 0)
+            static float last = NAN;
+            if (std::isnan(x)) {
+              if (std::isnan(last))
+                return {};
+              last = NAN;
+              return NAN;
+            }
+            if (!std::isnan(last) && std::fabs(x - last) <= 0.5f)
               return {};
-            if (x < 2.5)
-              return 0.0;
+            last = x;
             return x;
 
-  # Mean weight of each stay in the nest, published as the gecko leaves (gecko_nest.h)
-  - platform: template
-    id: gecko_stay_weight
-    name: "Gecko Stay Weight"
-    unit_of_measurement: g
-    accuracy_decimals: 1
-    state_class: measurement
+  # The gecko's weight while it rests in the nest: the mean of the last 4 readings (1 min) once they
+  # are all "in" and within 1 g of each other -- not the part weights while it climbs over the nest.
+  # Unknown (NaN, once) whenever that does not hold. Published on a change of more than 0.2 g.
+  - platform: copy
+    source_id: gecko_scale
+    id: gecko_weight
+    name: "Gecko Weight"
     icon: mdi:scale
-    update_interval: never
+    state_class: measurement
+    filters:
+      - lambda: |-
+            static constexpr int N = 4;
+            static float win[N];
+            static int n = 0, head = 0;
+            static float last = NAN;
+            bool steady = false;
+            float mean = NAN;
+            if (std::isnan(x) || x < 5.f) {  // fault, or out of the nest (gecko_nest.h MIN_G)
+              n = 0;
+            } else {
+              win[head] = x;
+              head = (head + 1) % N;
+              if (n < N)
+                n++;
+              if (n == N) {
+                float lo = win[0], hi = win[0], sum = 0.f;
+                for (float v : win) {
+                  lo = std::min(lo, v);
+                  hi = std::max(hi, v);
+                  sum += v;
+                }
+                steady = hi - lo <= 1.f;
+                mean = sum / N;
+              }
+            }
+            if (!steady) {
+              if (std::isnan(last))
+                return {};
+              last = NAN;
+              return NAN;
+            }
+            if (!std::isnan(last) && std::fabs(mean - last) <= 0.2f)
+              return {};
+            last = mean;
+            return mean;
 
   # - platform: dallas_temp
   #   one_wire_id: bus_dallas
@@ -1259,7 +1340,8 @@ number:
 # limit by the hysteresis for `clear_delay`.
 # Sensor health ("Sensor Problem", "Sensor Problem Details" naming them): a watched sensor without a
 # valid reading for `sensor_timeout` -- missing, broken, failing its reads. Scale and substrate are
-# judged by their raw readings, as their delta filters hold steady values back for hours. The
+# judged by their raw readings, as their delta filters hold steady values back for hours; the
+# scale's only inside `scale_raw_min`..`scale_raw_max`, as it reads something even unplugged. The
 # historic weather counts too: missing while geckoweather's fallback stands in for a feed, stuck while
 # the historic temperature (hourly, 0.1 °C) has not changed for `stale_timeout`. Not judged while
 # Home Assistant is away -- a restart of it does not end in a sensor problem.
@@ -1296,6 +1378,8 @@ geckoalarm:
     #   raw: true
     - sensor: gecko_scale
       raw: true
+      min: ${scale_raw_min}
+      max: ${scale_raw_max}
   weather:
     id: gecko_weather
     stale_timeout: 3h
@@ -1426,12 +1510,7 @@ text_sensor:
             return {};
           return x;
 
-  # gecko_nest.h: start of the current in / out period, and state + last periods for the console
-  - platform: template
-    id: gecko_nest_since
-    name: "Gecko nest Since"
-    device_class: timestamp
-    update_interval: never
+  # gecko_nest.h: in / out since when, and the last periods with their weights, for the console
   - platform: template
     id: gecko_nest_log
     name: "Gecko nest Log"
