@@ -883,6 +883,7 @@ sensor:
       name: "Ground Humidity"
       id: humidity_ground
       accuracy_decimals: 0
+    heater_enabled: true
     address: 0x44
     update_interval: 20s
 
