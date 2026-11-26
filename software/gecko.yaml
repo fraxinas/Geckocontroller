@@ -493,6 +493,11 @@ output:
     volume_sensor: reservoir_volume
     calibration_sensor: reservoir_calibration_runtime
     calibration_limit: 10min
+    # What it actually does: every pump pulse as switched, the water rate the arbitration decided
+    # on, and what for.
+    pump_state: rain_pump_running
+    spray_rate: spray_rate
+    spray_mode: spray_mode
 
 # The resolved weather state, owned separately from the lights: it is the single answer to "what is
 # the weather doing right now", and its consumers are unrelated to each other -- the rain pump reads
@@ -1095,6 +1100,16 @@ sensor:
     accuracy_decimals: 0
     state_class: measurement
 
+  # The water rate the rain pump's arbitration decided on (ml per hour): the rain or misting it
+  # sprays in pulses, 0 while nothing is to be sprayed. The pulses themselves: "Rain Pump".
+  - platform: template
+    id: spray_rate
+    name: "Spray Rate"
+    unit_of_measurement: "mL/h"
+    icon: mdi:sprinkler-variant
+    accuracy_decimals: 1
+    state_class: measurement
+
   # Pump runtime of a "Reservoir Calibration" (flow calibration) in progress or awaiting its result
   # (unknown otherwise).
   - platform: template
@@ -1480,6 +1495,14 @@ binary_sensor:
     device_class: occupancy
     icon: mdi:egg-outline
 
+  # The rain pump's relay as switched by geckorain: every rain / misting / "Let it rain" pulse
+  # (200 ms .. 3 s, plus priming), published the moment it switches.
+  - platform: template
+    id: rain_pump_running
+    name: "Rain Pump"
+    device_class: running
+    icon: mdi:water-pump
+
 text_sensor:
   # Next sunrise / sunset of the (shifted) sun at the elevation the colour sweeps start at; the
   # console counts down to them
@@ -1516,6 +1539,14 @@ text_sensor:
     name: "Gecko nest Log"
     icon: mdi:format-list-bulleted
     entity_category: diagnostic
+    update_interval: never
+
+  # Why the rain pump sprays or not: Rain, Rain (humid enough), Misting, Idle, Let it rain,
+  # Disabled, Reservoir empty, Humidify / Flow calibration. Published by geckorain on change.
+  - platform: template
+    id: spray_mode
+    name: "Spray Mode"
+    icon: mdi:weather-pouring
     update_interval: never
 
 interval:

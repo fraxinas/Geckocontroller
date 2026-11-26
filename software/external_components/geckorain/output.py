@@ -2,13 +2,14 @@ import zlib
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import output, sensor, globals
+from esphome.components import binary_sensor, globals, output, sensor, text_sensor
 from esphome.components.pid import climate as pid_climate
 from esphome.const import CONF_ID, CONF_PERIOD
 
 from . import geckorain_ns
 
 DEPENDENCIES = ["output"]
+AUTO_LOAD = ["binary_sensor", "text_sensor"]
 
 CONF_PUMP = "pump"
 CONF_FLOW = "flow"
@@ -34,6 +35,9 @@ CONF_FLOW_SENSOR = "flow_sensor"
 CONF_VOLUME_SENSOR = "volume_sensor"
 CONF_CALIBRATION_SENSOR = "calibration_sensor"
 CONF_CALIBRATION_LIMIT = "calibration_limit"
+CONF_PUMP_STATE = "pump_state"
+CONF_SPRAY_RATE = "spray_rate"
+CONF_SPRAY_MODE = "spray_mode"
 
 RainPumpOutput = geckorain_ns.class_("RainPumpOutput", output.FloatOutput, cg.Component)
 
@@ -85,6 +89,11 @@ CONFIG_SCHEMA = output.FLOAT_OUTPUT_SCHEMA.extend(
         # the limit it ends by itself (dry-run guard).
         cv.Optional(CONF_CALIBRATION_SENSOR): cv.use_id(sensor.Sensor),
         cv.Optional(CONF_CALIBRATION_LIMIT, default="10min"): cv.positive_time_period_milliseconds,
+        # What it does: the pump's actual on/off (every pulse), the water rate decided on (ml per
+        # hour) and what for (Rain, Misting, Idle, ...).
+        cv.Optional(CONF_PUMP_STATE): cv.use_id(binary_sensor.BinarySensor),
+        cv.Optional(CONF_SPRAY_RATE): cv.use_id(sensor.Sensor),
+        cv.Optional(CONF_SPRAY_MODE): cv.use_id(text_sensor.TextSensor),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -124,6 +133,9 @@ async def to_code(config):
         (CONF_FLOW_SENSOR, var.set_flow_sensor),
         (CONF_VOLUME_SENSOR, var.set_volume_sensor),
         (CONF_CALIBRATION_SENSOR, var.set_calibration_sensor),
+        (CONF_PUMP_STATE, var.set_pump_state_sensor),
+        (CONF_SPRAY_RATE, var.set_spray_rate_sensor),
+        (CONF_SPRAY_MODE, var.set_spray_mode_sensor),
     ]:
         if key in config:
             cg.add(setter(await cg.get_variable(config[key])))

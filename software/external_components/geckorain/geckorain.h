@@ -6,6 +6,8 @@
 #include "esphome/components/output/binary_output.h"
 #include "esphome/components/output/float_output.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/globals/globals_component.h"
 #include "esphome/components/pid/pid_climate.h"
 
@@ -58,6 +60,9 @@ static const int CAL_HUMIDIFY = 4;  // calibration_target value for humidificati
 // runtime) and the reservoir volume (what the pump draws from one filling).
 // stop_reservoir_calibration() aborts. Past `calibration_limit` the run ends by itself and the
 // reservoir counts as empty. Not resumed after a reboot.
+//
+// What it does, for Home Assistant: the pump's actual on/off (every pulse, as switched), the water
+// rate the arbitration decided on (ml per hour, 0 when nothing is to be sprayed) and why (the mode).
 class RainPumpOutput : public output::FloatOutput, public Component {
  public:
   void set_pump(output::BinaryOutput *pump) { this->pump_ = pump; }
@@ -100,6 +105,11 @@ class RainPumpOutput : public output::FloatOutput, public Component {
   // Publishes the pump on-time of a flow calibration in progress (or awaiting its result), in s.
   void set_calibration_sensor(sensor::Sensor *s) { this->calibration_sens_ = s; }
   void set_calibration_limit(uint32_t ms) { this->calibration_limit_ = ms; }
+  // The pump's actual state, published on every switch.
+  void set_pump_state_sensor(binary_sensor::BinarySensor *s) { this->pump_state_sens_ = s; }
+  // The water rate decided on, ml per hour, and what it is for.
+  void set_spray_rate_sensor(sensor::Sensor *s) { this->spray_rate_sens_ = s; }
+  void set_spray_mode_sensor(text_sensor::TextSensor *s) { this->spray_mode_sens_ = s; }
 
   // Manual rain (the "Let it rain" button): run the pump for `ms`, regardless of the automation.
   // Refused while the reservoir is empty or a calibration runs.
@@ -143,6 +153,7 @@ class RainPumpOutput : public output::FloatOutput, public Component {
   void publish_model_();
   void publish_calibration_();
   void release_empty_lockout_();
+  void publish_decision_(uint32_t now);
   bool reservoir_tracked_() const { return this->reservoir_ml_ > 0.0f; }
   float reserve_ml_() const { return this->reserve_ * this->reservoir_ml_; }
   // A calibration knows no empty reservoir until told so.
@@ -209,6 +220,29 @@ class RainPumpOutput : public output::FloatOutput, public Component {
   uint32_t calibration_limit_{10 * 60 * 1000};  // dry-run guard: the calibration ends here
   uint32_t last_calibration_publish_{0};
   ESPPreferenceObject pref_;
+
+  // The decision of the current loop pass, for publishing.
+  enum class Mode : uint8_t {
+    MODE_UNKNOWN,
+    MODE_DISABLED,         // rain automation off
+    MODE_RESERVOIR_EMPTY,  // pump locked out
+    MODE_IDLE,             // nothing to spray: no rain, humidity fine
+    MODE_RAIN,
+    MODE_RAIN_PAUSED,      // rain, but humidity 20 pts above target
+    MODE_MISTING,
+    MODE_MANUAL,           // "Let it rain"
+    MODE_HUMIDIFY_CALIBRATION,
+    MODE_FLOW_CALIBRATION,
+  };
+  static const char *mode_str_(Mode m);
+  Mode mode_{Mode::MODE_IDLE};
+  float rate_ml_h_{0};  // decided water rate, ml per hour
+  binary_sensor::BinarySensor *pump_state_sens_{nullptr};
+  sensor::Sensor *spray_rate_sens_{nullptr};
+  text_sensor::TextSensor *spray_mode_sens_{nullptr};
+  Mode published_mode_{Mode::MODE_UNKNOWN};
+  float published_rate_{NAN};
+  uint32_t last_rate_publish_{0};
 
   static constexpr uint32_t CALIBRATION_MIN = 10 * 1000;   // less on-time is no measurement
   static constexpr uint32_t CALIBRATION_DELAY = 5 * 1000;  // from switching on to the pump starting

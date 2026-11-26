@@ -51,6 +51,8 @@ void RainPumpOutput::setup() {
   this->publish_model_();
   this->publish_level_(true);
   this->publish_calibration_();
+  if (this->pump_state_sens_ != nullptr)
+    this->pump_state_sens_->publish_initial_state(false);
 }
 
 // ------------------- Calibration -------------------
@@ -256,11 +258,15 @@ void RainPumpOutput::set_pump_(bool on) {
     this->run_start_ = this->last_account_time_ = now;
     this->current_state_ = true;
     this->pump_->turn_on();
+    if (this->pump_state_sens_ != nullptr)
+      this->pump_state_sens_->publish_state(true);
     this->high_freq_.start();
   } else {
     ESP_LOGD(TAG, "rain pump OFF after %u ms (~%.1f ml)", now - this->run_start_, this->water_ml_(now - this->run_start_));
     this->account_(now);
     this->pump_->turn_off();
+    if (this->pump_state_sens_ != nullptr)
+      this->pump_state_sens_->publish_state(false);
     this->current_state_ = false;
     this->last_off_ = now;
     this->ran_since_boot_ = true;
@@ -380,6 +386,9 @@ void RainPumpOutput::loop() {
       this->last_calibration_publish_ = now;
       this->publish_calibration_();
     }
+    this->mode_ = Mode::MODE_FLOW_CALIBRATION;
+    this->rate_ml_h_ = this->current_state_ ? this->flow_ * 3600.0f : 0.0f;
+    this->publish_decision_(now);
     return;
   }
 
@@ -408,6 +417,14 @@ void RainPumpOutput::loop() {
 
   bool automatic = this->automation_wants_pump_(now);
   this->set_pump_((automatic || manual) && !empty);
+
+  if (empty) {
+    this->mode_ = Mode::MODE_RESERVOIR_EMPTY;
+    this->rate_ml_h_ = 0.0f;
+  } else if (manual) {
+    this->mode_ = Mode::MODE_MANUAL;  // the rate stays the automation's
+  }
+  this->publish_decision_(now);
 }
 
 // Whether the automation wants the pump on right now.
@@ -417,6 +434,8 @@ bool RainPumpOutput::automation_wants_pump_(uint32_t now) {
     this->pwm_active_ = false;
     this->reset_spray_();
     this->pulse_ms_ = 0;
+    this->mode_ = Mode::MODE_DISABLED;
+    this->rate_ml_h_ = 0.0f;
     return false;
   }
 
@@ -425,14 +444,68 @@ bool RainPumpOutput::automation_wants_pump_(uint32_t now) {
   if (this->calib_target_ != nullptr && globals::id(this->calib_target_) == CAL_HUMIDIFY) {
     this->reset_spray_();
     this->pulse_ms_ = 0;
-    return this->calibration_wants_pump_(now);
+    bool on = this->calibration_wants_pump_(now);
+    this->mode_ = Mode::MODE_HUMIDIFY_CALIBRATION;
+    this->rate_ml_h_ = this->duty_ * this->flow_ * 3600.0f;
+    return on;
   }
   this->pwm_active_ = false;
 
   bool rain;
   uint32_t pulse_ms;
   float ml_per_hour = this->spray_rate_(rain, pulse_ms);
+  if (rain)
+    this->mode_ = ml_per_hour > 0.0f ? Mode::MODE_RAIN : Mode::MODE_RAIN_PAUSED;
+  else
+    this->mode_ = ml_per_hour > 0.0f ? Mode::MODE_MISTING : Mode::MODE_IDLE;
+  this->rate_ml_h_ = ml_per_hour;
   return this->spray_wants_pump_(now, ml_per_hour, pulse_ms, rain);
+}
+
+const char *RainPumpOutput::mode_str_(Mode m) {
+  switch (m) {
+    case Mode::MODE_DISABLED:
+      return "Disabled";
+    case Mode::MODE_RESERVOIR_EMPTY:
+      return "Reservoir empty";
+    case Mode::MODE_IDLE:
+      return "Idle";
+    case Mode::MODE_RAIN:
+      return "Rain";
+    case Mode::MODE_RAIN_PAUSED:
+      return "Rain (humid enough)";
+    case Mode::MODE_MISTING:
+      return "Misting";
+    case Mode::MODE_MANUAL:
+      return "Let it rain";
+    case Mode::MODE_HUMIDIFY_CALIBRATION:
+      return "Humidify calibration";
+    case Mode::MODE_FLOW_CALIBRATION:
+      return "Flow calibration";
+    default:
+      return "Unknown";
+  }
+}
+
+// The decision of this loop pass to Home Assistant. The mode, and the rate starting or stopping, go
+// out at once; the misting rate follows the hygrostat's demand continuously, so smaller changes are
+// throttled: a change of 1 ml/h or more at most every 10 s, any change at most every minute.
+void RainPumpOutput::publish_decision_(uint32_t now) {
+  if (this->spray_mode_sens_ != nullptr && this->mode_ != this->published_mode_)
+    this->spray_mode_sens_->publish_state(mode_str_(this->mode_));
+  if (this->spray_rate_sens_ != nullptr) {
+    float rate = std::round(this->rate_ml_h_ * 10.0f) / 10.0f;
+    float last = this->published_rate_;
+    uint32_t since = now - this->last_rate_publish_;
+    bool publish = std::isnan(last) || this->mode_ != this->published_mode_ || ((rate > 0.0f) != (last > 0.0f)) ||
+                   (std::fabs(rate - last) >= 1.0f && since >= 10 * 1000) || (rate != last && since >= 60 * 1000);
+    if (publish) {
+      this->published_rate_ = rate;
+      this->last_rate_publish_ = now;
+      this->spray_rate_sens_->publish_state(rate);
+    }
+  }
+  this->published_mode_ = this->mode_;
 }
 
 // The slow-PWM over the humidify calibration's relay output.
