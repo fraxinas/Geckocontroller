@@ -2,3 +2,7 @@
 (rule "mains_to_selv"
   (constraint clearance (min 6.4mm))
   (condition "A.NetClass == 'mains' && B.NetClass != 'mains'"))
+
+(rule "mains_functional"
+  (constraint clearance (min 2.0mm))
+  (condition "A.NetClass == 'mains' && B.NetClass == 'mains' && A.Net != B.Net && A.NetName != 'unconnected-*' && B.NetName != 'unconnected-*' && !(A.NetName == '/ZX*' && B.NetName == '/ZX*') && !(A.NetName == 'Net-(Q81-G)' && B.NetName == '/L_Dimmer') && !(A.NetName == '/L_Dimmer' && B.NetName == 'Net-(Q81-G)')"))

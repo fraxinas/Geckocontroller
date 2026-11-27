@@ -40,8 +40,8 @@
         "other_text_upright": false,
         "pads": {
           "drill": 0.0,
-          "height": 1.78,
-          "width": 2.0
+          "height": 0.95,
+          "width": 0.975
         },
         "silk_line_width": 0.12,
         "silk_text_italic": false,
@@ -53,8 +53,8 @@
           "45_degree_only": false,
           "border_display_style": 2,
           "border_hatch_pitch": 0.5,
-          "corner_radius": 0.0,
-          "corner_smoothing": 0,
+          "corner_radius": 0.2,
+          "corner_smoothing": 2,
           "fill_mode": 0,
           "hatch_gap": 1.5,
           "hatch_orientation": 0.0,
@@ -64,8 +64,8 @@
           "min_clearance": 0.0,
           "min_island_area": 10.0,
           "min_thickness": 0.25,
-          "pad_connection": 1,
-          "remove_islands": 0,
+          "pad_connection": 2,
+          "remove_islands": 1,
           "thermal_relief_gap": 0.5,
           "thermal_relief_spoke_width": 0.5
         }
@@ -95,15 +95,15 @@
           ""
         ],
         [
-          "courtyards_overlap|74511000|18514000|00000000-0000-0000-0000-000060293c07|00000000-0000-0000-0000-00006074777a",
+          "courtyards_overlap|72086000|18484000|00000000-0000-0000-0000-000060293c07|00000000-0000-0000-0000-00006074777a",
           ""
         ],
         [
-          "courtyards_overlap|74511000|22471000|00000000-0000-0000-0000-000060293c07|00000000-0000-0000-0000-000060747765",
+          "courtyards_overlap|72086000|22441000|00000000-0000-0000-0000-000060293c07|00000000-0000-0000-0000-000060747765",
           ""
         ],
         [
-          "starved_thermal|24995000|72075000|d9002682-22b7-407b-a5af-7b64d9367733|bcebc42f-16c4-4cb3-ae7d-0790e2874040|F.Cu",
+          "lib_footprint_mismatch|38500000|27870000|5baffd89-90c1-4f8f-9811-209f6fa392aa|00000000-0000-0000-0000-000000000000",
           ""
         ],
         [
@@ -119,7 +119,7 @@
           ""
         ],
         [
-          "starved_thermal|96735000|79000000|d9002682-22b7-407b-a5af-7b64d9367733|0247338f-38de-4bcb-8a93-86484351c5f5|F.Cu",
+          "starved_thermal|96735000|80612500|d9002682-22b7-407b-a5af-7b64d9367733|0247338f-38de-4bcb-8a93-86484351c5f5|F.Cu",
           ""
         ]
       ],
@@ -231,6 +231,7 @@
         {
           "td_allow_use_two_tracks": true,
           "td_curve_segcount": 0,
+          "td_enabled": false,
           "td_height_ratio": 1.0,
           "td_length_ratio": 0.5,
           "td_maxheight": 2.0,
@@ -242,6 +243,7 @@
         {
           "td_allow_use_two_tracks": true,
           "td_curve_segcount": 0,
+          "td_enabled": false,
           "td_height_ratio": 1.0,
           "td_length_ratio": 0.5,
           "td_maxheight": 2.0,
@@ -253,6 +255,7 @@
         {
           "td_allow_use_two_tracks": true,
           "td_curve_segcount": 0,
+          "td_enabled": false,
           "td_height_ratio": 1.0,
           "td_length_ratio": 0.5,
           "td_maxheight": 2.0,
@@ -332,7 +335,7 @@
       "internal_id": "",
       "mfg": "",
       "mpn": "",
-      "sch_revision": "2.0"
+      "sch_revision": "${Revision}"
     },
     "layer_pairs": [],
     "layer_presets": [],
@@ -352,7 +355,36 @@
     "equivalence_files": []
   },
   "erc": {
-    "erc_exclusions": [],
+    "erc_exclusions": [
+      [
+        "duplicate_pins|622300|1549400|44ab2a76-d03d-4645-a1c7-1f03e35ecf7a|e49c2a65-6d44-48fe-9810-8474ddbfbd40|/9db16341-dac0-4aab-9c62-7d88c111c1ce|/9db16341-dac0-4aab-9c62-7d88c111c1ce|/9db16341-dac0-4aab-9c62-7d88c111c1ce",
+        ""
+      ],
+      [
+        "pin_not_driven|1193800|1511300|4e2cccc6-624c-4496-8c74-b034f5dcc621|00000000-0000-0000-0000-000000000000|/9db16341-dac0-4aab-9c62-7d88c111c1ce|/9db16341-dac0-4aab-9c62-7d88c111c1ce|",
+        ""
+      ],
+      [
+        "power_pin_not_driven|2019300|1219200|05a19650-2209-40eb-bcf0-b6e00528ef1f|00000000-0000-0000-0000-000000000000|/9db16341-dac0-4aab-9c62-7d88c111c1ce|/9db16341-dac0-4aab-9c62-7d88c111c1ce|",
+        ""
+      ],
+      [
+        "power_pin_not_driven|2032000|1739900|e1cdd573-bf17-4a06-b9fb-2aded931eac0|00000000-0000-0000-0000-000000000000|/9db16341-dac0-4aab-9c62-7d88c111c1ce|/9db16341-dac0-4aab-9c62-7d88c111c1ce|",
+        ""
+      ],
+      [
+        "power_pin_not_driven|2120900|1219200|05c03264-4358-45bd-b3a7-0614364d373f|00000000-0000-0000-0000-000000000000|/9db16341-dac0-4aab-9c62-7d88c111c1ce|/9db16341-dac0-4aab-9c62-7d88c111c1ce|",
+        ""
+      ],
+      [
+        "power_pin_not_driven|2984500|279400|9ce642c5-8a71-4284-b5d6-7eb994506e46|00000000-0000-0000-0000-000000000000|/9db16341-dac0-4aab-9c62-7d88c111c1ce|/9db16341-dac0-4aab-9c62-7d88c111c1ce|",
+        ""
+      ],
+      [
+        "power_pin_not_driven|2984500|330200|eeaea11e-b5c5-477b-9f3d-051cbc2c1d24|00000000-0000-0000-0000-000000000000|/9db16341-dac0-4aab-9c62-7d88c111c1ce|/9db16341-dac0-4aab-9c62-7d88c111c1ce|",
+        ""
+      ]
+    ],
     "meta": {
       "version": 0
     },
@@ -563,6 +595,7 @@
       "pin_to_pin": "error",
       "power_pin_not_driven": "error",
       "same_local_global_label": "warning",
+      "same_local_global_power": "warning",
       "similar_label_and_power": "warning",
       "similar_labels": "warning",
       "similar_power": "warning",
@@ -617,8 +650,8 @@
     "meta": {
       "version": 5
     },
-    "net_colors": null,
-    "netclass_assignments": null,
+    "net_colors": {},
+    "netclass_assignments": {},
     "netclass_patterns": [
       {
         "netclass": "mains",
@@ -808,7 +841,7 @@
           "show": true
         }
       ],
-      "filter_string": "",
+      "filter_string": "K",
       "group_symbols": true,
       "include_excluded_from_bom": true,
       "name": "",
@@ -874,7 +907,7 @@
         "uuid": "9db16341-dac0-4aab-9c62-7d88c111c1ce"
       }
     ],
-    "used_designators": "",
+    "used_designators": "#PWR144-145,C104",
     "variants": []
   },
   "sheets": [
@@ -883,7 +916,9 @@
       "Geckocontroller"
     ]
   ],
-  "text_variables": {},
+  "text_variables": {
+    "Revision": "2.1"
+  },
   "tuning_profiles": {
     "meta": {
       "version": 0
