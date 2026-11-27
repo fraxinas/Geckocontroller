@@ -8,6 +8,8 @@
 | ![](hardware/Geckocontroller-PCB-front.png) | ![](hardware/Geckocontroller-PCB-back.png) |
 | :------------------------------------------ | :----------------------------------------- |
 
+There's an illustrated write-up of the project available at [purplegecko.de](https://purplegecko.de).
+
 ## Hardware Features
 ### Relay Output
 * 3 mechanical DPST relays (TE Schrack RT444012), switching line and neutral
@@ -131,3 +133,4 @@
 | 2026-09-21 | v2.0    | New Hardware Revision of Controller PCB          |
 | 2026-10-17 |         | Deploy new Controller Hardware                   |
 | 2026-11-18 |         | Replace HW of Console with ESP32-DevkitC         |
+| 2026-11-26 |         | Featured project article on [Hackaday](https://hackaday.com/2026/11/26/location-accurate-weather-for-your-gecko/)             |
