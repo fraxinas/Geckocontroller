@@ -1512,7 +1512,7 @@ text_sensor:
     id: next_sunrise
     type: sunrise
     elevation: 5°
-    format: "%Y-%m-%dT%H:%M:%SZ"
+    format: "%Y-%m-%dT%H:%M:%S%z"  # sun events are local time: give the offset
     device_class: timestamp
     filters:   # recomputed every minute; published only when the time has changed
       - lambda: |-
@@ -1525,7 +1525,7 @@ text_sensor:
     id: next_sunset
     type: sunset
     elevation: 5°
-    format: "%Y-%m-%dT%H:%M:%SZ"
+    format: "%Y-%m-%dT%H:%M:%S%z"  # sun events are local time: give the offset
     device_class: timestamp
     filters:   # recomputed every minute; published only when the time has changed
       - lambda: |-
