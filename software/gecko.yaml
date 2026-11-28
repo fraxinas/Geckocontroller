@@ -19,6 +19,9 @@ substitutions:
   # far above. Outside this range the scale is faulty, not empty.
   scale_raw_min: "50000"
   scale_raw_max: "8000000"
+  # Seconds without a valid reading before a sensor counts as a problem (geckoalarm). A scale
+  # whose setup failed at boot is retried once after half of it.
+  sensor_timeout_s: 120
 
 esphome:
   name: geckocontrol
@@ -45,6 +48,26 @@ esphome:
           id: hygrostat
           mode: HEAT_COOL
       - lambda: 'gecko_nest::nest.setup();'
+  # The NAU7802 setup gives the chip only 1 ms to report power-up ready after its reset, and
+  # sometimes misses it after a soft reboot (OTA): "Communication failed for 'gecko_scale'", then
+  # FAILED for good. Run its setup once more, after half the sensor timeout, so a scale that comes
+  # up then never raises a Sensor Problem. disable_loop() + enable_loop() put it back into the loop
+  # (calibration actions) that mark_failed() took it out of.
+  - priority: -100
+    then:
+      - delay: ${ sensor_timeout_s // 2 }s
+      - lambda: |-
+          if (!id(gecko_scale).is_failed())
+            return;
+          ESP_LOGW("scale", "NAU7802 failed at boot, retrying setup");
+          id(gecko_scale).reset_to_construction_state();
+          id(gecko_scale).call();  // CONSTRUCTION -> setup(); marks itself FAILED again on error
+          if (id(gecko_scale).is_failed()) {
+            ESP_LOGE("scale", "NAU7802 setup failed again, giving up until the next reboot");
+          } else {
+            id(gecko_scale).disable_loop();
+            id(gecko_scale).enable_loop();
+          }
 
 esp32:
   board: nodemcu-32s
@@ -1383,7 +1406,7 @@ geckoalarm:
     name: "Undertemperature Alarm"
   low_humidity:
     name: "Low Humidity Alarm"
-  sensor_timeout: 2min
+  sensor_timeout: ${sensor_timeout_s}s
   sensors:
     - temperature_ceiling
     - humidity_ceiling
